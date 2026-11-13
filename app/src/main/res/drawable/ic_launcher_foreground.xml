@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Barra vertical do K -->
+    <path
+        android:fillColor="#FFA940"
+        android:pathData="M38,30 h11 v48 h-11 z" />
+    <!-- Diagonais do K -->
+    <path
+        android:fillColor="#F2F2F7"
+        android:pathData="M56,54 L74,30 h13 L66,54 L87,78 h-13 z" />
+</vector>

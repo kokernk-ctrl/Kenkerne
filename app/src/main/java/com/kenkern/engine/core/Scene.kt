@@ -1,0 +1,162 @@
+package com.kenkern.engine.core
+
+import com.kenkern.engine.core.linkerf.LinkerfGraph
+import com.kenkern.engine.core.references.ReferenceSystem
+
+/**
+ * CENA: árvore de Nicks + sistema de referências + grafo Linkerf.
+ * As travessias usam estruturas pré-alocadas (ZERO alocações no loop de update).
+ */
+class Scene(var name: String = "Cena") {
+
+    val roots = ArrayList<Nick>()
+    val references = ReferenceSystem()
+    val linkerf = LinkerfGraph()
+
+    private var nickCounter = 0
+
+    fun createRootNick(name: String, id: ReferenceId = ReferenceId.generate(), active: Boolean = true): Nick {
+        val nick = Nick(id, name, active)
+        roots.add(nick)
+        references.registerNick(nick)
+        return nick
+    }
+
+    fun createNick(name: String, parent: Nick?, id: ReferenceId = ReferenceId.generate(), active: Boolean = true): Nick {
+        val nick = Nick(id, name, active)
+        if (parent == null) {
+            roots.add(nick)
+        } else {
+            parent.children.add(nick)
+            nick.parent = parent
+        }
+        references.registerNick(nick)
+        return nick
+    }
+
+    /** Nome único automático para novos nicks. */
+    fun nextNickName(): String {
+        nickCounter++
+        var candidate = "Nick $nickCounter"
+        while (findNickByNameAnywhere(candidate) != null) {
+            nickCounter++
+            candidate = "Nick $nickCounter"
+        }
+        return candidate
+    }
+
+    fun findNickByNameAnywhere(target: String): Nick? {
+        for (r in roots) {
+            val found = r.findChildByName(target)
+            if (found != null) return found
+        }
+        return null
+    }
+
+    fun findNick(id: ReferenceId): Nick? = references.resolve(id)
+
+    /** Remove o nick e toda a sua subárvore. Retorna true se removeu. */
+    fun removeNick(nick: Nick): Boolean {
+        val parent = nick.parent
+        val removed = if (parent != null) parent.children.remove(nick) else roots.remove(nick)
+        if (!removed) return false
+        nick.parent = null
+        unregisterSubtree(nick)
+        return true
+    }
+
+    private fun unregisterSubtree(nick: Nick) {
+        references.unregisterNick(nick)
+        linkerf.removeOwner(nick.id)
+        for (c in nick.children) {
+            c.parent = null
+            unregisterSubtree(c)
+        }
+        nick.children.clear()
+    }
+
+    /** Reinsere uma subárvore previamente removida (usada pelo undo de exclusão). */
+    fun attachSubtree(nick: Nick, parent: Nick?, index: Int) {
+        if (parent == null) {
+            val at = index.coerceIn(0, roots.size)
+            roots.add(at, nick)
+        } else {
+            val at = index.coerceIn(0, parent.children.size)
+            parent.children.add(at, nick)
+        }
+        nick.parent = parent
+        references.registerNick(nick)
+    }
+
+    fun reparent(nick: Nick, newParent: Nick?): Boolean {
+        if (newParent != null) {
+            if (newParent === nick || newParent.isAncestorOf(nick) || nick.isAncestorOf(newParent)) return false
+        }
+        val oldParent = nick.parent
+        if (oldParent === newParent) return false
+        if (oldParent != null) oldParent.children.remove(nick) else roots.remove(nick)
+        if (newParent == null) {
+            roots.add(nick)
+        } else {
+            newParent.children.add(nick)
+        }
+        nick.parent = newParent
+        return true
+    }
+
+    /** Move o nick entre os irmãos por delta (-1 = subir, +1 = descer). */
+    fun reorder(nick: Nick, delta: Int): Boolean {
+        val list = nick.parent?.children ?: roots
+        val idx = list.indexOf(nick)
+        if (idx < 0) return false
+        val target = idx + delta
+        if (target < 0 || target >= list.size) return false
+        list.removeAt(idx)
+        list.add(target, nick)
+        return true
+    }
+
+    /** Atualiza as matrizes de mundo (BFS iterativo com pilha pré-alocada, sem alocação). */
+    fun updateWorldTransforms() {
+        sScratch.clear()
+        for (root in roots) sScratch.add(root)
+        var head = 0
+        while (head < sScratch.size) {
+            val current = sScratch[head++]
+            current.transform.localMatrix.setTRS(
+                current.transform.position, current.transform.rotation, current.transform.scale
+            )
+            val parent = current.parent
+            if (parent == null) {
+                current.transform.worldMatrix.copyFrom(current.transform.localMatrix)
+            } else {
+                current.transform.worldMatrix.multiply(parent.transform.worldMatrix, current.transform.localMatrix)
+            }
+            for (child in current.children) sScratch.add(child)
+        }
+    }
+
+    /** Executa as funções das classes dos nicks ativos (modo Play). Sem alocação. */
+    fun updateFunctions(deltaTime: Float, engineTime: Float) {
+        sScratch.clear()
+        for (root in roots) sScratch.add(root)
+        var head = 0
+        while (head < sScratch.size) {
+            val nick = sScratch[head++]
+            if (nick.active) {
+                for (inst in nick.classes) {
+                    NickFunctionRegistry.find(inst.typeName)?.onUpdate(nick, deltaTime, engineTime)
+                }
+                for (child in nick.children) sScratch.add(child)
+            }
+        }
+    }
+
+    fun resetFunctionState() {
+        sScratch.clear()
+    }
+
+    companion object {
+        private val sScratch = ArrayList<Nick>()
+    }
+}
