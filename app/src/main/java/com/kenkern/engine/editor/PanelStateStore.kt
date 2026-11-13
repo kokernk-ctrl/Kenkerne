@@ -2,23 +2,38 @@ package com.kenkern.engine.editor
 
 import android.content.Context
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import kotlin.math.roundToInt
 
-/** Estado de UI de um painel flutuante (posição, tamanho, visibilidade). */
+/**
+ * Estado de UI de um painel do editor.
+ *
+ * Modelo DOCK-FIRST (o oposto do modelo antigo, que nascia solto sobre o viewport):
+ *  - o painel nasce ACOPLADO à lateral (Hierarquia à esquerda, Inspetor à direita)
+ *    com uma largura própria ajustável por divisor;
+ *  - o modo flutuante é EXCEÇÃO, ativado apenas pelo menu do painel;
+ *  - visibilidade é alternada pelo botão correspondente da TopBar.
+ */
 class PanelUiState(
     val key: String,
     val title: String,
-    var offsetX: Float,
-    var offsetY: Float,
-    var widthDp: Float,
-    var heightDp: Float,
-    val visible: MutableState<Boolean>
+    val minDockWidthDp: Float,
+    val maxDockWidthDp: Float,
+    val visible: MutableState<Boolean>,
+    val docked: MutableState<Boolean>,
+    val dockWidthDp: MutableState<Float>,
+    // Estado do modo flutuante (exceção): posição/tamanho relativos ao viewport.
+    var floatX: Float,
+    var floatY: Float,
+    var floatW: Float,
+    var floatH: Float
 )
 
 /**
- * Guarda posição/tamanho dos painéis do editor (Hierarquia e Inspetor).
- * Persistidos em SharedPreferences e restaurados na próxima sessão.
+ * Persistência de posição/largura/visibilidade dos painéis.
+ * Formato textual compacto "v,d,w,fx,fy,fw,fh"; qualquer valor corrompido
+ * cai de volta no padrão profissional (visível + acoplado) sem lançar exceção.
  */
 class PanelStateStore(context: Context) {
 
@@ -28,47 +43,68 @@ class PanelStateStore(context: Context) {
     fun get(
         key: String,
         title: String,
-        defaultX: Float,
-        defaultY: Float,
-        defaultWidthDp: Float,
-        defaultHeightDp: Float,
-        screenWidthPx: Int
+        defaultDockWidthDp: Float,
+        minDockWidthDp: Float,
+        maxDockWidthDp: Float,
+        defaultFloatWidthDp: Float,
+        defaultFloatHeightDp: Float
     ): PanelUiState {
         states[key]?.let { return it }
-        val raw = prefs.getString(key, null)
-        var x = defaultX
-        var y = defaultY
-        var w = defaultWidthDp
-        var h = defaultHeightDp
+
+        // Padrões profissionais: painel visível e acoplado, largura padrão.
         var visible = true
+        var docked = true
+        var w = defaultDockWidthDp.coerceIn(minDockWidthDp, maxDockWidthDp)
+        var fx = 16f
+        var fy = 16f
+        var fw = defaultFloatWidthDp
+        var fh = defaultFloatHeightDp
+
+        val raw = runCatching { prefs.getString(key, null) }.getOrNull()
         if (raw != null) {
-            val parts = raw.split(',')
-            if (parts.size >= 5) {
-                x = parts[0].toFloatOrNull() ?: x
-                y = parts[1].toFloatOrNull() ?: y
-                w = parts[2].toFloatOrNull() ?: w
-                h = parts[3].toFloatOrNull() ?: h
-                visible = parts[4] == "1"
+            val p = raw.split(',')
+            if (p.size >= 7) {
+                visible = p[0] == "1"
+                docked = p[1] == "1"
+                p[2].toFloatOrNull()?.let { w = it.coerceIn(minDockWidthDp, maxDockWidthDp) }
+                p[3].toFloatOrNull()?.let { fx = it }
+                p[4].toFloatOrNull()?.let { fy = it }
+                p[5].toFloatOrNull()?.let { fw = it.coerceAtLeast(MIN_FLOAT_W_DP) }
+                p[6].toFloatOrNull()?.let { fh = it.coerceAtLeast(MIN_FLOAT_H_DP) }
             }
         }
-        // Clampa posição salva para caber na tela atual.
-        if (x > screenWidthPx - 80f) x = 0f
-        if (y > 4000f) y = defaultY
-        val state = PanelUiState(key, title, x, y, w, h, mutableStateOf(visible))
+
+        val state = PanelUiState(
+            key, title, minDockWidthDp, maxDockWidthDp,
+            mutableStateOf(visible),
+            mutableStateOf(docked),
+            mutableFloatStateOf(w),
+            fx, fy, fw, fh
+        )
         states[key] = state
         return state
     }
 
     fun persist(state: PanelUiState) {
-        prefs.edit().putString(
-            state.key,
-            "${state.offsetX.roundToInt()},${state.offsetY.roundToInt()}," +
-                "${state.widthDp.roundToInt()},${state.heightDp.roundToInt()}," +
-                if (state.visible.value) "1" else "0"
-        ).apply()
+        runCatching {
+            prefs.edit().putString(
+                state.key,
+                listOf(
+                    if (state.visible.value) "1" else "0",
+                    if (state.docked.value) "1" else "0",
+                    state.dockWidthDp.value.roundToInt().toString(),
+                    state.floatX.roundToInt().toString(),
+                    state.floatY.roundToInt().toString(),
+                    state.floatW.roundToInt().toString(),
+                    state.floatH.roundToInt().toString()
+                ).joinToString(",")
+            ).apply()
+        }
     }
 
     companion object {
         private const val PREFS_NAME = "kenkern_panels"
+        const val MIN_FLOAT_W_DP = 220f
+        const val MIN_FLOAT_H_DP = 200f
     }
 }

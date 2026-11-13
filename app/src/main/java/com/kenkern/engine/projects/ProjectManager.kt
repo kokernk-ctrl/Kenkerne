@@ -33,7 +33,7 @@ object ProjectManager {
     private const val TAG = "Kenkern/ProjectManager"
 
     const val PROJECT_FILE = "project.kenkern"
-    const val ENGINE_VERSION = "0.1.1-fase1"
+    const val ENGINE_VERSION = "0.1.2-fase1"
     const val FORMAT_VERSION = 1
 
     val FOLDERS = listOf(

@@ -162,6 +162,29 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * APAGA um projeto do disco (com o editor fechado antes, sem gravar nada —
+     * salvar depois de apagar recriaria os arquivos). Nunca crasha: falhas
+     * viram mensagem de status.
+     */
+    fun deleteProject(handle: ProjectHandle) {
+        if (isLoading.value) return
+        viewModelScope.launch {
+            val wasOpen = project.value?.root?.absolutePath == handle.root.absolutePath
+            if (wasOpen) {
+                // Fecha SEM salvar: o projeto está sendo removido do disco.
+                autosave.stop()
+                detachEngineState()
+            }
+            val ok = withContext(Dispatchers.IO) { ProjectManager.deleteProject(handle) }
+            if (!ok) {
+                statusMessage.value =
+                    ProjectManager.lastError ?: "Não foi possível apagar o projeto"
+            }
+            refreshProjects()
+        }
+    }
+
     private fun detachEngineState() {
         engineControls?.setPlayState(PlayState.STOPPED)
         engineControls = null

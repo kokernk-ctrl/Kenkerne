@@ -37,10 +37,7 @@ fun KenkernAppRoot() {
             onConsumeStatus = { vm.consumeStatus() },
             onCreateProject = { name -> vm.createAndEnterProject(name) },
             onOpenProject = { handle -> vm.openProject(handle) },
-            onDeleteProject = { handle ->
-                vm.exitProjectIf(handle)
-                vm.refreshProjects()
-            }
+            onDeleteProject = { handle -> vm.deleteProject(handle) }
         )
     } else {
         EditorScreen(vm, onExit = { vm.exitProject() })

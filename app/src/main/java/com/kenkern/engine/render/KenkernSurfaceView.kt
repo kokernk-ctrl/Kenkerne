@@ -56,6 +56,9 @@ class KenkernSurfaceView(
     /** FPS medido pelo renderer (lido pela barra de status; [tick] força recomposição). */
     fun rendererFps(tick: Int): Int = glRenderer.currentFps()
 
+    /** True se o roundtrip .KERN (gravar/ler malha) passou nesta sessão de render. */
+    fun isKernOk(): Boolean = glRenderer.isKernRoundtripOk()
+
     init {
         val es3 = deviceSupportsGles3(context)
         // Fábrica e chooser próprios definem a versão do contexto (ES3 com fallback ES2).
@@ -150,6 +153,8 @@ class KenkernSurfaceView(
         private var surfaceReady = false
 
         fun currentFps(): Int = engineRenderer.fps
+
+        fun isKernRoundtripOk(): Boolean = engineRenderer.isKernRoundtripOk()
 
         override fun onSurfaceCreated(gl: javax.microedition.khronos.opengles.GL10?, config: EGLConfig?) {
             surfaceReady = false

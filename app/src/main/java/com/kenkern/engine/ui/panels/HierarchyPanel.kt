@@ -2,6 +2,7 @@ package com.kenkern.engine.ui.panels
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -65,28 +67,32 @@ fun HierarchyPanel(vm: EditorViewModel) {
     val expandedMap = remember { HashMap<String, Boolean>() }
 
     Column(Modifier.fillMaxSize()) {
-        // Barra de ferramentas
+        // Barra de ferramentas (rolável: cabe em painéis estreitos de 140dp)
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            modifier = Modifier.fillMaxWidth().height(44.dp)
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 4.dp)
         ) {
-            IconButton(onClick = { vm.addNick() }, enabled = scene != null) {
+            IconButton(onClick = { vm.addNick() }, enabled = scene != null, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Filled.Add, "Criar nick", tint = MaterialTheme.colorScheme.primary)
             }
-            IconButton(onClick = { showRename = true }, enabled = selection != null) {
+            IconButton(onClick = { showRename = true }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Filled.Edit, "Renomear", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { showDelete = true }, enabled = selection != null) {
+            IconButton(onClick = { showDelete = true }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Filled.Delete, "Apagar", tint = MaterialTheme.colorScheme.error)
             }
-            IconButton(onClick = { selection?.let { vm.reorderSelected(-1) } }, enabled = selection != null) {
+            IconButton(onClick = { selection?.let { vm.reorderSelected(-1) } }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Filled.KeyboardArrowUp, "Subir", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { selection?.let { vm.reorderSelected(1) } }, enabled = selection != null) {
+            IconButton(onClick = { selection?.let { vm.reorderSelected(1) } }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Filled.KeyboardArrowDown, "Descer", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { showReparent = true }, enabled = selection != null && scene != null) {
+            IconButton(onClick = { showReparent = true }, enabled = selection != null && scene != null, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Filled.AccountTree, "Reparentar", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
