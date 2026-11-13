@@ -35,6 +35,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Surface
@@ -133,7 +134,7 @@ fun HomeScreen(
                     onClick = { showNewDialog = true },
                     enabled = !isLoading,
                     modifier = Modifier.size(40.dp),
-                    colors = ButtonDefaults.iconButtonColors(
+                    colors = IconButtonDefaults.iconButtonColors(
                         containerColor = KenkernAmber,
                         contentColor = Color(0xFF241300)
                     )
