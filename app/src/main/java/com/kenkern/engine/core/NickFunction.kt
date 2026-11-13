@@ -30,18 +30,22 @@ object NickFunctionRegistry {
 /** Classe nativa "Spin": gira o Nick continuamente. Campos: speed (FLOAT, graus/s), axis (STRING X|Y|Z). */
 object SpinFunction : NickFunction {
     override val className: String = "Spin"
-    private val angles = java.util.WeakHashMap<Nick, Float>()
+
+    /** Ângulo acumulado por Nick — FloatArray(1) evita boxing de Float a cada passo. */
+    private val angles = java.util.WeakHashMap<Nick, FloatArray>()
 
     override fun onUpdate(nick: Nick, deltaTime: Float, engineTime: Float) {
         val inst = nick.findClassInstance(className) ?: return
         val speed = inst.getFloat("speed", 45f)
         val axis = inst.getString("axis", "Y")
-        val a = (angles[nick] ?: 0f) + speed * deltaTime
-        angles[nick] = a
+        // Zero alocação por passo: slot pré-alocado; comparação sem uppercase() (String nova).
+        val slot = angles.getOrPut(nick) { FloatArray(1) }
+        val a = slot[0] + speed * deltaTime
+        slot[0] = a
         val rad = Math.toRadians(a.toDouble()).toFloat()
-        when (axis.uppercase()) {
-            "X" -> nick.transform.rotation.setFromAxisAngle(1f, 0f, 0f, rad)
-            "Z" -> nick.transform.rotation.setFromAxisAngle(0f, 0f, 1f, rad)
+        when {
+            axis.equals("X", ignoreCase = true) -> nick.transform.rotation.setFromAxisAngle(1f, 0f, 0f, rad)
+            axis.equals("Z", ignoreCase = true) -> nick.transform.rotation.setFromAxisAngle(0f, 0f, 1f, rad)
             else -> nick.transform.rotation.setFromAxisAngle(0f, 1f, 0f, rad)
         }
     }

@@ -116,10 +116,11 @@ class Scene(var name: String = "Cena") {
         return true
     }
 
-    /** Atualiza as matrizes de mundo (BFS iterativo com pilha pré-alocada, sem alocação). */
+    /** Atualiza as matrizes de mundo (BFS iterativo com pilha pré-alocada, sem alocação).
+     *  Loops INDEXADOS: for-in sobre ArrayList instancia um Iterator por frame. */
     fun updateWorldTransforms() {
         sScratch.clear()
-        for (root in roots) sScratch.add(root)
+        for (ri in roots.indices) sScratch.add(roots[ri])
         var head = 0
         while (head < sScratch.size) {
             val current = sScratch[head++]
@@ -132,22 +133,26 @@ class Scene(var name: String = "Cena") {
             } else {
                 current.transform.worldMatrix.multiply(parent.transform.worldMatrix, current.transform.localMatrix)
             }
-            for (child in current.children) sScratch.add(child)
+            val children = current.children
+            for (ci in children.indices) sScratch.add(children[ci])
         }
     }
 
-    /** Executa as funções das classes dos nicks ativos (modo Play). Sem alocação. */
+    /** Executa as funções das classes dos nicks ativos (modo Play). Sem alocação.
+     *  Loops INDEXADOS: for-in sobre ArrayList instancia um Iterator por passo fixo. */
     fun updateFunctions(deltaTime: Float, engineTime: Float) {
         sScratch.clear()
-        for (root in roots) sScratch.add(root)
+        for (ri in roots.indices) sScratch.add(roots[ri])
         var head = 0
         while (head < sScratch.size) {
             val nick = sScratch[head++]
             if (nick.active) {
-                for (inst in nick.classes) {
-                    NickFunctionRegistry.find(inst.typeName)?.onUpdate(nick, deltaTime, engineTime)
+                val classes = nick.classes
+                for (ki in classes.indices) {
+                    NickFunctionRegistry.find(classes[ki].typeName)?.onUpdate(nick, deltaTime, engineTime)
                 }
-                for (child in nick.children) sScratch.add(child)
+                val children = nick.children
+                for (ci in children.indices) sScratch.add(children[ci])
             }
         }
     }

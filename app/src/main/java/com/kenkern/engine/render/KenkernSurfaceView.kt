@@ -56,6 +56,15 @@ class KenkernSurfaceView(
     /** FPS medido pelo renderer (lido pela barra de status; [tick] força recomposição). */
     fun rendererFps(tick: Int): Int = glRenderer.currentFps()
 
+    /** ms de update (EMA); [tick] só força recomposição a 2 Hz, não entra no thread GL. */
+    fun rendererUpdateMs(tick: Int): Float = glRenderer.currentUpdateMs()
+
+    /** ms de draw (EMA); [tick] só força recomposição a 2 Hz. */
+    fun rendererDrawMs(tick: Int): Float = glRenderer.currentDrawMs()
+
+    /** Draw calls do último frame (grade + malhas); [tick] só força recomposição a 2 Hz. */
+    fun rendererDrawCalls(tick: Int): Int = glRenderer.currentDrawCalls()
+
     /** True se o roundtrip .KERN (gravar/ler malha) passou nesta sessão de render. */
     fun isKernOk(): Boolean = glRenderer.isKernRoundtripOk()
 
@@ -154,6 +163,12 @@ class KenkernSurfaceView(
 
         fun currentFps(): Int = engineRenderer.fps
 
+        fun currentUpdateMs(): Float = engineRenderer.updateMs
+
+        fun currentDrawMs(): Float = engineRenderer.drawMs
+
+        fun currentDrawCalls(): Int = engineRenderer.drawCount
+
         fun isKernRoundtripOk(): Boolean = engineRenderer.isKernRoundtripOk()
 
         override fun onSurfaceCreated(gl: javax.microedition.khronos.opengles.GL10?, config: EGLConfig?) {
@@ -179,11 +194,14 @@ class KenkernSurfaceView(
         override fun onDrawFrame(gl: javax.microedition.khronos.opengles.GL10?) {
             try {
                 val scene = sceneProvider()
+                // Instrumentação: ms de update (timestep fixo + world transforms).
+                val updateStart = System.nanoTime()
                 loop.tick(System.nanoTime()) { dt ->
                     scene?.updateFunctions(dt, loop.engineTime)
                 }
                 // Matrizes de mundo sempre atualizadas (mesmo pausado, o Inspetor edita transform).
                 scene?.updateWorldTransforms()
+                engineRenderer.reportUpdateMs((System.nanoTime() - updateStart) * 1e-6f)
                 if (surfaceReady) {
                     engineRenderer.renderFrame(backend, scene, camera, loop.engineTime, selectionProvider())
                 }

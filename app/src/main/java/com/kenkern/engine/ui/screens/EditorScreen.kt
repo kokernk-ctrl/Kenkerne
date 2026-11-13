@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -69,6 +70,7 @@ import com.kenkern.engine.editor.EditorViewModel
 import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.engine.PlayState
 import com.kenkern.engine.render.KenkernSurfaceView
+import java.util.Locale
 import com.kenkern.engine.ui.panels.DockedPanel
 import com.kenkern.engine.ui.panels.FloatingPanel
 import com.kenkern.engine.ui.panels.HierarchyPanel
@@ -590,12 +592,15 @@ private fun TopBarSeparator() {
 
 // ============================== StatusBar (24dp) ==============================
 
-/** Estado de play, FPS e integridade GL/.KERN — texto 12sp, contraste ≥ 4.5:1. */
+/** Estado de play, FPS, métricas de frame (update/draw/draw calls) e integridade GL/.KERN. */
 @Composable
 private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView?, fpsTick: Int) {
     val playing = vm.playState.value == PlayState.PLAYING
     val paused = vm.playState.value == PlayState.PAUSED
     val fps = surfaceView?.rendererFps(fpsTick) ?: 0
+    val updMs = surfaceView?.rendererUpdateMs(fpsTick) ?: 0f
+    val drawTimeMs = surfaceView?.rendererDrawMs(fpsTick) ?: 0f
+    val draws = surfaceView?.rendererDrawCalls(fpsTick) ?: 0
     val healthy = surfaceView?.isEngineHealthy ?: true
 
     Surface(
@@ -637,6 +642,18 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
                 }
             )
             Text("$fps FPS", fontSize = 12.sp, color = KenkernTextMid)
+
+            // Métricas de frame: atualizadas apenas 2x/s (fpsTick), formatadas fora do thread GL.
+            Text(
+                text = String.format(
+                    Locale.US, "%.1f ms upd · %.1f ms draw · %d dc", updMs, drawTimeMs, draws
+                ),
+                fontSize = 12.sp,
+                color = KenkernTextMid,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
 
             if (!healthy) {
                 Icon(

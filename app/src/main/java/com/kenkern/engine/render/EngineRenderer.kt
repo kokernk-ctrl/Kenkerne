@@ -43,8 +43,23 @@ class EngineRenderer {
     var drawCount: Int = 0
         private set
 
+    /** ms de update (timestep fixo + world transforms), média móvel EMA 0,9. */
+    @Volatile
+    var updateMs: Float = 0f
+        private set
+
+    /** ms de draw (beginFrame → endFrame), média móvel EMA 0,9. */
+    @Volatile
+    var drawMs: Float = 0f
+        private set
+
     private var framesThisSecond = 0
     private var fpsWindowStartNanos = 0L
+
+    /** Chamado pelo thread GL uma vez por frame (escrita volátil, sem alocação). */
+    fun reportUpdateMs(measuredMs: Float) {
+        updateMs = if (updateMs == 0f) measuredMs else updateMs * 0.9f + measuredMs * 0.1f
+    }
 
     private val proj = Mat4()
     private val view = Mat4()
@@ -181,6 +196,7 @@ class EngineRenderer {
         selectedId: ReferenceId?
     ) {
         updateFps(System.nanoTime())
+        val drawStart = System.nanoTime()
         try {
             renderFrameInner(backend, scene, camera, engineTime, selectedId)
         } catch (e: Throwable) {
@@ -188,6 +204,8 @@ class EngineRenderer {
             Log.e(TAG, "Frame descartado", e)
             runCatching { backend.beginFrame(0.075f, 0.075f, 0.105f, 1f) }
         }
+        val drawElapsedMs = (System.nanoTime() - drawStart) * 1e-6f
+        drawMs = if (drawMs == 0f) drawElapsedMs else drawMs * 0.9f + drawElapsedMs * 0.1f
     }
 
     private fun renderFrameInner(
@@ -198,7 +216,7 @@ class EngineRenderer {
         selectedId: ReferenceId?
     ) {
         backend.beginFrame(0.075f, 0.075f, 0.105f, 1f)
-        drawCount = 0
+        var gridDrawn = 0
 
         val aspect = backend.viewportWidth.toFloat() / backend.viewportHeight.toFloat()
         camera.projection(proj, aspect)
@@ -215,10 +233,11 @@ class EngineRenderer {
             intensity
         )
 
-        // Grade
+        // Grade: 1 VBO estático (GL_STATIC_DRAW) criado uma vez em buildGrid,
+        // desenhado com 1 único glDrawArrays(GL_LINES) por frame.
         if (gridHandle != 0) {
             backend.drawLines(gridHandle, gridVertexCount, viewProj, 0.30f, 0.32f, 0.36f, 1f)
-            drawCount++
+            gridDrawn = 1
         }
 
         // Malha de teste (torus .KERN), girando com o tempo da engine
@@ -229,12 +248,13 @@ class EngineRenderer {
             geometry.submit(testMeshHandle, torusModel, 0.96f, 0.64f, 0.24f, 1f)
         }
 
-        // Cubo por Nick
+        // Cubo por Nick (travessia indexada: Iterator de ArrayList aloca por frame)
         if (scene != null) {
+            val roots = scene.roots
             var top = 0
-            for (root in scene.roots) {
+            for (ri in roots.indices) {
                 if (top >= nickStack.size) break
-                nickStack[top++] = root
+                nickStack[top++] = roots[ri]
             }
             while (top > 0) {
                 val nick = nickStack[--top] ?: continue
@@ -248,15 +268,18 @@ class EngineRenderer {
                         1f
                     )
                 }
-                for (child in nick.children) {
+                val children = nick.children
+                for (ci in children.indices) {
                     if (top >= nickStack.size) break
-                    nickStack[top++] = child
+                    nickStack[top++] = children[ci]
                 }
             }
         }
 
         geometry.flush(backend, viewProj)
-        drawCount = (geometry as? DefaultGeometryPipeline)?.lastFlushCount ?: drawCount
+        // Total real de draw calls do frame: grade (1 drawLines) + malhas do flush.
+        drawCount = gridDrawn +
+            ((geometry as? DefaultGeometryPipeline)?.lastFlushCount ?: 0)
         backend.endFrame()
     }
 

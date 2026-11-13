@@ -14,8 +14,8 @@ android {
         applicationId = "com.kenkern.engine"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.1.2-fase1"
+        versionCode = 4
+        versionName = "0.1.3-perf"
     }
 
     // Assinatura de release lida de variáveis de ambiente (mesma estratégia usada no CI).
@@ -37,7 +37,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 ativo: minificação/shrinking de bibliotecas + recursos.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            isDebuggable = false
             val releaseSigning = signingConfigs.findByName("release")
             signingConfig = releaseSigning ?: signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
