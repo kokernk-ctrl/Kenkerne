@@ -14,7 +14,8 @@ interface RenderBackend {
     var viewportWidth: Int
     var viewportHeight: Int
 
-    fun initialize()
+    /** Inicializa recursos da API gráfica. NUNCA lança: false = sem recursos de render. */
+    fun initialize(): Boolean
     fun resize(width: Int, height: Int)
 
     fun beginFrame(clearR: Float, clearG: Float, clearB: Float, clearA: Float)

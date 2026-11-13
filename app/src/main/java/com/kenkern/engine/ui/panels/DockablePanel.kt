@@ -1,7 +1,7 @@
 package com.kenkern.engine.ui.panels
 
-import androidx.compose.foundation.border
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +24,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,14 +33,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.kenkern.engine.editor.PanelUiState
+import com.kenkern.engine.ui.theme.KenkernAmber
+import com.kenkern.engine.ui.theme.KenkernSurfaceOverlay
 import kotlin.math.roundToInt
 
 /**
@@ -61,6 +66,7 @@ fun DockablePanel(
     var dragging by remember { mutableStateOf(false) }
     var resizing by remember { mutableStateOf(false) }
     val density = LocalDensity.current
+    val active = dragging || resizing
 
     fun clampPosition() {
         val minX = -(state.widthDp * density.density * 0.75f)
@@ -76,21 +82,21 @@ fun DockablePanel(
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.93f)
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (dragging || resizing) 12.dp else 6.dp
+            defaultElevation = if (active) 16.dp else 8.dp
         ),
         modifier = Modifier
             .offset { IntOffset(state.offsetX.roundToInt(), state.offsetY.roundToInt()) }
             .width(state.widthDp.dp)
             .height(state.heightDp.dp)
             .border(
-                width = 1.dp,
-                color = if (dragging || resizing) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                width = if (active) 1.5.dp else 1.dp,
+                color = if (active) {
+                    KenkernAmber.copy(alpha = 0.7f)
                 } else {
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
                 },
                 shape = RoundedCornerShape(12.dp)
             )
@@ -101,8 +107,15 @@ fun DockablePanel(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(38.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f))
+                    .height(40.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                KenkernSurfaceOverlay.copy(alpha = 0.9f),
+                                KenkernSurfaceOverlay.copy(alpha = 0.55f)
+                            )
+                        )
+                    )
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { dragging = true },
@@ -117,19 +130,20 @@ fun DockablePanel(
                         )
                     }
             ) {
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(10.dp))
                 Icon(
                     Icons.Filled.DragIndicator,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.outline,
+                    tint = if (active) KenkernAmber else MaterialTheme.colorScheme.outline,
                     modifier = Modifier.size(16.dp)
                 )
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(6.dp))
                 Text(
-                    state.title,
-                    style = MaterialTheme.typography.labelLarge,
+                    state.title.uppercase(),
+                    style = MaterialTheme.typography.labelMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    color = if (active) KenkernAmber else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(
@@ -142,14 +156,15 @@ fun DockablePanel(
                     Icon(
                         Icons.Filled.Close,
                         contentDescription = "Ocultar ${state.title}",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
             HorizontalDivider(
                 thickness = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                color = KenkernAmber.copy(alpha = if (active) 0.35f else 0.14f)
             )
 
             // Conteúdo
@@ -167,7 +182,11 @@ fun DockablePanel(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .size(width = 34.dp, height = 16.dp)
+                        .size(width = 44.dp, height = 16.dp)
+                        .clip(RoundedCornerShape(topStart = 8.dp))
+                        .background(
+                            if (resizing) KenkernAmber.copy(alpha = 0.25f) else Color.Transparent
+                        )
                         .pointerInput(Unit) {
                             detectDragGestures(
                                 onDragStart = { resizing = true },
@@ -186,7 +205,7 @@ fun DockablePanel(
                     Icon(
                         Icons.Filled.DragIndicator,
                         contentDescription = "Redimensionar ${state.title}",
-                        tint = MaterialTheme.colorScheme.outline,
+                        tint = if (resizing) KenkernAmber else MaterialTheme.colorScheme.outline,
                         modifier = Modifier.size(14.dp)
                     )
                 }
@@ -198,12 +217,15 @@ fun DockablePanel(
 /** Chips que reaparecem quando um painel está oculto. */
 @Composable
 fun HiddenPanelChip(label: String, onRestore: () -> Unit) {
-    androidx.compose.material3.AssistChip(
+    AssistChip(
         onClick = onRestore,
         label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-        colors = androidx.compose.material3.AssistChipDefaults.assistChipColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-            labelColor = MaterialTheme.colorScheme.primary
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            labelColor = KenkernAmber
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp, KenkernAmber.copy(alpha = 0.35f)
         )
     )
 }

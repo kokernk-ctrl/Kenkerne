@@ -1,23 +1,24 @@
 package com.kenkern.engine.editor
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kenkern.engine.autosave.AutoSaveManager
+import com.kenkern.engine.commands.AddClassCommand
 import com.kenkern.engine.commands.Command
 import com.kenkern.engine.commands.CommandHistory
 import com.kenkern.engine.commands.CreateNickCommand
 import com.kenkern.engine.commands.DeleteNickCommand
-import com.kenkern.engine.commands.RenameCommand
-import com.kenkern.engine.commands.ReparentCommand
-import com.kenkern.engine.commands.ReorderCommand
-import com.kenkern.engine.commands.SetFlagCommand
-import com.kenkern.engine.commands.SetClassFieldCommand
-import com.kenkern.engine.commands.TransformCommand
-import com.kenkern.engine.commands.AddClassCommand
 import com.kenkern.engine.commands.RemoveClassCommand
+import com.kenkern.engine.commands.RenameCommand
+import com.kenkern.engine.commands.ReorderCommand
+import com.kenkern.engine.commands.ReparentCommand
+import com.kenkern.engine.commands.SetClassFieldCommand
+import com.kenkern.engine.commands.SetFlagCommand
+import com.kenkern.engine.commands.TransformCommand
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
@@ -26,10 +27,17 @@ import com.kenkern.engine.engine.PlayState
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
 import com.kenkern.engine.render.EngineControls
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * ViewModel do editor: cena, seleção, histórico de comandos (undo/redo),
  * estado de Play e auto-save com debounce.
+ *
+ * ANTI-CRASH: toda operação de arquivo (criar/abrir/listar projeto, carregar cena)
+ * roda em Dispatchers.IO e é protegida por runCatching — falhas viram mensagens
+ * de status visíveis ([statusMessage]), nunca exceções não tratadas.
  */
 class EditorViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -40,6 +48,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     val revision = mutableIntStateOf(0)
     val recoveryNotice = mutableStateOf(false)
     val statusMessage = mutableStateOf<String?>(null)
+    val isLoading = mutableStateOf(false)
+    val projects = mutableStateOf<List<ProjectHandle>>(emptyList())
 
     /** Referência volátil lida pelo thread de render. */
     @Volatile
@@ -57,42 +67,117 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     private val autosave = AutoSaveManager(viewModelScope)
 
+    /** Guarda o handle cujo editor está aberto nesta composição (para o save do onDispose). */
+    @Volatile
+    private var activeHandleAtEnter: ProjectHandle? = null
+
     val canUndo: Boolean get() = history.canUndo
     val canRedo: Boolean get() = history.canRedo
 
-    fun enterProject(handle: ProjectHandle) {
-        exitProject()
-        project.value = handle
-        val recovered = ProjectManager.hasAutosave(handle)
-        val loaded = ProjectManager.loadScene(handle)
-        sceneRef = loaded
-        scene.value = loaded
-        recoveryNotice.value = recovered
-        history.clear()
-        selection.value = null
-        selectionRef = null
-        playState.value = PlayState.STOPPED
-        engineControls?.setPlayState(PlayState.STOPPED)
-        autosave.start({ sceneRef }, { project.value })
-        bump()
+    fun refreshProjects() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val list = ProjectManager.listProjects(getApplication())
+            withContext(Dispatchers.Main) { projects.value = list }
+        }
+    }
+
+    /** Cria um projeto novo (I/O em background) e abre o editor. Nunca crasha. */
+    fun createAndEnterProject(rawName: String) {
+        if (isLoading.value) return
+        isLoading.value = true
+        viewModelScope.launch {
+            val handle = withContext(Dispatchers.IO) {
+                ProjectManager.createProject(getApplication(), rawName)
+            }
+            isLoading.value = false
+            if (handle == null) {
+                statusMessage.value = ProjectManager.lastError ?: "Não foi possível criar o projeto"
+                return@launch
+            }
+            loadIntoEditor(handle)
+        }
+    }
+
+    /** Abre um projeto existente (I/O em background). Nunca crasha. */
+    fun openProject(handle: ProjectHandle) {
+        if (isLoading.value) return
+        isLoading.value = true
+        viewModelScope.launch {
+            val valid = withContext(Dispatchers.IO) {
+                ProjectManager.openProject(getApplication(), handle.root)
+            }
+            isLoading.value = false
+            if (valid == null) {
+                statusMessage.value = "Projeto inválido ou corrompido"
+                refreshProjects()
+                return@launch
+            }
+            loadIntoEditor(valid)
+        }
+    }
+
+    private fun loadIntoEditor(handle: ProjectHandle) {
+        isLoading.value = true
+        viewModelScope.launch {
+            runCatching {
+                val recovered = withContext(Dispatchers.IO) { ProjectManager.hasAutosave(handle) }
+                val loaded = withContext(Dispatchers.IO) { ProjectManager.loadScene(handle) }
+                // Encerra o estado anterior DEPOIS que a cena nova carregou com sucesso.
+                detachEngineState()
+                project.value = handle
+                activeHandleAtEnter = handle
+                sceneRef = loaded
+                scene.value = loaded
+                recoveryNotice.value = recovered
+                history.clear()
+                selection.value = null
+                selectionRef = null
+                playState.value = PlayState.STOPPED
+                autosave.start({ sceneRef }, { project.value })
+                refreshProjects()
+                bump()
+            }.onFailure {
+                Log.e(TAG, "Falha ao abrir projeto", it)
+                statusMessage.value = "Falha ao abrir projeto: ${it.message ?: "erro desconhecido"}"
+            }
+            isLoading.value = false
+        }
     }
 
     fun exitProject() {
-        if (project.value != null && sceneRef != null) {
-            autosave.saveNow(sceneRef, project.value)
+        val handle = project.value
+        val currentScene = sceneRef
+        if (handle != null && currentScene != null) {
+            autosave.saveNow(currentScene, handle)
         }
+        detachEngineState()
         autosave.stop()
+        refreshProjects()
+    }
+
+    /** Sai do editor somente se o projeto aberto for o mesmo que foi apagado no Hub. */
+    fun exitProjectIf(handle: ProjectHandle) {
+        if (project.value?.root?.absolutePath == handle.root.absolutePath) {
+            exitProject()
+        }
+    }
+
+    private fun detachEngineState() {
         engineControls?.setPlayState(PlayState.STOPPED)
         engineControls = null
+        activeHandleAtEnter = null
         sceneRef = null
         selectionRef = null
         scene.value = null
         project.value = null
         selection.value = null
+        history.clear()
     }
 
     fun saveNow() {
-        autosave.saveNow(sceneRef, project.value)
+        val handle = project.value ?: activeHandleAtEnter ?: return
+        val currentScene = sceneRef ?: return
+        runCatching { autosave.saveNow(currentScene, handle) }
     }
 
     fun select(id: ReferenceId?) {
@@ -194,5 +279,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun consumeStatus() {
         statusMessage.value = null
+    }
+
+    companion object {
+        private const val TAG = "Kenkern/EditorVM"
     }
 }

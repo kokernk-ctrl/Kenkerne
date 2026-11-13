@@ -129,7 +129,7 @@ object CkFormat {
     // ---------- Leitura ----------
 
     /** Preenche uma cena existente a partir de texto .ck. Retorna true em caso de sucesso. */
-    fun parse(text: String, scene: Scene): Boolean {
+    fun parse(text: String, scene: Scene): Boolean = runCatching {
         scene.roots.clear()
         scene.references.clear()
         scene.linkerf.clear()
@@ -145,7 +145,8 @@ object CkFormat {
         text.lineSequence().forEach { rawLine ->
             val line = rawLine.trim()
             if (line.isEmpty() || line.startsWith("#")) return@forEach
-            val tokens = tokenize(line)
+            // Linhas corruptas são ignoradas individualmente (arquivo parcial recuperável).
+            val tokens = runCatching { tokenize(line) }.getOrNull() ?: return@forEach
             when (tokens.firstOrNull()?.first) {
                 MAGIC -> sawMagic = true
                 "SCENE" -> {
@@ -225,12 +226,13 @@ object CkFormat {
             }
         }
 
-        if (!sawMagic) return false
+        if (!sawMagic) return@runCatching false
 
-        // Segunda passada: liga pais por id.
+        // Segunda passada: liga pais por id (pais ausentes viram raízes — nunca crasha).
         for ((id, parentId) in parents) {
             val nick = nicks[id] ?: continue
             val parent = nicks[parentId] ?: continue
+            if (nick === parent) continue
             parent.children.add(nick)
             nick.parent = parent
         }
@@ -238,8 +240,10 @@ object CkFormat {
             if (nick.parent == null) scene.roots.add(nick)
             scene.references.registerNick(nick)
         }
-        return sawEnd || true
-    }
+        true
+    }.onFailure {
+        android.util.Log.e("Kenkern/CkFormat", "parse falhou", it)
+    }.getOrDefault(false)
 
     fun parseToNewScene(text: String, fallbackName: String = "Cena"): Scene? {
         val scene = Scene(fallbackName)

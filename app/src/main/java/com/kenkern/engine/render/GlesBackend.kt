@@ -1,6 +1,7 @@
 package com.kenkern.engine.render
 
 import android.opengl.GLES30
+import android.util.Log
 import com.kenkern.engine.assets.mesh.MeshData
 import com.kenkern.engine.core.math.Mat4
 import java.nio.ByteBuffer
@@ -11,6 +12,12 @@ import java.nio.IntBuffer
 /**
  * Implementação OpenGL ES 3.0 do RenderBackend (minSdk 26).
  * Um único programa de shader com VAOs; os uniforms de luz vêm da LightingPipeline.
+ *
+ * ANTI-CRASH: [initialize] NUNCA lança exceção — se a compilação/linkagem do
+ * shader principal falhar (GPU restrita, driver buggy), um shader de fallback
+ * mínimo é compilado; se até isso falhar, o backend entra em modo degradado
+ * (apenas clear) e a UI mostra o aviso. Todas as chamadas são tolerantes a
+ * handles inválidos e erros de GL sem derrubar o processo.
  */
 class GlesBackend : RenderBackend {
 
@@ -18,6 +25,11 @@ class GlesBackend : RenderBackend {
 
     override var viewportWidth: Int = 1
     override var viewportHeight: Int = 1
+
+    /** False se nem o shader de fallback compilou: backend só limpa a tela. */
+    @Volatile
+    var isDegraded: Boolean = false
+        private set
 
     private var program = 0
     private var uMvp = 0
@@ -76,21 +88,45 @@ class GlesBackend : RenderBackend {
         }
     """.trimIndent()
 
-    override fun initialize() {
-        val vs = compile(GLES30.GL_VERTEX_SHADER, vertexShader)
-        val fs = compile(GLES30.GL_FRAGMENT_SHADER, fragmentShader)
-        program = GLES30.glCreateProgram()
-        GLES30.glAttachShader(program, vs)
-        GLES30.glAttachShader(program, fs)
-        GLES30.glLinkProgram(program)
-        val status = IntArray(1)
-        GLES30.glGetProgramiv(program, GLES30.GL_LINK_STATUS, status, 0)
-        if (status[0] == 0) {
-            val log = GLES30.glGetProgramInfoLog(program)
-            throw IllegalStateException("Falha ao linkar shader KENKERN: $log")
+    /** Fallback mínimo: cor sólida, sem iluminação — roda em praticamente qualquer GPU. */
+    private val fallbackVertexShader = """
+        #version 300 es
+        layout(location = 0) in vec3 aPos;
+        uniform mat4 uMVP;
+        uniform mat4 uModel;
+        void main() {
+            gl_Position = uMVP * vec4(aPos, 1.0);
         }
-        GLES30.glDeleteShader(vs)
-        GLES30.glDeleteShader(fs)
+    """.trimIndent()
+
+    private val fallbackFragmentShader = """
+        #version 300 es
+        precision mediump float;
+        uniform vec4 uColor;
+        out vec4 fragColor;
+        void main() {
+            fragColor = uColor;
+        }
+    """.trimIndent()
+
+    override fun initialize(): Boolean {
+        GLES30.glDisable(GLES30.GL_DITHER)
+        GLES30.glEnable(GLES30.GL_DEPTH_TEST)
+        GLES30.glEnable(GLES30.GL_CULL_FACE)
+        GLES30.glCullFace(GLES30.GL_BACK)
+        GLES30.glFrontFace(GLES30.GL_CCW)
+
+        // 1) Tenta o programa completo; 2) fallback mínimo; 3) modo degradado.
+        program = buildProgram(vertexShader, fragmentShader)
+        if (program == 0) {
+            Log.w(TAG, "Shader principal falhou; tentando fallback mínimo")
+            program = buildProgram(fallbackVertexShader, fallbackFragmentShader)
+        }
+        if (program == 0) {
+            Log.e(TAG, "Nenhum shader compilou: backend em modo degradado (somente clear)")
+            isDegraded = true
+            return true // app continua vivo; viewport mostra só o fundo
+        }
 
         uMvp = GLES30.glGetUniformLocation(program, "uMVP")
         uModel = GLES30.glGetUniformLocation(program, "uModel")
@@ -100,24 +136,54 @@ class GlesBackend : RenderBackend {
         uLightColor = GLES30.glGetUniformLocation(program, "uLightColor")
         uLightIntensity = GLES30.glGetUniformLocation(program, "uLightIntensity")
 
-        GLES30.glEnable(GLES30.GL_DEPTH_TEST)
-        GLES30.glEnable(GLES30.GL_CULL_FACE)
-        GLES30.glCullFace(GLES30.GL_BACK)
-        GLES30.glFrontFace(GLES30.GL_CCW)
+        GLES30.glClearColor(0.075f, 0.075f, 0.105f, 1f)
+        drainGlErrors()
+        return true
     }
 
-    private fun compile(type: Int, source: String): Int {
+    /** Compila + linka sem lançar; retorna 0 em qualquer falha. */
+    private fun buildProgram(vsSrc: String, fsSrc: String): Int {
+        val vs = compile(GLES30.GL_VERTEX_SHADER, vsSrc) ?: return 0
+        val fs = compile(GLES30.GL_FRAGMENT_SHADER, fsSrc) ?: run {
+            GLES30.glDeleteShader(vs)
+            return 0
+        }
+        val p = GLES30.glCreateProgram()
+        GLES30.glAttachShader(p, vs)
+        GLES30.glAttachShader(p, fs)
+        GLES30.glLinkProgram(p)
+        GLES30.glDeleteShader(vs)
+        GLES30.glDeleteShader(fs)
+        val status = IntArray(1)
+        GLES30.glGetProgramiv(p, GLES30.GL_LINK_STATUS, status, 0)
+        if (status[0] == 0) {
+            Log.w(TAG, "Link falhou: ${GLES30.glGetProgramInfoLog(p)}")
+            GLES30.glDeleteProgram(p)
+            drainGlErrors()
+            return 0
+        }
+        return p
+    }
+
+    /** Compila um shader sem lançar; retorna null em falha. */
+    private fun compile(type: Int, source: String): Int? {
         val shader = GLES30.glCreateShader(type)
+        if (shader == 0) return null
         GLES30.glShaderSource(shader, source)
         GLES30.glCompileShader(shader)
         val status = IntArray(1)
         GLES30.glGetShaderiv(shader, GLES30.GL_COMPILE_STATUS, status, 0)
         if (status[0] == 0) {
-            val log = GLES30.glGetShaderInfoLog(shader)
+            Log.w(TAG, "Compile falhou: ${GLES30.glGetShaderInfoLog(shader)}")
             GLES30.glDeleteShader(shader)
-            throw IllegalStateException("Falha ao compilar shader KENKERN: $log")
+            drainGlErrors()
+            return null
         }
         return shader
+    }
+
+    private fun drainGlErrors() {
+        while (GLES30.glGetError() != GLES30.GL_NO_ERROR) { /* descarta erros pendentes */ }
     }
 
     override fun resize(width: Int, height: Int) {
@@ -137,6 +203,7 @@ class GlesBackend : RenderBackend {
         lightR: Float, lightG: Float, lightB: Float,
         intensity: Float
     ) {
+        if (program == 0) return
         GLES30.glUseProgram(program)
         uniformScratch[0] = dirX; uniformScratch[1] = dirY; uniformScratch[2] = dirZ
         GLES30.glUniform3fv(uLightDir, 1, uniformScratch, 0)
@@ -149,57 +216,47 @@ class GlesBackend : RenderBackend {
     }
 
     override fun createMesh(mesh: MeshData): Int {
+        if (mesh.vertexCount <= 0 || mesh.indices.isEmpty()) return 0
         val vertexCount = mesh.vertexCount
-        val interleaved = ByteBuffer.allocateDirect(vertexCount * STRIDE).order(ByteOrder.nativeOrder())
+
+        val interleaved = runCatching {
+            ByteBuffer.allocateDirect(vertexCount * STRIDE).order(ByteOrder.nativeOrder())
+        }.getOrNull() ?: return 0
         val fb = interleaved.asFloatBuffer()
         for (v in 0 until vertexCount) {
-            fb.put(mesh.positions[v * 3])
-            fb.put(mesh.positions[v * 3 + 1])
-            fb.put(mesh.positions[v * 3 + 2])
-            fb.put(mesh.normals[v * 3])
-            fb.put(mesh.normals[v * 3 + 1])
-            fb.put(mesh.normals[v * 3 + 2])
+            fb.put(mesh.positions[v * 3]); fb.put(mesh.positions[v * 3 + 1]); fb.put(mesh.positions[v * 3 + 2])
+            fb.put(mesh.normals[v * 3]); fb.put(mesh.normals[v * 3 + 1]); fb.put(mesh.normals[v * 3 + 2])
         }
         fb.position(0)
 
-        val indexType: Int
-        if (vertexCount <= 65535) {
-            indexType = GLES30.GL_UNSIGNED_SHORT
-            val vao = IntArray(1)
-            GLES30.glGenVertexArrays(1, vao, 0)
-            val vbo = IntArray(1)
-            GLES30.glGenBuffers(1, vbo, 0)
-            val ebo = IntArray(1)
-            GLES30.glGenBuffers(1, ebo, 0)
-
-            GLES30.glBindVertexArray(vao[0])
-            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[0])
-            GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, vertexCount * STRIDE, fb, GLES30.GL_STATIC_DRAW)
-            GLES30.glEnableVertexAttribArray(0)
-            GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, STRIDE, 0)
-            GLES30.glEnableVertexAttribArray(1)
-            GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, STRIDE, 12)
-
-            GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, ebo[0])
-            val directShort = ByteBuffer.allocateDirect(mesh.indices.size * 2).order(ByteOrder.nativeOrder())
-            val sb = directShort.asShortBuffer()
+        val useShort = vertexCount <= 65535
+        val bytesPerIndex = if (useShort) 2 else 4
+        val indexBuffer = runCatching {
+            ByteBuffer.allocateDirect(mesh.indices.size * bytesPerIndex).order(ByteOrder.nativeOrder())
+        }.getOrNull() ?: return 0
+        if (useShort) {
+            val sb = indexBuffer.asShortBuffer()
             for (i in mesh.indices) sb.put(i.toShort())
             sb.position(0)
-            GLES30.glBufferData(GLES30.GL_ELEMENT_ARRAY_BUFFER, mesh.indices.size * 2, sb, GLES30.GL_STATIC_DRAW)
-
-            GLES30.glBindVertexArray(0)
-            val handle = nextHandle++
-            meshes[handle] = GpuMesh(vao[0], vbo[0], ebo[0], mesh.indices.size, indexType)
-            return handle
+        } else {
+            val ib = indexBuffer.asIntBuffer()
+            for (i in mesh.indices) ib.put(i)
+            ib.position(0)
         }
 
-        indexType = GLES30.GL_UNSIGNED_INT
         val vao = IntArray(1)
-        GLES30.glGenVertexArrays(1, vao, 0)
         val vbo = IntArray(1)
-        GLES30.glGenBuffers(1, vbo, 0)
         val ebo = IntArray(1)
+        GLES30.glGenVertexArrays(1, vao, 0)
+        GLES30.glGenBuffers(1, vbo, 0)
         GLES30.glGenBuffers(1, ebo, 0)
+        if (vao[0] == 0 || vbo[0] == 0 || ebo[0] == 0) {
+            if (vao[0] != 0) GLES30.glDeleteVertexArrays(1, vao, 0)
+            if (vbo[0] != 0) GLES30.glDeleteBuffers(1, vbo, 0)
+            if (ebo[0] != 0) GLES30.glDeleteBuffers(1, ebo, 0)
+            drainGlErrors()
+            return 0
+        }
 
         GLES30.glBindVertexArray(vao[0])
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[0])
@@ -208,25 +265,33 @@ class GlesBackend : RenderBackend {
         GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, STRIDE, 0)
         GLES30.glEnableVertexAttribArray(1)
         GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, STRIDE, 12)
-
         GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, ebo[0])
-        val directInt = ByteBuffer.allocateDirect(mesh.indices.size * 4).order(ByteOrder.nativeOrder())
-        val ibBuf = directInt.asIntBuffer()
-        for (i in mesh.indices) ibBuf.put(i)
-        ibBuf.position(0)
-        GLES30.glBufferData(GLES30.GL_ELEMENT_ARRAY_BUFFER, mesh.indices.size * 4, ibBuf, GLES30.GL_STATIC_DRAW)
-
+        GLES30.glBufferData(
+            GLES30.GL_ELEMENT_ARRAY_BUFFER, mesh.indices.size * bytesPerIndex, indexBuffer, GLES30.GL_STATIC_DRAW
+        )
         GLES30.glBindVertexArray(0)
+        drainGlErrors()
+
         val handle = nextHandle++
-        meshes[handle] = GpuMesh(vao[0], vbo[0], ebo[0], mesh.indices.size, indexType)
+        meshes[handle] = GpuMesh(
+            vao[0], vbo[0], ebo[0], mesh.indices.size,
+            if (useShort) GLES30.GL_UNSIGNED_SHORT else GLES30.GL_UNSIGNED_INT
+        )
         return handle
     }
 
     override fun createLineBuffer(positions: FloatArray): Int {
+        if (positions.isEmpty()) return 0
         val vao = IntArray(1)
-        GLES30.glGenVertexArrays(1, vao, 0)
         val vbo = IntArray(1)
+        GLES30.glGenVertexArrays(1, vao, 0)
         GLES30.glGenBuffers(1, vbo, 0)
+        if (vao[0] == 0 || vbo[0] == 0) {
+            if (vao[0] != 0) GLES30.glDeleteVertexArrays(1, vao, 0)
+            if (vbo[0] != 0) GLES30.glDeleteBuffers(1, vbo, 0)
+            drainGlErrors()
+            return 0
+        }
         val fb: FloatBuffer = ByteBuffer.allocateDirect(positions.size * 4).order(ByteOrder.nativeOrder())
             .asFloatBuffer()
         fb.put(positions)
@@ -240,6 +305,7 @@ class GlesBackend : RenderBackend {
         GLES30.glDisableVertexAttribArray(1)
         GLES30.glVertexAttrib3f(1, 0f, 1f, 0f)
         GLES30.glBindVertexArray(0)
+        drainGlErrors()
 
         val handle = nextHandle++
         lineBuffers[handle] = GpuLines(vao[0], vbo[0])
@@ -247,6 +313,7 @@ class GlesBackend : RenderBackend {
     }
 
     override fun drawMesh(handle: Int, model: Mat4, viewProj: Mat4, r: Float, g: Float, b: Float, a: Float) {
+        if (program == 0) return
         val gpu = meshes[handle] ?: return
         mvpScratch.multiply(viewProj, model)
         GLES30.glUseProgram(program)
@@ -261,6 +328,7 @@ class GlesBackend : RenderBackend {
     }
 
     override fun drawLines(handle: Int, vertexCount: Int, mvp: Mat4, r: Float, g: Float, b: Float, a: Float) {
+        if (program == 0 || vertexCount <= 0) return
         val gpu = lineBuffers[handle] ?: return
         GLES30.glUseProgram(program)
         GLES30.glBindVertexArray(gpu.vao)
@@ -312,9 +380,11 @@ class GlesBackend : RenderBackend {
             GLES30.glDeleteProgram(program)
             program = 0
         }
+        drainGlErrors()
     }
 
     companion object {
+        private const val TAG = "Kenkern/GlesBackend"
         private const val STRIDE = 24 // 3 pos + 3 normal (floats)
     }
 }

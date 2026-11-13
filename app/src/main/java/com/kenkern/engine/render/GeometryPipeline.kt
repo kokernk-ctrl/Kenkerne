@@ -33,6 +33,11 @@ class DefaultGeometryPipeline(private val capacity: Int = 1024) : GeometryPipeli
     private val slots = Array(capacity) { GeometrySubmission() }
     private var count = 0
 
+    /** Desenhos efetuados no último flush (estatística da barra de status). */
+    @Volatile
+    var lastFlushCount: Int = 0
+        private set
+
     override fun reset() {
         count = 0
     }
@@ -46,6 +51,7 @@ class DefaultGeometryPipeline(private val capacity: Int = 1024) : GeometryPipeli
     }
 
     override fun flush(backend: RenderBackend, viewProj: Mat4) {
+        lastFlushCount = count
         for (i in 0 until count) {
             val s = slots[i]
             backend.drawMesh(s.meshHandle, s.model, viewProj, s.r, s.g, s.b, s.a)

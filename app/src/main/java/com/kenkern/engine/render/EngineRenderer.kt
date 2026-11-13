@@ -1,5 +1,6 @@
 package com.kenkern.engine.render
 
+import android.util.Log
 import com.kenkern.engine.assets.mesh.KernReader
 import com.kenkern.engine.assets.mesh.KernWriter
 import com.kenkern.engine.assets.mesh.MeshData
@@ -17,17 +18,33 @@ import kotlin.math.sin
  *  - grade no chão;
  *  - malha de teste (torus) gerada, salva em .KERN e recarregada (roundtrip do formato);
  *  - cubo desenhado para cada Nick ativo/visível da cena (seleção destacada).
+ *
+ * ANTI-CRASH: [initialize] e [renderFrame] nunca lançam exceção — falhas de GPU
+ * degradam o viewport (modo seguro) em vez de derrubar o app.
  */
 class EngineRenderer {
 
     private val geometry: GeometryPipeline = DefaultGeometryPipeline()
     private val lighting: LightingPipeline = DefaultLightingPipeline()
 
+    private var initialized = false
     private var gridHandle = 0
     private var gridVertexCount = 0
     private var cubeHandle = 0
     private var testMeshHandle = 0
     private var kernRoundtripOk = false
+
+    // Estatísticas para a barra de status (zero alocação por frame).
+    @Volatile
+    var fps: Int = 0
+        private set
+
+    @Volatile
+    var drawCount: Int = 0
+        private set
+
+    private var framesThisSecond = 0
+    private var fpsWindowStartNanos = 0L
 
     private val proj = Mat4()
     private val view = Mat4()
@@ -44,12 +61,25 @@ class EngineRenderer {
 
     private val nickStack = arrayOfNulls<Nick>(512)
 
+    /** Inicialização segura: cria grade, cubo e malha .KERN; falha = viewport limpo. */
     fun initialize(backend: RenderBackend) {
-        geometry.reset()
-        buildGrid(backend)
-        buildCube(backend)
-        buildTestMeshViaKern(backend)
+        initialized = false
+        gridHandle = 0
+        cubeHandle = 0
+        testMeshHandle = 0
+        kernRoundtripOk = false
+        if (!backend.initialize()) {
+            Log.e(TAG, "Backend não inicializou; viewport em modo seguro")
+            return
+        }
+        // Cada construção é independente: se uma falhar, o resto ainda desenha.
+        runCatching { buildGrid(backend) }.onFailure { Log.w(TAG, "grid: ${it.message}") }
+        runCatching { buildCube(backend) }.onFailure { Log.w(TAG, "cube: ${it.message}") }
+        runCatching { buildTestMeshViaKern(backend) }.onFailure { Log.w(TAG, "kern: ${it.message}") }
+        initialized = true
     }
+
+    fun isInitialized(): Boolean = initialized
 
     // ---------- Construção (uma vez, fora do loop) ----------
 
@@ -150,7 +180,25 @@ class EngineRenderer {
         engineTime: Float,
         selectedId: ReferenceId?
     ) {
+        updateFps(System.nanoTime())
+        try {
+            renderFrameInner(backend, scene, camera, engineTime, selectedId)
+        } catch (e: Throwable) {
+            // Última linha de defesa: nenhum erro de GL/frame derruba o processo.
+            Log.e(TAG, "Frame descartado", e)
+            runCatching { backend.beginFrame(0.075f, 0.075f, 0.105f, 1f) }
+        }
+    }
+
+    private fun renderFrameInner(
+        backend: RenderBackend,
+        scene: Scene?,
+        camera: OrbitCamera,
+        engineTime: Float,
+        selectedId: ReferenceId?
+    ) {
         backend.beginFrame(0.075f, 0.075f, 0.105f, 1f)
+        drawCount = 0
 
         val aspect = backend.viewportWidth.toFloat() / backend.viewportHeight.toFloat()
         camera.projection(proj, aspect)
@@ -168,13 +216,18 @@ class EngineRenderer {
         )
 
         // Grade
-        backend.drawLines(gridHandle, gridVertexCount, viewProj, 0.30f, 0.32f, 0.36f, 1f)
+        if (gridHandle != 0) {
+            backend.drawLines(gridHandle, gridVertexCount, viewProj, 0.30f, 0.32f, 0.36f, 1f)
+            drawCount++
+        }
 
         // Malha de teste (torus .KERN), girando com o tempo da engine
-        val spin = Math.toRadians((engineTime * 18f).toDouble()).toFloat()
-        torusRot.setFromAxisAngle(0f, 1f, 0f, spin)
-        torusModel.setTRS(torusPos, torusRot, unitScale)
-        geometry.submit(testMeshHandle, torusModel, 0.96f, 0.64f, 0.24f, 1f)
+        if (testMeshHandle != 0) {
+            val spin = Math.toRadians((engineTime * 18f).toDouble()).toFloat()
+            torusRot.setFromAxisAngle(0f, 1f, 0f, spin)
+            torusModel.setTRS(torusPos, torusRot, unitScale)
+            geometry.submit(testMeshHandle, torusModel, 0.96f, 0.64f, 0.24f, 1f)
+        }
 
         // Cubo por Nick
         if (scene != null) {
@@ -185,7 +238,7 @@ class EngineRenderer {
             }
             while (top > 0) {
                 val nick = nickStack[--top] ?: continue
-                if (nick.active && nick.visible) {
+                if (nick.active && nick.visible && cubeHandle != 0) {
                     geometry.submit(
                         cubeHandle,
                         nick.transform.worldMatrix,
@@ -203,10 +256,26 @@ class EngineRenderer {
         }
 
         geometry.flush(backend, viewProj)
+        drawCount = (geometry as? DefaultGeometryPipeline)?.lastFlushCount ?: drawCount
         backend.endFrame()
     }
 
+    private fun updateFps(nowNanos: Long) {
+        framesThisSecond++
+        if (fpsWindowStartNanos == 0L) {
+            fpsWindowStartNanos = nowNanos
+            return
+        }
+        val elapsed = nowNanos - fpsWindowStartNanos
+        if (elapsed >= 1_000_000_000L) {
+            fps = (framesThisSecond * 1_000_000_000L / elapsed).toInt().coerceAtLeast(0)
+            framesThisSecond = 0
+            fpsWindowStartNanos = nowNanos
+        }
+    }
+
     companion object {
+        private const val TAG = "Kenkern/EngineRenderer"
         private val CUBE_POSITIONS = floatArrayOf(
             -0.5f, -0.5f, 0.5f, 0.5f, -0.5f, 0.5f, 0.5f, 0.5f, 0.5f, -0.5f, 0.5f, 0.5f,
             -0.5f, -0.5f, -0.5f, -0.5f, 0.5f, -0.5f, 0.5f, 0.5f, -0.5f, 0.5f, -0.5f, -0.5f,
