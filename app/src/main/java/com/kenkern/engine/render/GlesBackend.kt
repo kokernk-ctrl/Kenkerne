@@ -7,17 +7,20 @@ import com.kenkern.engine.core.math.Mat4
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
-import java.nio.IntBuffer
 
 /**
  * Implementação OpenGL ES 3.0 do RenderBackend (minSdk 26).
- * Um único programa de shader com VAOs; os uniforms de luz vêm da LightingPipeline.
+ * Programas: malha (Lambert + ambiente hemisférico), céu (gradiente + sol),
+ * grade (fade por distância), flat (contorno) e linhas coloridas (gizmo).
  *
- * ANTI-CRASH: [initialize] NUNCA lança exceção — se a compilação/linkagem do
- * shader principal falhar (GPU restrita, driver buggy), um shader de fallback
- * mínimo é compilado; se até isso falhar, o backend entra em modo degradado
- * (apenas clear) e a UI mostra o aviso. Todas as chamadas são tolerantes a
- * handles inválidos e erros de GL sem derrubar o processo.
+ * PERF: estado GL rastreado — glUseProgram só é chamado quando o programa muda;
+ * VAOs permanecem vinculados (o próximo draw vincula o seu); nenhum glUniform
+ * redundante; grade = 1 VBO estático + 1 draw call; céu = 1 triângulo de tela
+ * cheia; gizmo = 1 VBO colorido + 1 draw call.
+ *
+ * ANTI-CRASH: [initialize] NUNCA lança exceção — se a compilação/linkagem de um
+ * programa falhar, aquele recurso é desativado (feature flag) e o resto continua.
+ * Todas as chamadas são tolerantes a handles inválidos e erros de GL.
  */
 class GlesBackend : RenderBackend {
 
@@ -31,14 +34,51 @@ class GlesBackend : RenderBackend {
     var isDegraded: Boolean = false
         private set
 
-    private var program = 0
+    // ---------- Programas ----------
+    private var program = 0 // malha iluminada (Lambert + hemisférica)
+    private var skyProgram = 0
+    private var gridProgram = 0
+    private var flatProgram = 0
+    private var lineProgram = 0
+
+    // Uniforms da malha
     private var uMvp = 0
     private var uModel = 0
     private var uColor = 0
     private var uLightDir = 0
-    private var uAmbient = 0
     private var uLightColor = 0
     private var uLightIntensity = 0
+
+    // Uniforms do céu
+    private var uSkyFwd = 0
+    private var uSkyRight = 0
+    private var uSkyUp = 0
+    private var uSkyTanFov = 0
+    private var uSkyAspect = 0
+    private var uSkySun = 0
+
+    // Uniforms da grade
+    private var uGridVp = 0
+    private var uGridCam = 0
+
+    // Uniforms do flat (contorno)
+    private var uFlatMvp = 0
+    private var uFlatColor = 0
+
+    // Uniforms do gizmo
+    private var uLineMvp = 0
+
+    /** Programa atualmente vinculado (evita glUseProgram redundante). */
+    private var boundProgram = -1
+
+    // Feature flags (degradação por recurso)
+    private var skyOk = false
+    private var gridOk = false
+    private var flatOk = false
+    private var lineOk = false
+
+    // Sol (direção PARA o sol), derivado de setLighting
+    private var sunDirX = 0.4f; private var sunDirY = 0.8f; private var sunDirZ = 0.3f
 
     private class GpuMesh(
         val vao: Int,
@@ -48,11 +88,16 @@ class GlesBackend : RenderBackend {
         val indexType: Int
     )
 
-    private class GpuLines(val vao: Int, val vbo: Int)
+    private class GpuLines(val vao: Int, val vbo: Int, val vertexCount: Int)
 
     private val meshes = HashMap<Int, GpuMesh>()
-    private val lineBuffers = HashMap<Int, GpuLines>()
+    private val gridBuffers = HashMap<Int, GpuLines>()
+    private val coloredLineBuffers = HashMap<Int, GpuLines>()
     private var nextHandle = 1
+
+    // VAO/VBO do triângulo de tela cheia (céu)
+    private var skyVao = 0
+    private var skyVbo = 0
 
     private val mvpScratch = Mat4()
     private val uniformScratch = FloatArray(4)
@@ -70,21 +115,22 @@ class GlesBackend : RenderBackend {
         }
     """.trimIndent()
 
+    /** Lambert + ambiente hemisférico (céu em cima, chão embaixo); sem topo estourado. */
     private val fragmentShader = """
         #version 300 es
         precision mediump float;
         in vec3 vNormal;
         uniform vec4 uColor;
         uniform vec3 uLightDir;
-        uniform vec3 uAmbient;
         uniform vec3 uLightColor;
         uniform float uLightIntensity;
         out vec4 fragColor;
         void main() {
             vec3 n = normalize(vNormal);
             float diff = max(dot(n, normalize(-uLightDir)), 0.0);
-            vec3 rgb = uColor.rgb * (uAmbient + uLightColor * diff * uLightIntensity);
-            fragColor = vec4(rgb, uColor.a);
+            vec3 hemi = mix(vec3(0.30, 0.28, 0.25), vec3(0.46, 0.54, 0.66), n.y * 0.5 + 0.5);
+            vec3 rgb = uColor.rgb * (hemi + uLightColor * diff * uLightIntensity);
+            fragColor = vec4(min(rgb, vec3(1.0)), uColor.a);
         }
     """.trimIndent()
 
@@ -109,6 +155,121 @@ class GlesBackend : RenderBackend {
         }
     """.trimIndent()
 
+    // Céu: triângulo de tela cheia; raio por pixel reconstruído da base da câmera.
+    private val skyVertexShader = """
+        #version 300 es
+        layout(location = 0) in vec2 aPos;
+        out vec2 vNdc;
+        void main() {
+            vNdc = aPos;
+            gl_Position = vec4(aPos, 0.9999, 1.0);
+        }
+    """.trimIndent()
+
+    // Zênite #3A5A8C -> horizonte #B8C9DC; sol discreto na direção da luz.
+    private val skyFragmentShader = """
+        #version 300 es
+        precision mediump float;
+        in vec2 vNdc;
+        uniform vec3 uFwd;
+        uniform vec3 uRight;
+        uniform vec3 uUp;
+        uniform float uTanFov;
+        uniform float uAspect;
+        uniform vec3 uSun;
+        out vec4 fragColor;
+        void main() {
+            vec3 dir = normalize(uFwd + uRight * (vNdc.x * uTanFov * uAspect) + uUp * (vNdc.y * uTanFov));
+            float t = smoothstep(-0.06, 0.45, dir.y);
+            vec3 sky = mix(vec3(0.722, 0.788, 0.863), vec3(0.227, 0.353, 0.549), t);
+            sky *= 1.0 + min(dir.y, 0.0) * 0.30;
+            float d = max(dot(dir, uSun), 0.0);
+            float disc = smoothstep(0.99930, 0.99965, d);
+            float glow = pow(d, 400.0) * 0.30;
+            sky += vec3(1.0, 0.95, 0.80) * (disc * 0.85 + glow);
+            fragColor = vec4(sky, 1.0);
+        }
+    """.trimIndent()
+
+    // Grade: posição de mundo + ênfase por vértice (0=1m, 1=10m, 2=eixo X, 3=eixo Z).
+    private val gridVertexShader = """
+        #version 300 es
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in float aEmphasis;
+        uniform mat4 uVP;
+        out vec3 vWorldPos;
+        out float vEmphasis;
+        void main() {
+            vWorldPos = aPos;
+            vEmphasis = aEmphasis;
+            gl_Position = uVP * vec4(aPos, 1.0);
+        }
+    """.trimIndent()
+
+    // Cor neutra, eixos vermelho/azul, fade por distância (alpha).
+    private val gridFragmentShader = """
+        #version 300 es
+        precision mediump float;
+        in vec3 vWorldPos;
+        in float vEmphasis;
+        uniform vec3 uCamPos;
+        out vec4 fragColor;
+        void main() {
+            float dist = distance(vWorldPos.xz, uCamPos.xz);
+            float fade = 1.0 - smoothstep(22.0, 85.0, dist);
+            vec3 base;
+            float alpha;
+            if (vEmphasis > 2.5)      { base = vec3(0.36, 0.50, 0.88); alpha = 1.0;  }
+            else if (vEmphasis > 1.5) { base = vec3(0.86, 0.32, 0.30); alpha = 1.0;  }
+            else if (vEmphasis > 0.5) { base = vec3(0.58, 0.60, 0.64); alpha = 0.9;  }
+            else                      { base = vec3(0.46, 0.48, 0.52); alpha = 0.55; }
+            fragColor = vec4(base, alpha * fade);
+        }
+    """.trimIndent()
+
+    // Flat (contorno inverted hull): cor sólida, sem iluminação.
+    private val flatVertexShader = """
+        #version 300 es
+        layout(location = 0) in vec3 aPos;
+        uniform mat4 uMVP;
+        void main() {
+            gl_Position = uMVP * vec4(aPos, 1.0);
+        }
+    """.trimIndent()
+
+    private val flatFragmentShader = """
+        #version 300 es
+        precision mediump float;
+        uniform vec4 uColor;
+        out vec4 fragColor;
+        void main() {
+            fragColor = uColor;
+        }
+    """.trimIndent()
+
+    // Linhas coloridas (gizmo): cor por vértice.
+    private val lineVertexShader = """
+        #version 300 es
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec3 aColor;
+        uniform mat4 uMVP;
+        out vec3 vColor;
+        void main() {
+            vColor = aColor;
+            gl_Position = uMVP * vec4(aPos, 1.0);
+        }
+    """.trimIndent()
+
+    private val lineFragmentShader = """
+        #version 300 es
+        precision mediump float;
+        in vec3 vColor;
+        out vec4 fragColor;
+        void main() {
+            fragColor = vec4(vColor, 1.0);
+        }
+    """.trimIndent()
+
     override fun initialize(): Boolean {
         GLES30.glDisable(GLES30.GL_DITHER)
         GLES30.glEnable(GLES30.GL_DEPTH_TEST)
@@ -116,7 +277,7 @@ class GlesBackend : RenderBackend {
         GLES30.glCullFace(GLES30.GL_BACK)
         GLES30.glFrontFace(GLES30.GL_CCW)
 
-        // 1) Tenta o programa completo; 2) fallback mínimo; 3) modo degradado.
+        // 1) Programa completo; 2) fallback mínimo; 3) modo degradado.
         program = buildProgram(vertexShader, fragmentShader)
         if (program == 0) {
             Log.w(TAG, "Shader principal falhou; tentando fallback mínimo")
@@ -132,13 +293,79 @@ class GlesBackend : RenderBackend {
         uModel = GLES30.glGetUniformLocation(program, "uModel")
         uColor = GLES30.glGetUniformLocation(program, "uColor")
         uLightDir = GLES30.glGetUniformLocation(program, "uLightDir")
-        uAmbient = GLES30.glGetUniformLocation(program, "uAmbient")
         uLightColor = GLES30.glGetUniformLocation(program, "uLightColor")
         uLightIntensity = GLES30.glGetUniformLocation(program, "uLightIntensity")
+
+        // Programas visuais: cada um é independente; se falhar, o recurso é desativado.
+        runCatching {
+            skyProgram = buildProgram(skyVertexShader, skyFragmentShader)
+            if (skyProgram != 0) {
+                uSkyFwd = GLES30.glGetUniformLocation(skyProgram, "uFwd")
+                uSkyRight = GLES30.glGetUniformLocation(skyProgram, "uRight")
+                uSkyUp = GLES30.glGetUniformLocation(skyProgram, "uUp")
+                uSkyTanFov = GLES30.glGetUniformLocation(skyProgram, "uTanFov")
+                uSkyAspect = GLES30.glGetUniformLocation(skyProgram, "uAspect")
+                uSkySun = GLES30.glGetUniformLocation(skyProgram, "uSun")
+                buildSkyTriangle()
+                skyOk = skyVao != 0
+            }
+        }.onFailure { Log.w(TAG, "sky: ${it.message}") }
+
+        runCatching {
+            gridProgram = buildProgram(gridVertexShader, gridFragmentShader)
+            if (gridProgram != 0) {
+                uGridVp = GLES30.glGetUniformLocation(gridProgram, "uVP")
+                uGridCam = GLES30.glGetUniformLocation(gridProgram, "uCamPos")
+                gridOk = true
+            }
+        }.onFailure { Log.w(TAG, "grid: ${it.message}") }
+
+        runCatching {
+            flatProgram = buildProgram(flatVertexShader, flatFragmentShader)
+            if (flatProgram != 0) {
+                uFlatMvp = GLES30.glGetUniformLocation(flatProgram, "uMVP")
+                uFlatColor = GLES30.glGetUniformLocation(flatProgram, "uColor")
+                flatOk = true
+            }
+        }.onFailure { Log.w(TAG, "flat: ${it.message}") }
+
+        runCatching {
+            lineProgram = buildProgram(lineVertexShader, lineFragmentShader)
+            if (lineProgram != 0) {
+                uLineMvp = GLES30.glGetUniformLocation(lineProgram, "uMVP")
+                lineOk = true
+            }
+        }.onFailure { Log.w(TAG, "line: ${it.message}") }
 
         GLES30.glClearColor(0.075f, 0.075f, 0.105f, 1f)
         drainGlErrors()
         return true
+    }
+
+    /** Triângulo de tela cheia em NDC (sem VBO por instância; criado uma vez). */
+    private fun buildSkyTriangle() {
+        val vao = IntArray(1)
+        val vbo = IntArray(1)
+        GLES30.glGenVertexArrays(1, vao, 0)
+        GLES30.glGenBuffers(1, vbo, 0)
+        if (vao[0] == 0 || vbo[0] == 0) {
+            if (vao[0] != 0) GLES30.glDeleteVertexArrays(1, vao, 0)
+            if (vbo[0] != 0) GLES30.glDeleteBuffers(1, vbo, 0)
+            drainGlErrors()
+            return
+        }
+        val fb: FloatBuffer = ByteBuffer.allocateDirect(6 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        fb.put(floatArrayOf(-1f, -1f, 3f, -1f, -1f, 3f))
+        fb.position(0)
+        GLES30.glBindVertexArray(vao[0])
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[0])
+        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, 6 * 4, fb, GLES30.GL_STATIC_DRAW)
+        GLES30.glEnableVertexAttribArray(0)
+        GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, 8, 0)
+        GLES30.glBindVertexArray(0)
+        skyVao = vao[0]
+        skyVbo = vbo[0]
+        drainGlErrors()
     }
 
     /** Compila + linka sem lançar; retorna 0 em qualquer falha. */
@@ -186,6 +413,14 @@ class GlesBackend : RenderBackend {
         while (GLES30.glGetError() != GLES30.GL_NO_ERROR) { /* descarta erros pendentes */ }
     }
 
+    /** Vincula um programa apenas se ele mudou (evita glUseProgram redundante). */
+    private fun useProgram(p: Int) {
+        if (p != 0 && boundProgram != p) {
+            GLES30.glUseProgram(p)
+            boundProgram = p
+        }
+    }
+
     override fun resize(width: Int, height: Int) {
         viewportWidth = width.coerceAtLeast(1)
         viewportHeight = height.coerceAtLeast(1)
@@ -204,15 +439,17 @@ class GlesBackend : RenderBackend {
         intensity: Float
     ) {
         if (program == 0) return
-        GLES30.glUseProgram(program)
+        // Sol = direção PARA a luz (oposta ao sentido de viagem), normalizada uma vez por frame.
+        val len = kotlin.math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ)
+        if (len > 1e-6f) {
+            sunDirX = -dirX / len; sunDirY = -dirY / len; sunDirZ = -dirZ / len
+        }
+        useProgram(program)
         uniformScratch[0] = dirX; uniformScratch[1] = dirY; uniformScratch[2] = dirZ
         GLES30.glUniform3fv(uLightDir, 1, uniformScratch, 0)
-        uniformScratch[0] = ambientR; uniformScratch[1] = ambientG; uniformScratch[2] = ambientB
-        GLES30.glUniform3fv(uAmbient, 1, uniformScratch, 0)
         uniformScratch[0] = lightR; uniformScratch[1] = lightG; uniformScratch[2] = lightB
         GLES30.glUniform3fv(uLightColor, 1, uniformScratch, 0)
         GLES30.glUniform1f(uLightIntensity, intensity)
-        GLES30.glUseProgram(0)
     }
 
     override fun createMesh(mesh: MeshData): Int {
@@ -280,8 +517,9 @@ class GlesBackend : RenderBackend {
         return handle
     }
 
-    override fun createLineBuffer(positions: FloatArray): Int {
-        if (positions.isEmpty()) return 0
+    override fun createGridBuffer(data: FloatArray): Int {
+        if (data.isEmpty()) return 0
+        val vertexCount = data.size / 4
         val vao = IntArray(1)
         val vbo = IntArray(1)
         GLES30.glGenVertexArrays(1, vao, 0)
@@ -292,53 +530,139 @@ class GlesBackend : RenderBackend {
             drainGlErrors()
             return 0
         }
-        val fb: FloatBuffer = ByteBuffer.allocateDirect(positions.size * 4).order(ByteOrder.nativeOrder())
-            .asFloatBuffer()
-        fb.put(positions)
+        val fb: FloatBuffer = ByteBuffer.allocateDirect(data.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        fb.put(data)
         fb.position(0)
-
+        // Interleaved: x, y, z (offset 0) + ênfase (offset 12) — stride 16.
         GLES30.glBindVertexArray(vao[0])
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[0])
-        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, positions.size * 4, fb, GLES30.GL_STATIC_DRAW)
+        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, data.size * 4, fb, GLES30.GL_STATIC_DRAW)
         GLES30.glEnableVertexAttribArray(0)
-        GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 12, 0)
-        GLES30.glDisableVertexAttribArray(1)
-        GLES30.glVertexAttrib3f(1, 0f, 1f, 0f)
+        GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 16, 0)
+        GLES30.glEnableVertexAttribArray(1)
+        GLES30.glVertexAttribPointer(1, 1, GLES30.GL_FLOAT, false, 16, 12)
         GLES30.glBindVertexArray(0)
         drainGlErrors()
 
         val handle = nextHandle++
-        lineBuffers[handle] = GpuLines(vao[0], vbo[0])
+        gridBuffers[handle] = GpuLines(vao[0], vbo[0], vertexCount)
         return handle
+    }
+
+    override fun createColoredLineBuffer(data: FloatArray): Int {
+        if (data.isEmpty()) return 0
+        val vertexCount = data.size / 6
+        val vao = IntArray(1)
+        val vbo = IntArray(1)
+        GLES30.glGenVertexArrays(1, vao, 0)
+        GLES30.glGenBuffers(1, vbo, 0)
+        if (vao[0] == 0 || vbo[0] == 0) {
+            if (vao[0] != 0) GLES30.glDeleteVertexArrays(1, vao, 0)
+            if (vbo[0] != 0) GLES30.glDeleteBuffers(1, vbo, 0)
+            drainGlErrors()
+            return 0
+        }
+        val fb: FloatBuffer = ByteBuffer.allocateDirect(data.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        fb.put(data)
+        fb.position(0)
+        // Interleaved: x, y, z (offset 0) + r, g, b (offset 12) — stride 24.
+        GLES30.glBindVertexArray(vao[0])
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[0])
+        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, data.size * 4, fb, GLES30.GL_STATIC_DRAW)
+        GLES30.glEnableVertexAttribArray(0)
+        GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 24, 0)
+        GLES30.glEnableVertexAttribArray(1)
+        GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, 24, 12)
+        GLES30.glBindVertexArray(0)
+        drainGlErrors()
+
+        val handle = nextHandle++
+        coloredLineBuffers[handle] = GpuLines(vao[0], vbo[0], vertexCount)
+        return handle
+    }
+
+    override fun drawSky(
+        fwdX: Float, fwdY: Float, fwdZ: Float,
+        rightX: Float, rightY: Float, rightZ: Float,
+        upX: Float, upY: Float, upZ: Float,
+        tanHalfFov: Float, aspect: Float,
+        sunX: Float, sunY: Float, sunZ: Float
+    ) {
+        if (skyProgram == 0 || !skyOk || skyVao == 0) return
+        // Céu primeiro, sem teste nem escrita de depth — o resto desenha por cima.
+        GLES30.glDisable(GLES30.GL_DEPTH_TEST)
+        GLES30.glDepthMask(false)
+        useProgram(skyProgram)
+        GLES30.glBindVertexArray(skyVao)
+        uniformScratch[0] = fwdX; uniformScratch[1] = fwdY; uniformScratch[2] = fwdZ
+        GLES30.glUniform3fv(uSkyFwd, 1, uniformScratch, 0)
+        uniformScratch[0] = rightX; uniformScratch[1] = rightY; uniformScratch[2] = rightZ
+        GLES30.glUniform3fv(uSkyRight, 1, uniformScratch, 0)
+        uniformScratch[0] = upX; uniformScratch[1] = upY; uniformScratch[2] = upZ
+        GLES30.glUniform3fv(uSkyUp, 1, uniformScratch, 0)
+        GLES30.glUniform1f(uSkyTanFov, tanHalfFov)
+        GLES30.glUniform1f(uSkyAspect, aspect)
+        uniformScratch[0] = sunX; uniformScratch[1] = sunY; uniformScratch[2] = sunZ
+        GLES30.glUniform3fv(uSkySun, 1, uniformScratch, 0)
+        GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
+        GLES30.glDepthMask(true)
+        GLES30.glEnable(GLES30.GL_DEPTH_TEST)
+    }
+
+    override fun drawGrid(handle: Int, vertexCount: Int, viewProj: Mat4, camX: Float, camY: Float, camZ: Float) {
+        if (gridProgram == 0 || !gridOk || vertexCount <= 0) return
+        val gpu = gridBuffers[handle] ?: return
+        GLES30.glEnable(GLES30.GL_BLEND)
+        GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
+        useProgram(gridProgram)
+        GLES30.glBindVertexArray(gpu.vao)
+        GLES30.glUniformMatrix4fv(uGridVp, 1, false, viewProj.m, 0)
+        uniformScratch[0] = camX; uniformScratch[1] = camY; uniformScratch[2] = camZ
+        GLES30.glUniform3fv(uGridCam, 1, uniformScratch, 0)
+        GLES30.glDrawArrays(GLES30.GL_LINES, 0, vertexCount)
+        GLES30.glDisable(GLES30.GL_BLEND)
     }
 
     override fun drawMesh(handle: Int, model: Mat4, viewProj: Mat4, r: Float, g: Float, b: Float, a: Float) {
         if (program == 0) return
         val gpu = meshes[handle] ?: return
         mvpScratch.multiply(viewProj, model)
-        GLES30.glUseProgram(program)
+        useProgram(program)
         GLES30.glBindVertexArray(gpu.vao)
         GLES30.glUniformMatrix4fv(uMvp, 1, false, mvpScratch.m, 0)
         GLES30.glUniformMatrix4fv(uModel, 1, false, model.m, 0)
         uniformScratch[0] = r; uniformScratch[1] = g; uniformScratch[2] = b; uniformScratch[3] = a
         GLES30.glUniform4fv(uColor, 1, uniformScratch, 0)
         GLES30.glDrawElements(GLES30.GL_TRIANGLES, gpu.indexCount, gpu.indexType, 0)
-        GLES30.glBindVertexArray(0)
-        GLES30.glUseProgram(0)
     }
 
-    override fun drawLines(handle: Int, vertexCount: Int, mvp: Mat4, r: Float, g: Float, b: Float, a: Float) {
-        if (program == 0 || vertexCount <= 0) return
-        val gpu = lineBuffers[handle] ?: return
-        GLES30.glUseProgram(program)
+    override fun drawMeshOutline(handle: Int, model: Mat4, viewProj: Mat4, r: Float, g: Float, b: Float, a: Float) {
+        if (!flatOk || flatProgram == 0) return
+        val gpu = meshes[handle] ?: return
+        mvpScratch.multiply(viewProj, model)
+        useProgram(flatProgram)
         GLES30.glBindVertexArray(gpu.vao)
-        GLES30.glUniformMatrix4fv(uMvp, 1, false, mvp.m, 0)
-        GLES30.glUniformMatrix4fv(uModel, 1, false, mvp.m, 0)
+        GLES30.glCullFace(GLES30.GL_FRONT) // inverted hull: mostra as backfaces infladas
+        GLES30.glUniformMatrix4fv(uFlatMvp, 1, false, mvpScratch.m, 0)
         uniformScratch[0] = r; uniformScratch[1] = g; uniformScratch[2] = b; uniformScratch[3] = a
-        GLES30.glUniform4fv(uColor, 1, uniformScratch, 0)
+        GLES30.glUniform4fv(uFlatColor, 1, uniformScratch, 0)
+        GLES30.glDrawElements(GLES30.GL_TRIANGLES, gpu.indexCount, gpu.indexType, 0)
+        GLES30.glCullFace(GLES30.GL_BACK)
+    }
+
+    override fun drawGizmo(handle: Int, vertexCount: Int, mvp: Mat4) {
+        if (!lineOk || lineProgram == 0 || vertexCount <= 0) return
+        val gpu = coloredLineBuffers[handle] ?: return
+        // Canto superior direito (origem GL é bottom-left): quadrado de ~1/4 do menor lado.
+        val size = (minOf(viewportWidth, viewportHeight) / 4).coerceIn(80, 140)
+        GLES30.glDisable(GLES30.GL_DEPTH_TEST)
+        GLES30.glViewport(viewportWidth - size, 0, size, size)
+        useProgram(lineProgram)
+        GLES30.glBindVertexArray(gpu.vao)
+        GLES30.glUniformMatrix4fv(uLineMvp, 1, false, mvp.m, 0)
         GLES30.glDrawArrays(GLES30.GL_LINES, 0, vertexCount)
-        GLES30.glBindVertexArray(0)
-        GLES30.glUseProgram(0)
+        GLES30.glEnable(GLES30.GL_DEPTH_TEST)
+        GLES30.glViewport(0, 0, viewportWidth, viewportHeight)
     }
 
     override fun destroyMesh(handle: Int) {
@@ -350,7 +674,7 @@ class GlesBackend : RenderBackend {
     }
 
     override fun destroyLineBuffer(handle: Int) {
-        val gpu = lineBuffers.remove(handle) ?: return
+        val gpu = gridBuffers.remove(handle) ?: coloredLineBuffers.remove(handle) ?: return
         val vao = IntArray(1); vao[0] = gpu.vao
         val bufs = IntArray(1); bufs[0] = gpu.vbo
         GLES30.glDeleteVertexArrays(1, vao, 0)
@@ -358,6 +682,7 @@ class GlesBackend : RenderBackend {
     }
 
     override fun endFrame() {
+        GLES30.glBindVertexArray(0)
         // Swap é feito pelo GLSurfaceView.
     }
 
@@ -369,17 +694,34 @@ class GlesBackend : RenderBackend {
             GLES30.glDeleteBuffers(2, bufs, 0)
         }
         meshes.clear()
-        for (line in lineBuffers.values) {
+        for (line in gridBuffers.values) {
             val vao = IntArray(1); vao[0] = line.vao
             val bufs = IntArray(1); bufs[0] = line.vbo
             GLES30.glDeleteVertexArrays(1, vao, 0)
             GLES30.glDeleteBuffers(1, bufs, 0)
         }
-        lineBuffers.clear()
-        if (program != 0) {
-            GLES30.glDeleteProgram(program)
-            program = 0
+        gridBuffers.clear()
+        for (line in coloredLineBuffers.values) {
+            val vao = IntArray(1); vao[0] = line.vao
+            val bufs = IntArray(1); bufs[0] = line.vbo
+            GLES30.glDeleteVertexArrays(1, vao, 0)
+            GLES30.glDeleteBuffers(1, bufs, 0)
         }
+        coloredLineBuffers.clear()
+        if (skyVao != 0) {
+            val vao = IntArray(1); vao[0] = skyVao
+            val vbo = IntArray(1); vbo[0] = skyVbo
+            GLES30.glDeleteVertexArrays(1, vao, 0)
+            GLES30.glDeleteBuffers(1, vbo, 0)
+            skyVao = 0; skyVbo = 0
+        }
+        if (program != 0) { GLES30.glDeleteProgram(program); program = 0 }
+        if (skyProgram != 0) { GLES30.glDeleteProgram(skyProgram); skyProgram = 0 }
+        if (gridProgram != 0) { GLES30.glDeleteProgram(gridProgram); gridProgram = 0 }
+        if (flatProgram != 0) { GLES30.glDeleteProgram(flatProgram); flatProgram = 0 }
+        if (lineProgram != 0) { GLES30.glDeleteProgram(lineProgram); lineProgram = 0 }
+        boundProgram = -1
+        skyOk = false; gridOk = false; flatOk = false; lineOk = false
         drainGlErrors()
     }
 

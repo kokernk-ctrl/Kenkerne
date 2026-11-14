@@ -15,9 +15,16 @@ import kotlin.math.sin
 
 /**
  * Renderer do viewport da KENKERN:
- *  - grade no chão;
- *  - malha de teste (torus) gerada, salva em .KERN e recarregada (roundtrip do formato);
- *  - cubo desenhado para cada Nick ativo/visível da cena (seleção destacada).
+ *  - céu (gradiente zênite→horizonte + sol discreto na direção da luz);
+ *  - grade com fade por distância, eixos X (vermelho) e Z (azul), 1 m / 10 m;
+ *  - cubo por Nick ativo/visível (material #9A9A9A, Lambert + ambiente hemisférico);
+ *  - contorno laranja #FFA940 (inverted hull) no Nick selecionado;
+ *  - gizmo de eixos no canto superior direito, girando com a câmera;
+ *  - malha de teste (torus) gerada, salva em .KERN e recarregada (roundtrip).
+ *
+ * PERF: a fila de geometria é RESETADA a cada frame (sem isso ela acumula
+ * submissões até saturar e redesenha a cena centenas de vezes por frame).
+ * Orçamento: céu 1 + grade 1 + malhas N + contorno 1 (se seleção) + gizmo 1.
  *
  * ANTI-CRASH: [initialize] e [renderFrame] nunca lançam exceção — falhas de GPU
  * degradam o viewport (modo seguro) em vez de derrubar o app.
@@ -32,6 +39,8 @@ class EngineRenderer {
     private var gridVertexCount = 0
     private var cubeHandle = 0
     private var testMeshHandle = 0
+    private var gizmoHandle = 0
+    private var gizmoVertexCount = 0
     private var kernRoundtripOk = false
 
     // Estatísticas para a barra de status (zero alocação por frame).
@@ -70,19 +79,43 @@ class EngineRenderer {
     private val torusRot = Quaternion()
     private val unitScale = Vec3(1f, 1f, 1f)
 
+    // Scratches do frame (pré-alocados; nada é criado no loop).
     private val scratchDir = FloatArray(3)
     private val scratchAmbient = FloatArray(3)
     private val scratchLightColor = FloatArray(3)
+    private val camFwd = Vec3()
+    private val camEye = Vec3()
+    private val sunDir = Vec3()
+
+    // Gizmo: rotação da view (translação zerada) × escala fixa.
+    private val gizmoRot = Mat4()
+    private val gizmoScale = Mat4()
+    private val gizmoMvp = Mat4()
+
+    // Contorno (inverted hull): world × inflação.
+    private val outlineInflation = Mat4()
+    private val outlineScratch = Mat4()
 
     private val nickStack = arrayOfNulls<Nick>(512)
 
-    /** Inicialização segura: cria grade, cubo e malha .KERN; falha = viewport limpo. */
+    // Cores do editor (especificação de visual).
+    private val materialGray = 0.6039f   // #9A9A9A
+    private val outlineR = 1.0f
+    private val outlineG = 0.6627f       // #FFA940
+    private val outlineB = 0.2510f
+
+    /** Inicialização segura: céu/grade/cubo/gizmo/malha .KERN; falha = viewport limpo. */
     fun initialize(backend: RenderBackend) {
         initialized = false
         gridHandle = 0
         cubeHandle = 0
         testMeshHandle = 0
+        gizmoHandle = 0
         kernRoundtripOk = false
+        outlineInflation.setIdentity()
+        outlineInflation.m[0] = 1.06f; outlineInflation.m[5] = 1.06f; outlineInflation.m[10] = 1.06f
+        gizmoScale.setIdentity()
+        gizmoScale.m[0] = 0.62f; gizmoScale.m[5] = 0.62f; gizmoScale.m[10] = 0.62f
         if (!backend.initialize()) {
             Log.e(TAG, "Backend não inicializou; viewport em modo seguro")
             return
@@ -90,6 +123,7 @@ class EngineRenderer {
         // Cada construção é independente: se uma falhar, o resto ainda desenha.
         runCatching { buildGrid(backend) }.onFailure { Log.w(TAG, "grid: ${it.message}") }
         runCatching { buildCube(backend) }.onFailure { Log.w(TAG, "cube: ${it.message}") }
+        runCatching { buildGizmo(backend) }.onFailure { Log.w(TAG, "gizmo: ${it.message}") }
         runCatching { buildTestMeshViaKern(backend) }.onFailure { Log.w(TAG, "kern: ${it.message}") }
         initialized = true
     }
@@ -98,20 +132,26 @@ class EngineRenderer {
 
     // ---------- Construção (uma vez, fora do loop) ----------
 
+    /**
+     * Grade em UM VBO estático (1 draw call): linhas a cada 1 m, destaque a cada 10 m,
+     * eixos X/Z marcados por ênfase. Interleaved [x, y, z, ênfase].
+     */
     private fun buildGrid(backend: RenderBackend) {
-        val half = 10
-        val floats = FloatArray(((half * 2 + 1) * 2 * 2) * 3)
+        val half = 40
+        val linesPerDir = half * 2 + 1
+        val data = FloatArray(linesPerDir * 2 * 2 * 4)
         var i = 0
         for (g in -half..half) {
-            // linha paralela ao eixo X
-            floats[i++] = -half.toFloat(); floats[i++] = 0f; floats[i++] = g.toFloat()
-            floats[i++] = half.toFloat(); floats[i++] = 0f; floats[i++] = g.toFloat()
-            // linha paralela ao eixo Z
-            floats[i++] = g.toFloat(); floats[i++] = 0f; floats[i++] = -half.toFloat()
-            floats[i++] = g.toFloat(); floats[i++] = 0f; floats[i++] = half.toFloat()
+            val eMajor = if (g % 10 == 0) 1f else 0f
+            val eX = if (g == 0) 2f else eMajor // linha ao longo do X em z=0 é o eixo X
+            val eZ = if (g == 0) 3f else eMajor // linha ao longo do Z em x=0 é o eixo Z
+            data[i++] = -half.toFloat(); data[i++] = 0f; data[i++] = g.toFloat(); data[i++] = eX
+            data[i++] = half.toFloat(); data[i++] = 0f; data[i++] = g.toFloat(); data[i++] = eX
+            data[i++] = g.toFloat(); data[i++] = 0f; data[i++] = -half.toFloat(); data[i++] = eZ
+            data[i++] = g.toFloat(); data[i++] = 0f; data[i++] = half.toFloat(); data[i++] = eZ
         }
-        gridVertexCount = floats.size / 3
-        gridHandle = backend.createLineBuffer(floats)
+        gridVertexCount = data.size / 4
+        gridHandle = backend.createGridBuffer(data)
     }
 
     private fun buildCube(backend: RenderBackend) {
@@ -136,6 +176,27 @@ class EngineRenderer {
             indices[ii++] = b; indices[ii++] = b + 2; indices[ii++] = b + 3
         }
         cubeHandle = backend.createMesh(MeshData(positions, normals, uvs, indices, Vec3(-0.5f), Vec3(0.5f)))
+    }
+
+    /** Gizmo de eixos: 6 linhas (±X, ±Y, ±Z) coloridas por vértice — 1 VBO, 1 draw call. */
+    private fun buildGizmo(backend: RenderBackend) {
+        val data = FloatArray(12 * 2 * 6)
+        var i = 0
+        fun line(
+            ax: Float, ay: Float, az: Float, bx: Float, by: Float, bz: Float,
+            r: Float, g: Float, b: Float
+        ) {
+            data[i++] = ax; data[i++] = ay; data[i++] = az; data[i++] = r; data[i++] = g; data[i++] = b
+            data[i++] = bx; data[i++] = by; data[i++] = bz; data[i++] = r; data[i++] = g; data[i++] = b
+        }
+        line(0f, 0f, 0f, 1f, 0f, 0f, 0.95f, 0.25f, 0.25f)   // +X vermelho
+        line(0f, 0f, 0f, -1f, 0f, 0f, 0.40f, 0.12f, 0.12f)  // -X apagado
+        line(0f, 0f, 0f, 0f, 1f, 0f, 0.30f, 0.90f, 0.35f)   // +Y verde
+        line(0f, 0f, 0f, 0f, -1f, 0f, 0.12f, 0.34f, 0.14f)  // -Y apagado
+        line(0f, 0f, 0f, 0f, 0f, 1f, 0.35f, 0.55f, 0.95f)   // +Z azul
+        line(0f, 0f, 0f, 0f, 0f, -1f, 0.12f, 0.18f, 0.40f)  // -Z apagado
+        gizmoVertexCount = data.size / 6
+        gizmoHandle = backend.createColoredLineBuffer(data)
     }
 
     /**
@@ -215,17 +276,42 @@ class EngineRenderer {
         engineTime: Float,
         selectedId: ReferenceId?
     ) {
+        // CRÍTICO: zera a fila de submissões — sem isso ela acumula entre frames
+        // até saturar a capacidade e redesenhar a cena centenas de vezes.
+        geometry.reset()
+
         backend.beginFrame(0.075f, 0.075f, 0.105f, 1f)
+        var skyDrawn = 0
         var gridDrawn = 0
+        var gizmoDrawn = 0
 
         val aspect = backend.viewportWidth.toFloat() / backend.viewportHeight.toFloat()
         camera.projection(proj, aspect)
         camera.view(view)
         viewProj.multiply(proj, view)
 
-        val dir = lighting.fillDirectional(scratchDir)
-        val amb = lighting.fillAmbient(scratchAmbient)
+        // Base da câmera derivada da matriz de view (linhas = eixos da câmera em mundo).
+        camFwd.set(-view.m[2], -view.m[6], -view.m[10])
+        camEye.set(camera.target).addScaled(camFwd, -camera.distance)
+
+        // Sol = direção PARA a luz (oposta ao sentido de viagem da luz direcional).
+        lighting.fillDirectional(scratchDir)
+        lighting.fillAmbient(scratchAmbient)
         val intensity = lighting.fillLightColor(scratchLightColor)
+        sunDir.set(-scratchDir[0], -scratchDir[1], -scratchDir[2]).normalize()
+
+        // Céu (1 draw call): gradiente zênite→horizonte + sol discreto.
+        if (sunDir.lengthSquared() > 0.5f) {
+            backend.drawSky(
+                camFwd.x, camFwd.y, camFwd.z,
+                view.m[0], view.m[4], view.m[8],
+                view.m[1], view.m[5], view.m[9],
+                tanHalfFov(camera.fovDegrees), aspect,
+                sunDir.x, sunDir.y, sunDir.z
+            )
+            skyDrawn = 1
+        }
+
         backend.setLighting(
             scratchDir[0], scratchDir[1], scratchDir[2],
             scratchAmbient[0], scratchAmbient[1], scratchAmbient[2],
@@ -233,10 +319,9 @@ class EngineRenderer {
             intensity
         )
 
-        // Grade: 1 VBO estático (GL_STATIC_DRAW) criado uma vez em buildGrid,
-        // desenhado com 1 único glDrawArrays(GL_LINES) por frame.
+        // Grade (1 draw call): fade por distância; eixos e destaques no shader.
         if (gridHandle != 0) {
-            backend.drawLines(gridHandle, gridVertexCount, viewProj, 0.30f, 0.32f, 0.36f, 1f)
+            backend.drawGrid(gridHandle, gridVertexCount, viewProj, camEye.x, camEye.y, camEye.z)
             gridDrawn = 1
         }
 
@@ -245,7 +330,7 @@ class EngineRenderer {
             val spin = Math.toRadians((engineTime * 18f).toDouble()).toFloat()
             torusRot.setFromAxisAngle(0f, 1f, 0f, spin)
             torusModel.setTRS(torusPos, torusRot, unitScale)
-            geometry.submit(testMeshHandle, torusModel, 0.96f, 0.64f, 0.24f, 1f)
+            geometry.submit(testMeshHandle, torusModel, materialGray, materialGray, materialGray, 1f)
         }
 
         // Cubo por Nick (travessia indexada: Iterator de ArrayList aloca por frame)
@@ -262,11 +347,15 @@ class EngineRenderer {
                     geometry.submit(
                         cubeHandle,
                         nick.transform.worldMatrix,
-                        if (nick.id == selectedId) 1.0f else 0.82f,
-                        if (nick.id == selectedId) 0.72f else 0.84f,
-                        if (nick.id == selectedId) 0.18f else 0.88f,
-                        1f
+                        materialGray, materialGray, materialGray, 1f
                     )
+                    if (nick.id == selectedId) {
+                        // Contorno #FFA940 (inverted hull): world × inflação 1.06.
+                        outlineScratch.multiply(nick.transform.worldMatrix, outlineInflation)
+                        geometry.submitOutline(
+                            cubeHandle, outlineScratch, outlineR, outlineG, outlineB, 1f
+                        )
+                    }
                 }
                 val children = nick.children
                 for (ci in children.indices) {
@@ -277,10 +366,27 @@ class EngineRenderer {
         }
 
         geometry.flush(backend, viewProj)
-        // Total real de draw calls do frame: grade (1 drawLines) + malhas do flush.
-        drawCount = gridDrawn +
-            ((geometry as? DefaultGeometryPipeline)?.lastFlushCount ?: 0)
+
+        // Gizmo de eixos (1 draw call): rotação da view × escala, canto superior direito.
+        if (gizmoHandle != 0) {
+            gizmoRot.copyFrom(view)
+            gizmoRot.m[12] = 0f; gizmoRot.m[13] = 0f; gizmoRot.m[14] = 0f
+            gizmoMvp.multiply(gizmoScale, gizmoRot)
+            backend.drawGizmo(gizmoHandle, gizmoVertexCount, gizmoMvp)
+            gizmoDrawn = 1
+        }
+
         backend.endFrame()
+
+        // Total real de draw calls do frame (estatística da StatusBar).
+        drawCount = skyDrawn + gridDrawn +
+            ((geometry as? DefaultGeometryPipeline)?.lastFlushCount ?: 0) +
+            gizmoDrawn
+    }
+
+    private fun tanHalfFov(fovDegrees: Float): Float {
+        val half = Math.toRadians(fovDegrees.toDouble()).toFloat() * 0.5f
+        return kotlin.math.tan(half)
     }
 
     private fun updateFps(nowNanos: Long) {
