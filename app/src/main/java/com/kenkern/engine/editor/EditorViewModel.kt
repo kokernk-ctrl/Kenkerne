@@ -232,9 +232,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     // ---------- Ações de alto nível ----------
 
+    /**
+     * Cria um Nick como filho do Nick SELECIONADO; sem seleção, filho do
+     * "Mundo" (primeiro nick raiz da cena). Nunca fora da raiz.
+     */
     fun addNick() {
         val s = sceneRef ?: return
         val parent = selection.value?.let { s.findNick(it) }
+            ?: s.roots.firstOrNull()
         val name = s.nextNickName()
         run(CreateNickCommand(s, parent?.id, name))
         sceneRef?.findNickByNameAnywhere(name)?.let { select(it.id) }

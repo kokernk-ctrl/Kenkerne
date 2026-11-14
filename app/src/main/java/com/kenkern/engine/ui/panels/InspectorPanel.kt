@@ -43,14 +43,19 @@ import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.editor.EditorViewModel
+import com.kenkern.engine.ui.common.CollapsibleSection
 import com.kenkern.engine.ui.common.FloatField
 import com.kenkern.engine.ui.common.SectionTitle
-import com.kenkern.engine.ui.common.Vec3Field
-import com.kenkern.engine.ui.common.formatFloat
+import com.kenkern.engine.ui.common.Vec3AxisField
+import com.kenkern.engine.ui.theme.KenkernTextMid
 
 /**
  * Painel INSPETOR: edita nome, ativo/visível, transform (posição, rotação em
  * quaternion + euler, escala), classes e campos do Nick selecionado.
+ *
+ * Visual: seções recolhíveis (TRANSFORM, CLASSES) com cabeçalho de 28dp;
+ * campos de posição/rotação/escala em linha com rótulos X/Y/Z coloridos por
+ * eixo e campos numéricos de 28dp (#1E1E1E, borda 1px).
  */
 @Composable
 fun InspectorPanel(vm: EditorViewModel) {
@@ -76,7 +81,7 @@ fun InspectorPanel(vm: EditorViewModel) {
         Modifier
             .fillMaxSize()
             .verticalScroll(scroll)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Nome
@@ -84,7 +89,7 @@ fun InspectorPanel(vm: EditorViewModel) {
         OutlinedTextField(
             value = nameText,
             onValueChange = { nameText = it },
-            label = { Text("Nome", fontSize = 10.sp) },
+            label = { Text("Nome", fontSize = 12.sp) },
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.fillMaxWidth()
@@ -92,8 +97,8 @@ fun InspectorPanel(vm: EditorViewModel) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(onClick = { if (nameText.isNotBlank() && nameText != nick.name) {
                 vm.renameSelected(nameText.trim())
-            } }) { Text("Aplicar nome", fontSize = 11.sp) }
-            TextButton(onClick = { vm.select(nick.id) }) { Text("Reverter", fontSize = 11.sp) }
+            } }) { Text("Aplicar nome", fontSize = 12.sp) }
+            TextButton(onClick = { vm.select(nick.id) }) { Text("Reverter", fontSize = 12.sp) }
         }
 
         // Flags
@@ -106,87 +111,84 @@ fun InspectorPanel(vm: EditorViewModel) {
             Switch(checked = nick.visible, onCheckedChange = { vm.setNickVisible(nick.id, it) })
         }
 
-        SectionTitle("TRANSFORM")
+        // ---------- TRANSFORM (seção recolhível) ----------
+        CollapsibleSection("TRANSFORM") {
+            SectionTitle("Posição")
+            Vec3AxisField(
+                nick.transform.position.x, nick.transform.position.y, nick.transform.position.z
+            ) { x, y, z ->
+                val snap = nick.transform.snapshot()
+                vm.setTransform(nick.id, snap.copy(px = x, py = y, pz = z))
+            }
 
-        SectionTitle("Posição", Modifier.padding(top = 2.dp))
-        Vec3Field(
-            "X", "Y", "Z",
-            nick.transform.position.x, nick.transform.position.y, nick.transform.position.z
-        ) { x, y, z ->
-            val snap = nick.transform.snapshot()
-            vm.setTransform(
-                nick.id, snap.copy(px = x, py = y, pz = z)
+            SectionTitle("Escala")
+            Vec3AxisField(
+                nick.transform.scale.x, nick.transform.scale.y, nick.transform.scale.z
+            ) { x, y, z ->
+                val snap = nick.transform.snapshot()
+                vm.setTransform(nick.id, snap.copy(sx = x, sy = y, sz = z))
+            }
+
+            SectionTitle("Rotação (euler)")
+            val euler = remember(nick.id, vm.revision.intValue) {
+                FloatArray(3).also { nick.transform.rotation.toEulerDegrees(it) }
+            }
+            Vec3AxisField(euler[0], euler[1], euler[2]) { x, y, z ->
+                val snap = nick.transform.snapshot()
+                val q = com.kenkern.engine.core.math.Quaternion()
+                q.setFromEulerDegrees(x, y, z)
+                vm.setTransform(nick.id, snap.copy(qx = q.x, qy = q.y, qz = q.z, qw = q.w))
+            }
+
+            SectionTitle("Rotação (quaternion)")
+            Vec3AxisField(
+                nick.transform.rotation.x, nick.transform.rotation.y, nick.transform.rotation.z
+            ) { x, y, z ->
+                val snap = nick.transform.snapshot()
+                vm.setTransform(nick.id, snap.copy(qx = x, qy = y, qz = z))
+            }
+            FloatField(
+                "qw",
+                nick.transform.rotation.w,
+                { w ->
+                    val snap = nick.transform.snapshot()
+                    vm.setTransform(nick.id, snap.copy(qw = w))
+                },
+                Modifier.fillMaxWidth()
             )
         }
 
-        SectionTitle("Escala", Modifier.padding(top = 2.dp))
-        Vec3Field(
-            "X", "Y", "Z",
-            nick.transform.scale.x, nick.transform.scale.y, nick.transform.scale.z
-        ) { x, y, z ->
-            val snap = nick.transform.snapshot()
-            vm.setTransform(nick.id, snap.copy(sx = x, sy = y, sz = z))
-        }
-
-        SectionTitle("Rotação (euler)", Modifier.padding(top = 2.dp))
-        val euler = remember(nick.id, vm.revision.intValue) {
-            FloatArray(3).also { nick.transform.rotation.toEulerDegrees(it) }
-        }
-        Vec3Field(
-            "X", "Y", "Z",
-            euler[0], euler[1], euler[2]
-        ) { x, y, z ->
-            val snap = nick.transform.snapshot()
-            val q = com.kenkern.engine.core.math.Quaternion()
-            q.setFromEulerDegrees(x, y, z)
-            vm.setTransform(nick.id, snap.copy(qx = q.x, qy = q.y, qz = q.z, qw = q.w))
-        }
-
-        SectionTitle("Rotação (quaternion)", Modifier.padding(top = 2.dp))
-        Vec3Field(
-            "qx", "qy", "qz",
-            nick.transform.rotation.x, nick.transform.rotation.y, nick.transform.rotation.z
-        ) { x, y, z ->
-            val snap = nick.transform.snapshot()
-            vm.setTransform(nick.id, snap.copy(qx = x, qy = y, qz = z))
-        }
-        FloatField(
-            "qw",
-            nick.transform.rotation.w,
-            { w ->
-                val snap = nick.transform.snapshot()
-                vm.setTransform(nick.id, snap.copy(qw = w))
-            },
-            Modifier.fillMaxWidth()
-        )
-
-        SectionTitle("CLASSES")
-        for (inst in nick.classes.toList()) {
-            ClassCard(vm, nick.id, inst)
-        }
-
-        var addMenu by remember { mutableStateOf(false) }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { addMenu = true }) {
-                Icon(Icons.Filled.Add, contentDescription = null, Modifier.width(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Adicionar classe", fontSize = 12.sp)
-            }
-            DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
-                val available = com.kenkern.engine.core.NickClassRegistry.all()
-                if (available.isEmpty()) {
-                    DropdownMenuItem(text = { Text("Nenhuma classe", fontSize = 12.sp) }, onClick = {})
+        // ---------- CLASSES (seção recolhível) ----------
+        CollapsibleSection("CLASSES") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (inst in nick.classes.toList()) {
+                    ClassCard(vm, nick.id, inst)
                 }
-                for (def in available) {
-                    val already = nick.findClassInstance(def.name) != null
-                    DropdownMenuItem(
-                        text = { Text(def.name + if (already) "  (já aplicada)" else "", fontSize = 12.sp) },
-                        enabled = !already,
-                        onClick = {
-                            addMenu = false
-                            vm.addClassToSelected(def.name)
+
+                var addMenu by remember { mutableStateOf(false) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { addMenu = true }) {
+                        Icon(Icons.Filled.Add, contentDescription = null, Modifier.width(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Adicionar classe", fontSize = 12.sp)
+                    }
+                    DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
+                        val available = com.kenkern.engine.core.NickClassRegistry.all()
+                        if (available.isEmpty()) {
+                            DropdownMenuItem(text = { Text("Nenhuma classe", fontSize = 12.sp) }, onClick = {})
                         }
-                    )
+                        for (def in available) {
+                            val already = nick.findClassInstance(def.name) != null
+                            DropdownMenuItem(
+                                text = { Text(def.name + if (already) "  (já aplicada)" else "", fontSize = 12.sp) },
+                                enabled = !already,
+                                onClick = {
+                                    addMenu = false
+                                    vm.addClassToSelected(def.name)
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -209,7 +211,7 @@ private fun ClassCard(vm: EditorViewModel, nickId: ReferenceId, inst: NickClassI
             Icon(
                 if (expanded) Icons.Filled.ExpandMore else Icons.Filled.ExpandLess,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .size(20.dp)
                     .clickable { expanded = !expanded }
@@ -218,14 +220,14 @@ private fun ClassCard(vm: EditorViewModel, nickId: ReferenceId, inst: NickClassI
             Text(
                 inst.typeName,
                 fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(onClick = { vm.removeClassFromSelected(inst.typeName) }, modifier = Modifier.size(30.dp)) {
+            IconButton(onClick = { vm.removeClassFromSelected(inst.typeName) }, modifier = Modifier.size(28.dp)) {
                 Icon(
                     Icons.Filled.Delete,
                     contentDescription = "Remover classe ${inst.typeName}",
-                    tint = MaterialTheme.colorScheme.error,
+                    tint = KenkernTextMid,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -262,18 +264,18 @@ private fun ClassCard(vm: EditorViewModel, nickId: ReferenceId, inst: NickClassI
                             OutlinedTextField(
                                 value = text,
                                 onValueChange = { text = it },
-                                label = { Text(fieldName, fontSize = 10.sp) },
+                                label = { Text(fieldName, fontSize = 12.sp) },
                                 singleLine = true,
                                 textStyle = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.weight(1f)
                             )
                             TextButton(onClick = {
                                 vm.setClassField(nickId, inst.typeName, fieldName, NickValue.StringValue(text))
-                            }) { Text("OK", fontSize = 11.sp) }
+                            }) { Text("OK", fontSize = 12.sp) }
                         }
                         is NickValue.Vec3Value -> Column(Modifier.weight(1f)) {
-                            Text(fieldName, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Vec3Field("x", "y", "z", value.x, value.y, value.z) { nx, ny, nz ->
+                            Text(fieldName, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Vec3AxisField(value.x, value.y, value.z) { nx, ny, nz ->
                                 vm.setClassField(
                                     nickId, inst.typeName, fieldName, NickValue.Vec3Value(nx, ny, nz)
                                 )

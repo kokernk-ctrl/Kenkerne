@@ -33,7 +33,8 @@ class KenkernSurfaceView(
     context: Context,
     private val sceneProvider: () -> Scene?,
     private val selectionProvider: () -> ReferenceId?,
-    private val onEngineReady: (EngineControls) -> Unit
+    private val onEngineReady: (EngineControls) -> Unit,
+    private val onFirstTouch: () -> Unit = {}
 ) : GLSurfaceView(context) {
 
     val camera = OrbitCamera()
@@ -87,6 +88,9 @@ class KenkernSurfaceView(
 
     override fun onTouchEvent(event: MotionEvent?): Boolean {
         if (event == null) return false
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            onFirstTouch()
+        }
         return runCatching { touch.onTouch(event) }.getOrDefault(false)
     }
 

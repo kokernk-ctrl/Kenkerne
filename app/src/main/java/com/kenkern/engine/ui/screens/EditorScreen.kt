@@ -79,13 +79,22 @@ import com.kenkern.engine.ui.panels.PanelResizeDivider
 import com.kenkern.engine.ui.theme.KenkernAmber
 import com.kenkern.engine.ui.theme.KenkernBackground
 import com.kenkern.engine.ui.theme.KenkernError
-import com.kenkern.engine.ui.theme.KenkernOutlineSoft
+import com.kenkern.engine.ui.theme.KenkernOutline
 import com.kenkern.engine.ui.theme.KenkernSuccess
 import com.kenkern.engine.ui.theme.KenkernSurface
 import com.kenkern.engine.ui.theme.KenkernSurfaceOverlay
 import com.kenkern.engine.ui.theme.KenkernTextHigh
 import com.kenkern.engine.ui.theme.KenkernTextLow
 import com.kenkern.engine.ui.theme.KenkernTextMid
+
+/**
+ * Estado por sessão do app (processo): a dica de gestos aparece uma única vez
+ * e NÃO volta após o primeiro toque no viewport, nem ao reabrir o editor.
+ */
+object ViewportSession {
+    @Volatile
+    var gestureHintDismissed: Boolean = false
+}
 
 /**
  * Tela do EDITOR — estrutura fixa de ferramenta profissional.
@@ -107,6 +116,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     var surfaceView by remember { mutableStateOf<KenkernSurfaceView?>(null) }
     var resolutionScale by remember { mutableStateOf(1f) }
     var fpsTick by remember { mutableStateOf(0) }
+    var hintVisible by remember { mutableStateOf(!ViewportSession.gestureHintDismissed) }
     val density = LocalDensity.current
 
     val hierarchy = remember {
@@ -185,27 +195,33 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     onEngineReady = { controls ->
                                         vm.engineControls = controls
                                         controls.setPlayState(vm.playState.value)
+                                    },
+                                    onFirstTouch = {
+                                        ViewportSession.gestureHintDismissed = true
+                                        hintVisible = false
                                     }
                                 ).also { surfaceView = it }
                             },
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        // Dica de controle do viewport (feedback de uso, discreta)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(8.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(KenkernSurface.copy(alpha = 0.75f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                "1 dedo: orbitar · 2 dedos: mover e zoom",
-                                fontSize = 12.sp,
-                                color = KenkernTextMid
-                            )
+                        // Dica de controle do viewport: some no 1º toque e não volta na sessão.
+                        if (hintVisible) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(8.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(KenkernSurface.copy(alpha = 0.85f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    "1 dedo: orbitar · 2 dedos: mover e zoom",
+                                    fontSize = 12.sp,
+                                    color = KenkernTextMid
+                                )
+                            }
                         }
 
                         // Telas estreitas: painel "acoplado" vira overlay de lateral
@@ -456,16 +472,16 @@ private fun EditorTopBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp)
         ) {
-            TopBarIcon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar ao Hub", tint = KenkernTextMid) {
+            TopBarIcon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar ao Hub") {
                 onExit()
             }
             TopBarIcon(
                 Icons.AutoMirrored.Filled.Undo, "Desfazer",
-                tint = KenkernAmber, enabled = vm.canUndo
+                enabled = vm.canUndo
             ) { vm.undo() }
             TopBarIcon(
                 Icons.AutoMirrored.Filled.Redo, "Refazer",
-                tint = KenkernAmber, enabled = vm.canRedo
+                enabled = vm.canRedo
             ) { vm.redo() }
 
             TopBarSeparator()
@@ -474,12 +490,11 @@ private fun EditorTopBar(
             TopBarIcon(
                 if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 if (playing) "Pausar" else "Reproduzir",
-                tint = if (playing) KenkernAmber else KenkernTextHigh,
                 active = playing
             ) {
                 vm.setPlayState(if (playing) PlayState.PAUSED else PlayState.PLAYING)
             }
-            TopBarIcon(Icons.Filled.Stop, "Parar", tint = KenkernError) {
+            TopBarIcon(Icons.Filled.Stop, "Parar") {
                 vm.setPlayState(PlayState.STOPPED)
             }
 
@@ -535,7 +550,6 @@ private fun EditorTopBar(
             TopBarIcon(
                 Icons.Filled.AccountTree,
                 if (hierarchy.visible.value) "Ocultar Hierarquia" else "Mostrar Hierarquia",
-                tint = if (hierarchy.visible.value) KenkernAmber else KenkernTextMid,
                 active = hierarchy.visible.value
             ) {
                 hierarchy.visible.value = !hierarchy.visible.value
@@ -544,7 +558,6 @@ private fun EditorTopBar(
             TopBarIcon(
                 Icons.Filled.Tune,
                 if (inspector.visible.value) "Ocultar Inspetor" else "Mostrar Inspetor",
-                tint = if (inspector.visible.value) KenkernAmber else KenkernTextMid,
                 active = inspector.visible.value
             ) {
                 inspector.visible.value = !inspector.visible.value
@@ -554,12 +567,16 @@ private fun EditorTopBar(
     }
 }
 
-/** Botão de ícone da TopBar: 40dp de toque, descrição obrigatória, estado ativo âmbar. */
+/**
+ * Botão de ícone da TopBar: 40dp de toque, descrição obrigatória.
+ * Repouso: ícone cinza #CCCCCC sem fundo. Ativo: fundo #3C3C3C + ícone âmbar
+ * (sem círculo colorido).
+ */
 @Composable
 private fun TopBarIcon(
     icon: ImageVector,
     contentDescription: String,
-    tint: Color = KenkernTextMid,
+    tint: Color = KenkernTextHigh,
     enabled: Boolean = true,
     active: Boolean = false,
     onClick: () -> Unit
@@ -569,8 +586,8 @@ private fun TopBarIcon(
         enabled = enabled,
         modifier = Modifier.size(40.dp),
         colors = IconButtonDefaults.iconButtonColors(
-            containerColor = if (active) KenkernAmber.copy(alpha = 0.16f) else Color.Transparent,
-            contentColor = tint,
+            containerColor = if (active) KenkernOutline else Color.Transparent,
+            contentColor = if (active) KenkernAmber else tint,
             disabledContentColor = KenkernTextLow
         )
     ) {
@@ -578,7 +595,7 @@ private fun TopBarIcon(
     }
 }
 
-/** Separador vertical de 1dp dentro da grade de 4dp. */
+/** Separador vertical de 1dp (#3C3C3C) entre grupos da TopBar. */
 @Composable
 private fun TopBarSeparator() {
     Box(
@@ -586,7 +603,7 @@ private fun TopBarSeparator() {
             .padding(horizontal = 4.dp)
             .width(1.dp)
             .height(24.dp)
-            .background(KenkernOutlineSoft)
+            .background(KenkernOutline)
     )
 }
 
@@ -634,7 +651,6 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
                 },
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.2.sp,
                 color = when {
                     playing -> KenkernSuccess
                     paused -> KenkernAmber

@@ -8,22 +8,27 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Adjust
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -32,7 +37,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,17 +46,37 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kenkern.engine.core.Nick
 import com.kenkern.engine.editor.EditorViewModel
+import com.kenkern.engine.ui.theme.KenkernAmber
+import com.kenkern.engine.ui.theme.KenkernOutline
+import com.kenkern.engine.ui.theme.KenkernSelection
+import com.kenkern.engine.ui.theme.KenkernTextHigh
+import com.kenkern.engine.ui.theme.KenkernTextLow
+import com.kenkern.engine.ui.theme.KenkernTextMid
 
 private class RowEntry(val nick: Nick, val depth: Int, val hasChildren: Boolean, val expanded: Boolean)
+
+/** Ícone por tipo de Nick: pasta/mundo (com filhos), cubo (com classe/geom.), vazio. */
+private fun nickIcon(nick: Nick): ImageVector = when {
+    nick.children.isNotEmpty() -> Icons.Filled.Folder
+    nick.classes.isNotEmpty() || nick.name.contains("Cubo", ignoreCase = true) -> Icons.Filled.ViewInAr
+    else -> Icons.Filled.Adjust
+}
 
 /**
  * Painel HIERARQUIA: árvore de Nicks com criar, renomear, apagar,
  * reordenar (subir/descer) e reparentar.
+ *
+ * Visual (paleta neutra): linhas de 28dp, ícone por tipo, guias verticais de
+ * indentação (1px #3C3C3C), seta de expandir; item selecionado com fundo
+ * #37373D + barra âmbar de 2dp à esquerda; olho de visibilidade em cinza
+ * (#9D9D9D), destacado só quando oculto; vermelho apenas na confirmação.
  */
 @Composable
 fun HierarchyPanel(vm: EditorViewModel) {
@@ -78,22 +102,22 @@ fun HierarchyPanel(vm: EditorViewModel) {
                 .padding(horizontal = 4.dp)
         ) {
             IconButton(onClick = { vm.addNick() }, enabled = scene != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Add, "Criar nick", tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Filled.Add, "Criar nick", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = { showRename = true }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Edit, "Renomear", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Filled.Edit, "Renomear", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = { showDelete = true }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Delete, "Apagar", tint = MaterialTheme.colorScheme.error)
+                Icon(Icons.Filled.Delete, "Apagar", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = { selection?.let { vm.reorderSelected(-1) } }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.KeyboardArrowUp, "Subir", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Filled.KeyboardArrowUp, "Subir", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = { selection?.let { vm.reorderSelected(1) } }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.KeyboardArrowDown, "Descer", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Filled.KeyboardArrowDown, "Descer", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = { showReparent = true }, enabled = selection != null && scene != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.AccountTree, "Reparentar", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Filled.AccountTree, "Reparentar", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
         }
 
@@ -118,60 +142,16 @@ fun HierarchyPanel(vm: EditorViewModel) {
 
             LazyColumn(Modifier.fillMaxSize()) {
                 items(rows, key = { it.nick.id.value }) { entry ->
-                    val nick = entry.nick
-                    val selected = nick.id == selection
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(38.dp)
-                            .background(
-                                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                                else ColorTransparent
-                            )
-                            .clickable { vm.select(nick.id) }
-                            .padding(start = (10 + entry.depth * 14).dp, end = 6.dp)
-                    ) {
-                        if (entry.hasChildren) {
-                            Icon(
-                                if (entry.expanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
-                                contentDescription = if (entry.expanded) "Recolher" else "Expandir",
-                                tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clickable {
-                                        expandedMap[nick.id.value] = !entry.expanded
-                                        vm.bump()
-                                    }
-                            )
-                        } else {
-                            Spacer(Modifier.width(22.dp))
-                        }
-                        Text(
-                            nick.name + if (nick.children.isNotEmpty()) "  (${nick.children.size})" else "",
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = when {
-                                !nick.active -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                selected -> MaterialTheme.colorScheme.primary
-                                else -> MaterialTheme.colorScheme.onSurface
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-                        IconButton(
-                            onClick = { vm.setNickVisible(nick.id, !nick.visible) },
-                            modifier = Modifier.size(30.dp)
-                        ) {
-                            Icon(
-                                if (nick.visible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                                contentDescription = if (nick.visible) "Ocultar" else "Mostrar",
-                                tint = if (nick.visible) MaterialTheme.colorScheme.secondary
-                                else MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
+                    HierarchyRow(
+                        entry = entry,
+                        selected = entry.nick.id == selection,
+                        onSelect = { vm.select(entry.nick.id) },
+                        onToggleExpand = {
+                            expandedMap[entry.nick.id.value] = !entry.expanded
+                            vm.bump()
+                        },
+                        onToggleVisible = { vm.setNickVisible(entry.nick.id, !entry.nick.visible) }
+                    )
                 }
             }
         }
@@ -273,14 +253,103 @@ fun HierarchyPanel(vm: EditorViewModel) {
     }
 }
 
+/** Linha da árvore: 28dp, guias de indentação 1px, ícone de tipo, seta e olho. */
+@Composable
+private fun HierarchyRow(
+    entry: RowEntry,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onToggleExpand: () -> Unit,
+    onToggleVisible: () -> Unit
+) {
+    val nick = entry.nick
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(28.dp)
+            .background(if (selected) KenkernSelection else Color.Transparent)
+            .clickable(onClick = onSelect)
+    ) {
+        // Barra âmbar de seleção (2dp à esquerda)
+        if (selected) {
+            Box(Modifier.width(2.dp).fillMaxHeight().background(KenkernAmber))
+        }
+        // Guias verticais de indentação (1px por nível, passo de 12dp)
+        repeat(entry.depth) {
+            Box(
+                Modifier
+                    .padding(start = 11.dp)
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(KenkernOutline)
+            )
+        }
+        Spacer(Modifier.width(4.dp))
+
+        // Seta de expandir/recolher (ou espaço reservado)
+        if (entry.hasChildren) {
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .clickable(onClick = onToggleExpand),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (entry.expanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowRight,
+                    contentDescription = if (entry.expanded) "Recolher" else "Expandir",
+                    tint = KenkernTextMid,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        } else {
+            Spacer(Modifier.width(20.dp))
+        }
+
+        // Ícone por tipo de Nick
+        Icon(
+            nickIcon(nick),
+            contentDescription = null,
+            tint = if (nick.children.isNotEmpty()) KenkernTextMid else KenkernTextLow,
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(Modifier.width(4.dp))
+
+        Text(
+            nick.name + if (nick.children.isNotEmpty()) "  (${nick.children.size})" else "",
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = when {
+                !nick.active -> KenkernTextLow
+                selected -> KenkernTextHigh
+                else -> KenkernTextHigh
+            },
+            modifier = Modifier.weight(1f)
+        )
+
+        // Olho de visibilidade: cinza #9D9D9D; destaca (#CCCCCC) apenas quando oculto.
+        IconButton(
+            onClick = onToggleVisible,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                if (nick.visible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                contentDescription = if (nick.visible) "Ocultar" else "Mostrar",
+                tint = if (nick.visible) KenkernTextMid else KenkernTextHigh,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        Spacer(Modifier.width(4.dp))
+    }
+}
+
 @Composable
 private fun HorizontalDividerSoft() {
     Box(
         Modifier
             .fillMaxWidth()
             .height(1.dp)
-            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+            .background(KenkernOutline)
     )
 }
-
-private val ColorTransparent = androidx.compose.ui.graphics.Color.Transparent

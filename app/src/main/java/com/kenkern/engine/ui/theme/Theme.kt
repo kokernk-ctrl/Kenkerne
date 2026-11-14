@@ -1,6 +1,5 @@
 package com.kenkern.engine.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -12,49 +11,59 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 /*
- * Design System da KENKERN
- * Identidade: escuro profundo de estúdio com âmbar/laranja como acento.
- * Nada de azul/índigo; superfícies em camadas (0.00 / 0.04 / 0.08 de elevação).
+ * Design System da KENKERN (paleta NEUTRA de ferramenta).
+ *  - Fundo #1E1E1E, painéis #252526, barras #2D2D30, separadores #3C3C3C.
+ *  - Texto principal #CCCCCC, secundário #9D9D9D.
+ *  - Âmbar #FFA940 APENAS em seleção, foco e ação principal.
+ *  - Ícones de ação em cinza (#CCCCCC), sem âmbar.
+ *  - Cores de eixo reservadas: X #E5534B, Y #57AB5A, Z #539BF5.
+ *  - Tipografia: mínimo 12sp, letterSpacing ZERO em todos os estilos.
  */
 
-// ---- Paleta base ----
+// ---- Acento (só seleção/foco/ação principal) ----
 val KenkernAmber = Color(0xFFFFA940)
 val KenkernAmberBright = Color(0xFFFFC46B)
-val KenkernAmberDim = Color(0xFFB26E1B)
+val KenkernAmberDim = Color(0xFF8A5A17)
 
-// Camadas de fundo (do mais profundo ao mais elevado)
-val KenkernBackground = Color(0xFF0D0D13)
-val KenkernSurface = Color(0xFF14141C)
-val KenkernSurfaceHigh = Color(0xFF1B1B26)
-val KenkernSurfaceOverlay = Color(0xFF232330)
-val KenkernOutline = Color(0xFF33334A)
-val KenkernOutlineSoft = Color(0xFF262638)
+// Camadas neutras (do mais profundo ao mais elevado)
+val KenkernBackground = Color(0xFF1E1E1E)
+val KenkernSurface = Color(0xFF252526)
+val KenkernSurfaceHigh = Color(0xFF2D2D30)
+val KenkernSurfaceOverlay = Color(0xFF333333)
+val KenkernSelection = Color(0xFF37373D)
+val KenkernOutline = Color(0xFF3C3C3C)
+val KenkernOutlineSoft = Color(0xFF333333)
 
 // Texto
-val KenkernTextHigh = Color(0xFFF2F2F7)
-val KenkernTextMid = Color(0xFFA8A8BC)
-val KenkernTextLow = Color(0xFF6E6E86)
+val KenkernTextHigh = Color(0xFFCCCCCC)
+val KenkernTextMid = Color(0xFF9D9D9D)
+val KenkernTextLow = Color(0xFF6E6E6E)
 
-// Estados
-val KenkernSuccess = Color(0xFF6BD9A0)
-val KenkernError = Color(0xFFFF6B5E)
-val KenkernInfo = Color(0xFF63D8C6)
+// Eixos (rótulos do Inspetor e gizmos)
+val KenkernAxisX = Color(0xFFE5534B)
+val KenkernAxisY = Color(0xFF57AB5A)
+val KenkernAxisZ = Color(0xFF539BF5)
+
+// Estados (vermelho só em confirmação/erro real)
+val KenkernSuccess = Color(0xFF57AB5A)
+val KenkernError = Color(0xFFE5534B)
+val KenkernInfo = Color(0xFF9D9D9D)
 
 // Alcance global (usado nas telas fora do MaterialTheme)
 val KenkernAccent = KenkernAmber
 
 private val KenkernColors = darkColorScheme(
     primary = KenkernAmber,
-    onPrimary = Color(0xFF241300),
+    onPrimary = Color(0xFF1E1E1E),
     primaryContainer = KenkernAmberDim,
     onPrimaryContainer = Color(0xFFFFE8CC),
     inversePrimary = KenkernAmberBright,
-    secondary = KenkernInfo,
-    onSecondary = Color(0xFF00201B),
-    secondaryContainer = Color(0xFF1E4A44),
-    onSecondaryContainer = Color(0xFFC4F1E8),
+    secondary = KenkernTextMid,
+    onSecondary = KenkernBackground,
+    secondaryContainer = KenkernSurfaceHigh,
+    onSecondaryContainer = KenkernTextHigh,
     tertiary = KenkernSuccess,
-    onTertiary = Color(0xFF002117),
+    onTertiary = Color(0xFF1E1E1E),
     background = KenkernBackground,
     onBackground = KenkernTextHigh,
     surface = KenkernSurface,
@@ -62,102 +71,106 @@ private val KenkernColors = darkColorScheme(
     surfaceVariant = KenkernSurfaceHigh,
     onSurfaceVariant = KenkernTextMid,
     surfaceTint = Color.Transparent,
-    inverseSurface = Color(0xFFE4E2E9),
-    inverseOnSurface = Color(0xFF1B1B1F),
+    inverseSurface = Color(0xFFCCCCCC),
+    inverseOnSurface = Color(0xFF1E1E1E),
     outline = KenkernOutline,
     outlineVariant = KenkernOutlineSoft,
     error = KenkernError,
-    onError = Color(0xFF2B0703),
-    errorContainer = Color(0xFF4A1410),
+    onError = Color(0xFF1E1E1E),
+    errorContainer = Color(0xFF3C2624),
     onErrorContainer = Color(0xFFFFDAD4),
     scrim = Color(0xFF000000)
 )
 
 /**
- * Tipografia de ferramenta profissional: hierarquia clara, rótulos compactos
- * com tracking largo para seções (estilo IDE) e corpo confortável em mobile.
+ * Tipografia de ferramenta: hierarquia por peso/tamanho, SEM tracking
+ * (letterSpacing zero), mínimo 12sp em todos os estilos.
  */
 private val KenkernTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Bold,
         fontSize = 52.sp,
-        lineHeight = 58.sp,
-        letterSpacing = 4.sp
+        lineHeight = 56.sp,
+        letterSpacing = 0.sp
     ),
     displayMedium = TextStyle(
         fontWeight = FontWeight.Bold,
         fontSize = 40.sp,
-        lineHeight = 46.sp,
-        letterSpacing = 2.sp
+        lineHeight = 44.sp,
+        letterSpacing = 0.sp
     ),
     headlineMedium = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 22.sp,
-        lineHeight = 28.sp
+        lineHeight = 28.sp,
+        letterSpacing = 0.sp
     ),
     headlineSmall = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 18.sp,
-        lineHeight = 24.sp
+        lineHeight = 24.sp,
+        letterSpacing = 0.sp
     ),
     titleLarge = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 17.sp,
-        lineHeight = 22.sp
+        lineHeight = 22.sp,
+        letterSpacing = 0.sp
     ),
     titleMedium = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 15.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.15.sp
+        letterSpacing = 0.sp
     ),
     titleSmall = TextStyle(
         fontWeight = FontWeight.Medium,
         fontSize = 13.sp,
         lineHeight = 18.sp,
-        letterSpacing = 0.1.sp
+        letterSpacing = 0.sp
     ),
     bodyLarge = TextStyle(
         fontWeight = FontWeight.Normal,
         fontSize = 15.sp,
-        lineHeight = 22.sp,
-        letterSpacing = 0.1.sp
+        lineHeight = 20.sp,
+        letterSpacing = 0.sp
     ),
     bodyMedium = TextStyle(
         fontWeight = FontWeight.Normal,
         fontSize = 13.sp,
-        lineHeight = 19.sp
+        lineHeight = 18.sp,
+        letterSpacing = 0.sp
     ),
     bodySmall = TextStyle(
         fontWeight = FontWeight.Normal,
-        fontSize = 11.5.sp,
-        lineHeight = 16.sp
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.sp
     ),
     labelLarge = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 13.sp,
         lineHeight = 18.sp,
-        letterSpacing = 0.3.sp
+        letterSpacing = 0.sp
     ),
     labelMedium = TextStyle(
         fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 15.sp,
-        letterSpacing = 0.6.sp
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.sp
     ),
     labelSmall = TextStyle(
         fontWeight = FontWeight.Medium,
-        fontSize = 9.5.sp,
-        lineHeight = 13.sp,
-        letterSpacing = 1.1.sp
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.sp
     )
 )
 
-/** Tema da KENKERN: sempre dark (engine mobile-first de estúdio). */
+/** Tema da KENKERN: dark neutro permanente (ferramenta de estúdio). */
 @Composable
 fun KenkernTheme(content: @Composable () -> Unit) {
-    isSystemInDarkTheme() // o tema é dark permanente; leitura só para transitória
     MaterialTheme(
         colorScheme = KenkernColors,
         typography = KenkernTypography,
