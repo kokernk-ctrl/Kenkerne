@@ -63,6 +63,24 @@ interface RenderBackend {
     /** Gizmo de eixos no canto superior direito (linhas coloridas girando com a câmera). */
     fun drawGizmo(handle: Int, vertexCount: Int, mvp: Mat4)
 
+    /**
+     * Cria buffer do gizmo de transformação: interleaved [x, y, z, r, g, b, a]
+     * por vértice (stride 28). Desenhado sem teste de profundidade, com blend.
+     */
+    fun createGizmoBuffer(data: FloatArray): Int
+
+    /** Linhas do gizmo de transformação (sub-ranges por alça), sem depth test. */
+    fun drawGizmoLines(handle: Int, offset: Int, vertexCount: Int, mvp: Mat4)
+
+    /** Triângulos do gizmo de transformação (preenchimento dos planos). */
+    fun drawGizmoTris(handle: Int, offset: Int, vertexCount: Int, mvp: Mat4)
+
+    /** Redesenha uma alça com cor sólida (destaque amarelo sob o dedo). */
+    fun drawGizmoHandleOverride(
+        handle: Int, offset: Int, vertexCount: Int, mvp: Mat4,
+        r: Float, g: Float, b: Float, a: Float
+    )
+
     fun destroyMesh(handle: Int)
 
     fun destroyLineBuffer(handle: Int)

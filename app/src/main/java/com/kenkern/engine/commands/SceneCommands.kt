@@ -134,6 +134,27 @@ class TransformCommand(
     }
 }
 
+/**
+ * UM Command por ARRASTO do gizmo: guarda o estado inicial (capturado no DOWN)
+ * e o final (no UP). O undo/redo volta tudo de uma vez — não um comando por frame.
+ */
+class TransformDragCommand(
+    private val scene: Scene,
+    private val nickId: ReferenceId,
+    private val startSnapshot: TransformSnapshot,
+    private val endSnapshot: TransformSnapshot
+) : Command {
+    override val label: String get() = "Transformar (arrasto)"
+
+    override fun execute() {
+        scene.findNick(nickId)?.transform?.apply(endSnapshot)
+    }
+
+    override fun undo() {
+        scene.findNick(nickId)?.transform?.apply(startSnapshot)
+    }
+}
+
 /** Move o Nick para outro pai (ou raiz). */
 class ReparentCommand(
     private val scene: Scene,

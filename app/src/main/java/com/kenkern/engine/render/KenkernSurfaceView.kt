@@ -3,15 +3,24 @@ package com.kenkern.engine.render
 import android.app.ActivityManager
 import android.content.Context
 import android.opengl.GLSurfaceView
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.MotionEvent
+import com.kenkern.engine.core.Nick
 import com.kenkern.engine.core.ReferenceId
+import com.kenkern.engine.core.RotationFromMatrix
 import com.kenkern.engine.core.Scene
+import com.kenkern.engine.core.TransformSnapshot
+import com.kenkern.engine.core.math.Mat4
+import com.kenkern.engine.core.math.Quaternion
+import com.kenkern.engine.core.math.Vec3
 import com.kenkern.engine.engine.FixedStepLoop
 import com.kenkern.engine.engine.PlayState
 import javax.microedition.khronos.egl.EGL10
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.egl.EGLDisplay
+import kotlin.math.abs
 
 /** Controles do motor expostos ao editor (Play/Pause/Stop). */
 interface EngineControls {
@@ -22,6 +31,13 @@ interface EngineControls {
 /**
  * GLSurfaceView da KENKERN: embutido no editor via AndroidView.
  * Loop próprio com timestep fixo; câmera orbital por toque.
+ *
+ * SELEÇÃO E GIZMOS (Fase 1):
+ *  - tap curto => picking (raio da câmera × AABB de cada Nick, no thread GL,
+ *    com as matrizes de mundo recém-atualizadas); resultado via [onNickPicked].
+ *  - toque sobre alça do gizmo => arrasto no thread de UI (conflito resolvido
+ *    no DOWN: alça vence a câmera); ao soltar, [onGizmoDragEnd] entrega o
+ *    snapshot inicial para UM único Command de undo.
  *
  * ANTI-CRASH (GPU restrita):
  *  - EGLConfigChooser com cadeia de fallback (RGBA8+D24 → RGBA8+D16 → RGB565 → qualquer config);
@@ -34,12 +50,25 @@ class KenkernSurfaceView(
     private val sceneProvider: () -> Scene?,
     private val selectionProvider: () -> ReferenceId?,
     private val onEngineReady: (EngineControls) -> Unit,
+    private val onNickPicked: (ReferenceId?) -> Unit = {},
+    private val onGizmoDragEnd: (ReferenceId, TransformSnapshot, TransformSnapshot) -> Unit = { _, _, _ -> },
+    private val onGizmoLiveUpdate: () -> Unit = {},
     private val onFirstTouch: () -> Unit = {}
 ) : GLSurfaceView(context) {
 
     val camera = OrbitCamera()
     val loop = FixedStepLoop()
-    private val touch = TouchController(camera)
+    val gizmoState = GizmoSharedState()
+    private val gizmo = TransformGizmo()
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val density = resources.displayMetrics.density
+    private val touch = TouchController(
+        camera,
+        tapSlopPx = 10f * density,
+        onTap = { x, y -> requestPick(x, y) },
+        gizmoHandler = GizmoTouchHandler()
+    )
     private val glRenderer = KenkernGLRenderer()
     private val controls = object : EngineControls {
         override fun setPlayState(state: PlayState) {
@@ -69,6 +98,30 @@ class KenkernSurfaceView(
     /** True se o roundtrip .KERN (gravar/ler malha) passou nesta sessão de render. */
     fun isKernOk(): Boolean = glRenderer.isKernRoundtripOk()
 
+    /** Configuração do gizmo vinda da TopBar (Mover/Girar/Escalar, Local/Global, Snap). */
+    fun setGizmoConfig(mode: GizmoMode, space: GizmoSpace, snapEnabled: Boolean) {
+        gizmoState.mode = mode
+        gizmoState.space = space
+        gizmoState.snapEnabled = snapEnabled
+    }
+
+    // ---------- Picking (pedido da UI, resolvido no thread GL) ----------
+
+    @Volatile
+    private var pickPending = false
+    @Volatile
+    private var pickNdcX = 0f
+    @Volatile
+    private var pickNdcY = 0f
+
+    private fun requestPick(xPx: Float, yPx: Float) {
+        val w = width.toFloat().coerceAtLeast(1f)
+        val h = height.toFloat().coerceAtLeast(1f)
+        pickNdcX = (xPx / w) * 2f - 1f
+        pickNdcY = 1f - (yPx / h) * 2f
+        pickPending = true
+    }
+
     init {
         val es3 = deviceSupportsGles3(context)
         // Fábrica e chooser próprios definem a versão do contexto (ES3 com fallback ES2).
@@ -92,6 +145,175 @@ class KenkernSurfaceView(
             onFirstTouch()
         }
         return runCatching { touch.onTouch(event) }.getOrDefault(false)
+    }
+
+    // ---------- Handler de arrasto do gizmo (thread de UI, zero alocação) ----------
+
+    private inner class GizmoTouchHandler : GizmoDragHandler {
+        private val dragProj = Mat4()
+        private val dragView = Mat4()
+        private val dragVp = Mat4()
+        private val dragWorldPos = Vec3()
+        private val dragWorldRot = Quaternion()
+        private val dragExtractor = RotationFromMatrix()
+        private var dragNick: Nick? = null
+
+        private fun refreshMatrices(w: Float, h: Float) {
+            val aspect = w / h
+            camera.projection(dragProj, aspect)
+            camera.view(dragView)
+            dragVp.multiply(dragProj, dragView)
+        }
+
+        private fun extractRotation(m: Mat4, out: Quaternion) {
+            val mm = m.m
+            val sx = kotlin.math.sqrt(mm[0] * mm[0] + mm[1] * mm[1] + mm[2] * mm[2])
+            val sy = kotlin.math.sqrt(mm[4] * mm[4] + mm[5] * mm[5] + mm[6] * mm[6])
+            val sz = kotlin.math.sqrt(mm[8] * mm[8] + mm[9] * mm[9] + mm[10] * mm[10])
+            if (sx > 1e-9f && sy > 1e-9f && sz > 1e-9f) {
+                dragExtractor.set(
+                    mm[0] / sx, mm[4] / sy, mm[8] / sz,
+                    mm[1] / sx, mm[5] / sy, mm[9] / sz,
+                    mm[2] / sx, mm[6] / sy, mm[10] / sz
+                )
+                dragExtractor.toMatrixComponents(out)
+            } else {
+                out.setIdentity()
+            }
+        }
+
+        override fun onGizmoDown(x: Float, y: Float): Boolean {
+            val scene = sceneProvider() ?: return false
+            val sel = selectionProvider() ?: return false
+            val nick = scene.findNick(sel) ?: return false
+            if (!nick.active || !nick.visible) return false
+            val w = width.toFloat()
+            val h = height.toFloat()
+            if (w < 1f || h < 1f) return false
+            refreshMatrices(w, h)
+            dragWorldPos.set(nick.transform.worldMatrix.m[12], nick.transform.worldMatrix.m[13], nick.transform.worldMatrix.m[14])
+            extractRotation(nick.transform.worldMatrix, dragWorldRot)
+            val ss = gizmo.screenScaleFor(camera, dragWorldPos)
+            val radius = 24f * density // área de toque ~48dp por alça
+            val handle = gizmo.hitTest(
+                x, y, dragVp, w, h, dragWorldPos, dragWorldRot, ss,
+                gizmoState.space, gizmoState.mode, radius
+            )
+            if (handle == GizmoHandle.NONE) return false
+            dragNick = nick
+            gizmo.beginDrag(nick, handle, x, y, camera, dragVp, w, h, w / h, gizmoState.space, ss)
+            gizmoState.highlighted = handle
+            return true
+        }
+
+        override fun onGizmoMove(x: Float, y: Float) {
+            val nick = dragNick ?: return
+            val w = width.toFloat()
+            val h = height.toFloat()
+            if (w < 1f || h < 1f) return
+            refreshMatrices(w, h)
+            gizmo.updateDrag(x, y, camera, dragVp, w, h, w / h, gizmoState.space, gizmoState.snapEnabled)
+            onGizmoLiveUpdate() // Inspetor atualiza ao vivo durante o arrasto
+        }
+
+        override fun onGizmoUp(x: Float, y: Float) {
+            val nick = dragNick
+            gizmoState.highlighted = GizmoHandle.NONE
+            dragNick = null
+            if (nick != null) {
+                val start = gizmo.endDrag()
+                if (start != null) {
+                    val end = nick.transform.snapshot()
+                    if (start != end) {
+                        onGizmoDragEnd(nick.id, start, end) // UM Command por arrasto
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Picking no thread GL: raio da câmera contra a AABB (em mundo) de cada Nick
+     * ativo/visível; escolhe o mais próximo. Slab test sem alocação.
+     */
+    private fun pickNickAt(scene: Scene, aspect: Float): ReferenceId? {
+        val origin = Vec3()
+        val dir = Vec3()
+        camera.screenRay(pickNdcX, pickNdcY, aspect, origin, dir)
+        val stack = arrayOfNulls<Nick>(256)
+        var top = 0
+        for (r in scene.roots.indices) {
+            if (top >= stack.size) break
+            stack[top++] = scene.roots[r]
+        }
+        var bestId: ReferenceId? = null
+        var bestT = Float.MAX_VALUE
+        while (top > 0) {
+            val nick = stack[--top] ?: continue
+            if (nick.active && nick.visible) {
+                val m = nick.transform.worldMatrix.m
+                val cx = m[12]; val cy = m[13]; val cz = m[14]
+                // meia-diagonal da AABB em mundo (box conservativa p/ rotação)
+                val ex = 0.5f * (abs(m[0]) + abs(m[4]) + abs(m[8]))
+                val ey = 0.5f * (abs(m[1]) + abs(m[5]) + abs(m[9]))
+                val ez = 0.5f * (abs(m[2]) + abs(m[6]) + abs(m[10]))
+                val t = rayAabb(origin, dir, cx, cy, cz, ex, ey, ez)
+                if (t >= 0f && t < bestT) {
+                    bestT = t
+                    bestId = nick.id
+                }
+            }
+            val children = nick.children
+            for (ci in children.indices) {
+                if (top >= stack.size) break
+                stack[top++] = children[ci]
+            }
+        }
+        return bestId
+    }
+
+    /** Slab test raio-AABB; retorna t (>= 0) ou -1 se não há interseção. */
+    private fun rayAabb(
+        o: Vec3, d: Vec3,
+        cx: Float, cy: Float, cz: Float,
+        ex: Float, ey: Float, ez: Float
+    ): Float {
+        var tmin = 0f
+        var tmax = Float.MAX_VALUE
+        // X
+        if (abs(d.x) < 1e-9f) {
+            if (abs(o.x - cx) > ex) return -1f
+        } else {
+            var t1 = (cx - ex - o.x) / d.x
+            var t2 = (cx + ex - o.x) / d.x
+            if (t1 > t2) { val tmp = t1; t1 = t2; t2 = tmp }
+            if (t1 > tmin) tmin = t1
+            if (t2 < tmax) tmax = t2
+            if (tmin > tmax) return -1f
+        }
+        // Y
+        if (abs(d.y) < 1e-9f) {
+            if (abs(o.y - cy) > ey) return -1f
+        } else {
+            var t1 = (cy - ey - o.y) / d.y
+            var t2 = (cy + ey - o.y) / d.y
+            if (t1 > t2) { val tmp = t1; t1 = t2; t2 = tmp }
+            if (t1 > tmin) tmin = t1
+            if (t2 < tmax) tmax = t2
+            if (tmin > tmax) return -1f
+        }
+        // Z
+        if (abs(d.z) < 1e-9f) {
+            if (abs(o.z - cz) > ez) return -1f
+        } else {
+            var t1 = (cz - ez - o.z) / d.z
+            var t2 = (cz + ez - o.z) / d.z
+            if (t1 > t2) { val tmp = t1; t1 = t2; t2 = tmp }
+            if (t1 > tmin) tmin = t1
+            if (t2 < tmax) tmax = t2
+            if (tmin > tmax) return -1f
+        }
+        return tmin
     }
 
     /**
@@ -182,7 +404,7 @@ class KenkernSurfaceView(
                 backend.destroy() // libera restos de contexto anterior
             }
             runCatching {
-                engineRenderer.initialize(backend)
+                engineRenderer.initialize(backend, gizmo)
                 surfaceReady = true
                 isEngineHealthy = true
                 Log.i(TAG, "Viewport GL inicializado (${backend.name})")
@@ -207,7 +429,20 @@ class KenkernSurfaceView(
                 scene?.updateWorldTransforms()
                 engineRenderer.reportUpdateMs((System.nanoTime() - updateStart) * 1e-6f)
                 if (surfaceReady) {
-                    engineRenderer.renderFrame(backend, scene, camera, loop.engineTime, selectionProvider())
+                    // Picking pendente: roda com as matrizes de mundo recém-atualizadas.
+                    if (pickPending) {
+                        pickPending = false
+                        val s = scene
+                        if (s != null && s.roots.isNotEmpty()) {
+                            val aspect = backend.viewportWidth.toFloat() /
+                                backend.viewportHeight.coerceAtLeast(1).toFloat()
+                            val picked = runCatching { pickNickAt(s, aspect) }.getOrNull()
+                            mainHandler.post { onNickPicked(picked) }
+                        }
+                    }
+                    engineRenderer.renderFrame(
+                        backend, scene, camera, loop.engineTime, selectionProvider(), gizmoState
+                    )
                 }
             } catch (e: Throwable) {
                 Log.e(TAG, "Frame descartado", e)

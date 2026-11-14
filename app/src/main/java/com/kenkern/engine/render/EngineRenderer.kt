@@ -6,6 +6,7 @@ import com.kenkern.engine.assets.mesh.KernWriter
 import com.kenkern.engine.assets.mesh.MeshData
 import com.kenkern.engine.core.Nick
 import com.kenkern.engine.core.ReferenceId
+import com.kenkern.engine.core.RotationFromMatrix
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.math.Mat4
 import com.kenkern.engine.core.math.Quaternion
@@ -42,6 +43,13 @@ class EngineRenderer {
     private var gizmoHandle = 0
     private var gizmoVertexCount = 0
     private var kernRoundtripOk = false
+
+    // Buffers GL do gizmo de transformação (dados estáticos do TransformGizmo)
+    private var tgMoveLines = 0
+    private var tgMoveTris = 0
+    private var tgRotateLines = 0
+    private var tgScaleLines = 0
+    private var tGizmo: TransformGizmo? = null
 
     // Estatísticas para a barra de status (zero alocação por frame).
     @Volatile
@@ -96,6 +104,15 @@ class EngineRenderer {
     private val outlineInflation = Mat4()
     private val outlineScratch = Mat4()
 
+    // Gizmo de transformação (scratches do thread GL)
+    private val tgWorldPos = Vec3()
+    private val tgWorldRot = Quaternion()
+    private val tgModel = Mat4()
+    private val tgMvp = Mat4()
+    private val tgIdentRot = Quaternion()
+    private val tgScaleVec = Vec3()
+    private val tgRotExtractor = RotationFromMatrix()
+
     private val nickStack = arrayOfNulls<Nick>(512)
 
     // Cores do editor (especificação de visual).
@@ -104,13 +121,15 @@ class EngineRenderer {
     private val outlineG = 0.6627f       // #FFA940
     private val outlineB = 0.2510f
 
-    /** Inicialização segura: céu/grade/cubo/gizmo/malha .KERN; falha = viewport limpo. */
-    fun initialize(backend: RenderBackend) {
+    /** Inicialização segura: céu/grade/cubo/gizmos/malha .KERN; falha = viewport limpo. */
+    fun initialize(backend: RenderBackend, transformGizmo: TransformGizmo? = null) {
         initialized = false
         gridHandle = 0
         cubeHandle = 0
         testMeshHandle = 0
         gizmoHandle = 0
+        tgMoveLines = 0; tgMoveTris = 0; tgRotateLines = 0; tgScaleLines = 0
+        tGizmo = transformGizmo
         kernRoundtripOk = false
         outlineInflation.setIdentity()
         outlineInflation.m[0] = 1.06f; outlineInflation.m[5] = 1.06f; outlineInflation.m[10] = 1.06f
@@ -124,8 +143,18 @@ class EngineRenderer {
         runCatching { buildGrid(backend) }.onFailure { Log.w(TAG, "grid: ${it.message}") }
         runCatching { buildCube(backend) }.onFailure { Log.w(TAG, "cube: ${it.message}") }
         runCatching { buildGizmo(backend) }.onFailure { Log.w(TAG, "gizmo: ${it.message}") }
+        runCatching { buildTransformGizmoBuffers(backend) }.onFailure { Log.w(TAG, "tGizmo: ${it.message}") }
         runCatching { buildTestMeshViaKern(backend) }.onFailure { Log.w(TAG, "kern: ${it.message}") }
         initialized = true
+    }
+
+    /** Upload ÚNICO dos buffers estáticos do gizmo de transformação (1 VBO por modo). */
+    private fun buildTransformGizmoBuffers(backend: RenderBackend) {
+        val g = tGizmo ?: return
+        if (g.moveData.lines.isNotEmpty()) tgMoveLines = backend.createGizmoBuffer(g.moveData.lines)
+        if (g.moveData.tris.isNotEmpty()) tgMoveTris = backend.createGizmoBuffer(g.moveData.tris)
+        if (g.rotateData.lines.isNotEmpty()) tgRotateLines = backend.createGizmoBuffer(g.rotateData.lines)
+        if (g.scaleData.lines.isNotEmpty()) tgScaleLines = backend.createGizmoBuffer(g.scaleData.lines)
     }
 
     fun isInitialized(): Boolean = initialized
@@ -254,12 +283,13 @@ class EngineRenderer {
         scene: Scene?,
         camera: OrbitCamera,
         engineTime: Float,
-        selectedId: ReferenceId?
+        selectedId: ReferenceId?,
+        gizmoState: GizmoSharedState? = null
     ) {
         updateFps(System.nanoTime())
         val drawStart = System.nanoTime()
         try {
-            renderFrameInner(backend, scene, camera, engineTime, selectedId)
+            renderFrameInner(backend, scene, camera, engineTime, selectedId, gizmoState)
         } catch (e: Throwable) {
             // Última linha de defesa: nenhum erro de GL/frame derruba o processo.
             Log.e(TAG, "Frame descartado", e)
@@ -274,7 +304,8 @@ class EngineRenderer {
         scene: Scene?,
         camera: OrbitCamera,
         engineTime: Float,
-        selectedId: ReferenceId?
+        selectedId: ReferenceId?,
+        gizmoState: GizmoSharedState?
     ) {
         // CRÍTICO: zera a fila de submissões — sem isso ela acumula entre frames
         // até saturar a capacidade e redesenhar a cena centenas de vezes.
@@ -367,6 +398,54 @@ class EngineRenderer {
 
         geometry.flush(backend, viewProj)
 
+        // Gizmo de transformação (até 3 dc): linhas + planos + alça destacada.
+        var tGizmoDc = 0
+        val g = tGizmo
+        if (g != null && gizmoState != null && selectedId != null && scene != null) {
+            val nick = scene.findNick(selectedId)
+            if (nick != null && nick.active && nick.visible) {
+                val wm = nick.transform.worldMatrix
+                tgWorldPos.set(wm.m[12], wm.m[13], wm.m[14])
+                val ss = g.screenScaleFor(camera, tgWorldPos)
+                extractWorldRotation(wm, tgWorldRot)
+                if (gizmoState.space == GizmoSpace.LOCAL) {
+                    tgScaleVec.set(ss, ss, ss)
+                    tgModel.setTRS(tgWorldPos, tgWorldRot, tgScaleVec)
+                } else {
+                    tgIdentRot.setIdentity()
+                    tgScaleVec.set(ss, ss, ss)
+                    tgModel.setTRS(tgWorldPos, tgIdentRot, tgScaleVec)
+                }
+                tgMvp.multiply(viewProj, tgModel)
+
+                val data = g.dataFor(gizmoState.mode)
+                val linesHandle = when (gizmoState.mode) {
+                    GizmoMode.MOVE -> tgMoveLines
+                    GizmoMode.ROTATE -> tgRotateLines
+                    GizmoMode.SCALE -> tgScaleLines
+                }
+                if (linesHandle != 0 && data.lines.isNotEmpty()) {
+                    backend.drawGizmoLines(linesHandle, 0, data.lines.size / 7, tgMvp)
+                    tGizmoDc++
+                    if (gizmoState.mode == GizmoMode.MOVE && tgMoveTris != 0 && data.tris.isNotEmpty()) {
+                        backend.drawGizmoTris(tgMoveTris, 0, data.tris.size / 7, tgMvp)
+                        tGizmoDc++
+                    }
+                    val hl = gizmoState.highlighted
+                    if (hl != GizmoHandle.NONE) {
+                        val range = data.lineRanges[hl]
+                        if (range != null && range[1] > 0) {
+                            // alça sob o dedo: amarelo
+                            backend.drawGizmoHandleOverride(
+                                linesHandle, range[0], range[1], tgMvp, 1f, 0.85f, 0.25f, 1f
+                            )
+                            tGizmoDc++
+                        }
+                    }
+                }
+            }
+        }
+
         // Gizmo de eixos (1 draw call): rotação da view × escala, canto superior direito.
         if (gizmoHandle != 0) {
             gizmoRot.copyFrom(view)
@@ -381,7 +460,24 @@ class EngineRenderer {
         // Total real de draw calls do frame (estatística da StatusBar).
         drawCount = skyDrawn + gridDrawn +
             ((geometry as? DefaultGeometryPipeline)?.lastFlushCount ?: 0) +
-            gizmoDrawn
+            gizmoDrawn + tGizmoDc
+    }
+
+    private fun extractWorldRotation(m: Mat4, out: Quaternion) {
+        val mm = m.m
+        val sx = kotlin.math.sqrt(mm[0] * mm[0] + mm[1] * mm[1] + mm[2] * mm[2])
+        val sy = kotlin.math.sqrt(mm[4] * mm[4] + mm[5] * mm[5] + mm[6] * mm[6])
+        val sz = kotlin.math.sqrt(mm[8] * mm[8] + mm[9] * mm[9] + mm[10] * mm[10])
+        if (sx > 1e-9f && sy > 1e-9f && sz > 1e-9f) {
+            tgRotExtractor.set(
+                mm[0] / sx, mm[4] / sy, mm[8] / sz,
+                mm[1] / sx, mm[5] / sy, mm[9] / sz,
+                mm[2] / sx, mm[6] / sy, mm[10] / sz
+            )
+            tgRotExtractor.toMatrixComponents(out)
+        } else {
+            out.setIdentity()
+        }
     }
 
     private fun tanHalfFov(fovDegrees: Float): Float {

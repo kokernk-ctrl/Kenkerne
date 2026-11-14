@@ -64,6 +64,33 @@ class OrbitCamera {
         out.setLookAt(eye, target, worldUp)
     }
 
+    /** Posição do olho (câmera) em mundo, sem alocar. */
+    fun eyePoint(out: Vec3) {
+        computeBasis()
+        out.set(target).addScaled(forward, distance)
+    }
+
+    /** Direção "para frente" da câmera (do olho para o alvo), sem alocar. */
+    fun forwardVector(out: Vec3) {
+        computeBasis()
+        out.set(forward)
+    }
+
+    /**
+     * Raio em mundo que passa pelo ponto de tela (NDC), mesma convenção do
+     * shader do céu: dir = fwd + right*(ndcX*tan*aspect) + up*(ndcY*tan).
+     * Usado pelo picking e pelo gizmo. Sem alocação.
+     */
+    fun screenRay(ndcX: Float, ndcY: Float, aspect: Float, outOrigin: Vec3, outDir: Vec3) {
+        computeBasis()
+        outOrigin.set(target).addScaled(forward, distance)
+        val t = kotlin.math.tan(Math.toRadians(fovDegrees.toDouble()).toFloat() * 0.5f)
+        outDir.set(forward)
+            .addScaled(right, ndcX * t * aspect)
+            .addScaled(up, ndcY * t)
+            .normalize()
+    }
+
     fun projection(out: Mat4, aspect: Float) {
         out.setPerspective(fovDegrees, aspect.coerceAtLeast(0.1f), nearPlane, farPlane)
     }

@@ -40,6 +40,7 @@ class GlesBackend : RenderBackend {
     private var gridProgram = 0
     private var flatProgram = 0
     private var lineProgram = 0
+    private var gizmoProgram = 0
 
     // Uniforms da malha
     private var uMvp = 0
@@ -68,6 +69,9 @@ class GlesBackend : RenderBackend {
     // Uniforms do gizmo
     private var uLineMvp = 0
 
+    // Uniforms do gizmo de transformação (cor RGBA por vértice)
+    private var uTGizmoMvp = 0
+
     /** Programa atualmente vinculado (evita glUseProgram redundante). */
     private var boundProgram = -1
 
@@ -76,6 +80,7 @@ class GlesBackend : RenderBackend {
     private var gridOk = false
     private var flatOk = false
     private var lineOk = false
+    private var tGizmoOk = false
 
     // Sol (direção PARA o sol), derivado de setLighting
     private var sunDirX = 0.4f; private var sunDirY = 0.8f; private var sunDirZ = 0.3f
@@ -90,9 +95,12 @@ class GlesBackend : RenderBackend {
 
     private class GpuLines(val vao: Int, val vbo: Int, val vertexCount: Int)
 
+    private class GpuGizmo(val vao: Int, val vbo: Int, val vertexCount: Int)
+
     private val meshes = HashMap<Int, GpuMesh>()
     private val gridBuffers = HashMap<Int, GpuLines>()
     private val coloredLineBuffers = HashMap<Int, GpuLines>()
+    private val tGizmoBuffers = HashMap<Int, GpuGizmo>()
     private var nextHandle = 1
 
     // VAO/VBO do triângulo de tela cheia (céu)
@@ -101,6 +109,7 @@ class GlesBackend : RenderBackend {
 
     private val mvpScratch = Mat4()
     private val uniformScratch = FloatArray(4)
+    private val overrideRgbaScratch = FloatArray(4)
 
     private val vertexShader = """
         #version 300 es
@@ -270,6 +279,29 @@ class GlesBackend : RenderBackend {
         }
     """.trimIndent()
 
+    // Gizmo de transformação: posição + cor RGBA por vértice (alpha nos planos).
+    private val tGizmoVertexShader = """
+        #version 300 es
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec4 aColor;
+        uniform mat4 uMVP;
+        out vec4 vColor;
+        void main() {
+            vColor = aColor;
+            gl_Position = uMVP * vec4(aPos, 1.0);
+        }
+    """.trimIndent()
+
+    private val tGizmoFragmentShader = """
+        #version 300 es
+        precision mediump float;
+        in vec4 vColor;
+        out vec4 fragColor;
+        void main() {
+            fragColor = vColor;
+        }
+    """.trimIndent()
+
     override fun initialize(): Boolean {
         GLES30.glDisable(GLES30.GL_DITHER)
         GLES30.glEnable(GLES30.GL_DEPTH_TEST)
@@ -336,6 +368,14 @@ class GlesBackend : RenderBackend {
                 lineOk = true
             }
         }.onFailure { Log.w(TAG, "line: ${it.message}") }
+
+        runCatching {
+            gizmoProgram = buildProgram(tGizmoVertexShader, tGizmoFragmentShader)
+            if (gizmoProgram != 0) {
+                uTGizmoMvp = GLES30.glGetUniformLocation(gizmoProgram, "uMVP")
+                tGizmoOk = true
+            }
+        }.onFailure { Log.w(TAG, "tGizmo: ${it.message}") }
 
         GLES30.glClearColor(0.075f, 0.075f, 0.105f, 1f)
         drainGlErrors()
@@ -581,6 +621,38 @@ class GlesBackend : RenderBackend {
         return handle
     }
 
+    /** Gizmo de transformação: interleaved x,y,z,r,g,b,a (stride 28). */
+    override fun createGizmoBuffer(data: FloatArray): Int {
+        if (data.isEmpty()) return 0
+        val vertexCount = data.size / 7
+        val vao = IntArray(1)
+        val vbo = IntArray(1)
+        GLES30.glGenVertexArrays(1, vao, 0)
+        GLES30.glGenBuffers(1, vbo, 0)
+        if (vao[0] == 0 || vbo[0] == 0) {
+            if (vao[0] != 0) GLES30.glDeleteVertexArrays(1, vao, 0)
+            if (vbo[0] != 0) GLES30.glDeleteBuffers(1, vbo, 0)
+            drainGlErrors()
+            return 0
+        }
+        val fb: FloatBuffer = ByteBuffer.allocateDirect(data.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        fb.put(data)
+        fb.position(0)
+        GLES30.glBindVertexArray(vao[0])
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[0])
+        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, data.size * 4, fb, GLES30.GL_STATIC_DRAW)
+        GLES30.glEnableVertexAttribArray(0)
+        GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 28, 0)
+        GLES30.glEnableVertexAttribArray(1)
+        GLES30.glVertexAttribPointer(1, 4, GLES30.GL_FLOAT, false, 28, 12)
+        GLES30.glBindVertexArray(0)
+        drainGlErrors()
+
+        val handle = nextHandle++
+        tGizmoBuffers[handle] = GpuGizmo(vao[0], vbo[0], vertexCount)
+        return handle
+    }
+
     override fun drawSky(
         fwdX: Float, fwdY: Float, fwdZ: Float,
         rightX: Float, rightY: Float, rightZ: Float,
@@ -665,6 +737,55 @@ class GlesBackend : RenderBackend {
         GLES30.glViewport(0, 0, viewportWidth, viewportHeight)
     }
 
+    /** Desenha um sub-range do buffer do gizmo de transformação (sem depth, com blend). */
+    private fun drawTGizmoRange(
+        handle: Int, offset: Int, vertexCount: Int, mvp: Mat4,
+        primitive: Int, overrideRgba: FloatArray?
+    ) {
+        if (!tGizmoOk || vertexCount <= 0) return
+        val gpu = tGizmoBuffers[handle] ?: return
+        val end = offset + vertexCount
+        if (offset < 0 || end > gpu.vertexCount) return
+        GLES30.glDisable(GLES30.GL_DEPTH_TEST)
+        GLES30.glEnable(GLES30.GL_BLEND)
+        GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
+        if (overrideRgba != null) {
+            // destaque de alça: programa flat (cor sólida uniforme)
+            useProgram(flatProgram)
+            GLES30.glBindVertexArray(gpu.vao)
+            GLES30.glUniformMatrix4fv(uFlatMvp, 1, false, mvp.m, 0)
+            uniformScratch[0] = overrideRgba[0]
+            uniformScratch[1] = overrideRgba[1]
+            uniformScratch[2] = overrideRgba[2]
+            uniformScratch[3] = overrideRgba[3]
+            GLES30.glUniform4fv(uFlatColor, 1, uniformScratch, 0)
+        } else {
+            useProgram(gizmoProgram)
+            GLES30.glBindVertexArray(gpu.vao)
+            GLES30.glUniformMatrix4fv(uTGizmoMvp, 1, false, mvp.m, 0)
+        }
+        GLES30.glDrawArrays(primitive, offset, vertexCount)
+        GLES30.glDisable(GLES30.GL_BLEND)
+        GLES30.glEnable(GLES30.GL_DEPTH_TEST)
+    }
+
+    override fun drawGizmoLines(handle: Int, offset: Int, vertexCount: Int, mvp: Mat4) {
+        drawTGizmoRange(handle, offset, vertexCount, mvp, GLES30.GL_LINES, null)
+    }
+
+    override fun drawGizmoTris(handle: Int, offset: Int, vertexCount: Int, mvp: Mat4) {
+        drawTGizmoRange(handle, offset, vertexCount, mvp, GLES30.GL_TRIANGLES, null)
+    }
+
+    override fun drawGizmoHandleOverride(
+        handle: Int, offset: Int, vertexCount: Int, mvp: Mat4,
+        r: Float, g: Float, b: Float, a: Float
+    ) {
+        overrideRgbaScratch[0] = r; overrideRgbaScratch[1] = g
+        overrideRgbaScratch[2] = b; overrideRgbaScratch[3] = a
+        drawTGizmoRange(handle, offset, vertexCount, mvp, GLES30.GL_LINES, overrideRgbaScratch)
+    }
+
     override fun destroyMesh(handle: Int) {
         val gpu = meshes.remove(handle) ?: return
         val vao = IntArray(1); vao[0] = gpu.vao
@@ -708,6 +829,13 @@ class GlesBackend : RenderBackend {
             GLES30.glDeleteBuffers(1, bufs, 0)
         }
         coloredLineBuffers.clear()
+        for (gizmo in tGizmoBuffers.values) {
+            val vao = IntArray(1); vao[0] = gizmo.vao
+            val bufs = IntArray(1); bufs[0] = gizmo.vbo
+            GLES30.glDeleteVertexArrays(1, vao, 0)
+            GLES30.glDeleteBuffers(1, bufs, 0)
+        }
+        tGizmoBuffers.clear()
         if (skyVao != 0) {
             val vao = IntArray(1); vao[0] = skyVao
             val vbo = IntArray(1); vbo[0] = skyVbo
@@ -720,8 +848,9 @@ class GlesBackend : RenderBackend {
         if (gridProgram != 0) { GLES30.glDeleteProgram(gridProgram); gridProgram = 0 }
         if (flatProgram != 0) { GLES30.glDeleteProgram(flatProgram); flatProgram = 0 }
         if (lineProgram != 0) { GLES30.glDeleteProgram(lineProgram); lineProgram = 0 }
+        if (gizmoProgram != 0) { GLES30.glDeleteProgram(gizmoProgram); gizmoProgram = 0 }
         boundProgram = -1
-        skyOk = false; gridOk = false; flatOk = false; lineOk = false
+        skyOk = false; gridOk = false; flatOk = false; lineOk = false; tGizmoOk = false
         drainGlErrors()
     }
 

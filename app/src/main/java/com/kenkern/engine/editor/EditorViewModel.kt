@@ -19,6 +19,7 @@ import com.kenkern.engine.commands.ReparentCommand
 import com.kenkern.engine.commands.SetClassFieldCommand
 import com.kenkern.engine.commands.SetFlagCommand
 import com.kenkern.engine.commands.TransformCommand
+import com.kenkern.engine.commands.TransformDragCommand
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
@@ -280,6 +281,16 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setTransform(id: ReferenceId, snapshot: TransformSnapshot) {
         run(TransformCommand(sceneRef ?: return, id, snapshot))
+    }
+
+    /**
+     * Fecha um arrasto do gizmo como UM único Command (estado inicial + final).
+     * O transform já foi aplicado ao vivo durante o arrasto; o execute() do
+     * comando é idempotente (re-aplica o estado final).
+     */
+    fun commitGizmoDrag(id: ReferenceId, start: TransformSnapshot, end: TransformSnapshot) {
+        val s = sceneRef ?: return
+        run(TransformDragCommand(s, id, start, end))
     }
 
     fun reparentSelected(newParentId: ReferenceId?) {

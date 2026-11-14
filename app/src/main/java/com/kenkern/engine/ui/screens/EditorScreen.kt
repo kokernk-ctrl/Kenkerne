@@ -28,10 +28,14 @@ import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -51,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,6 +74,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kenkern.engine.editor.EditorViewModel
 import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.engine.PlayState
+import com.kenkern.engine.render.GizmoMode
+import com.kenkern.engine.render.GizmoSpace
 import com.kenkern.engine.render.KenkernSurfaceView
 import java.util.Locale
 import com.kenkern.engine.ui.panels.DockedPanel
@@ -119,6 +126,11 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     var hintVisible by remember { mutableStateOf(!ViewportSession.gestureHintDismissed) }
     val density = LocalDensity.current
 
+    // Modo de transformação (gizmo): Mover/Girar/Escalar + Local/Global + Snap
+    var gizmoMode by rememberSaveable { mutableStateOf(GizmoMode.MOVE) }
+    var gizmoSpace by rememberSaveable { mutableStateOf(GizmoSpace.GLOBAL) }
+    var snapEnabled by rememberSaveable { mutableStateOf(false) }
+
     val hierarchy = remember {
         vm.panelStore.get("hierarchy", "Hierarquia", 200f, 140f, 320f, 280f, 340f)
     }
@@ -143,7 +155,13 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 persistHierarchy = persistHierarchy,
                 persistInspector = persistInspector,
                 resolutionScale = resolutionScale,
-                onResolutionChange = { resolutionScale = it }
+                onResolutionChange = { resolutionScale = it },
+                gizmoMode = gizmoMode,
+                gizmoSpace = gizmoSpace,
+                snapEnabled = snapEnabled,
+                onGizmoModeChange = { gizmoMode = it },
+                onGizmoSpaceChange = { gizmoSpace = it },
+                onSnapChange = { snapEnabled = it }
             )
 
             // ---------- Row central: painéis acoplados | viewport | painéis ----------
@@ -199,7 +217,12 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     onFirstTouch = {
                                         ViewportSession.gestureHintDismissed = true
                                         hintVisible = false
-                                    }
+                                    },
+                                    onNickPicked = { id -> vm.select(id) },
+                                    onGizmoDragEnd = { id, start, end ->
+                                        vm.commitGizmoDrag(id, start, end)
+                                    },
+                                    onGizmoLiveUpdate = { vm.bump() }
                                 ).also { surfaceView = it }
                             },
                             modifier = Modifier.fillMaxSize()
@@ -359,6 +382,11 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
             }
         }
 
+        // Configuração do gizmo: TopBar -> SurfaceView (estado volátil lido pela GL/UI).
+        LaunchedEffect(surfaceView, gizmoMode, gizmoSpace, snapEnabled) {
+            surfaceView?.setGizmoConfig(gizmoMode, gizmoSpace, snapEnabled)
+        }
+
         // ---------- Aviso de recuperação pós-crash ----------
         if (vm.recoveryNotice.value) {
             Snackbar(
@@ -452,7 +480,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
 
 // ============================== TopBar (48dp) ==============================
 
-/** Voltar | Undo | Redo | sep | Play/Pause/Stop | espaço | resolução | painéis. */
+/** Voltar | Undo | Redo | sep | Play/Stop | sep | Mover/Girar/Escalar | Local/Global | Snap | espaço | resolução | painéis. */
 @Composable
 private fun EditorTopBar(
     vm: EditorViewModel,
@@ -462,7 +490,13 @@ private fun EditorTopBar(
     persistHierarchy: () -> Unit,
     persistInspector: () -> Unit,
     resolutionScale: Float,
-    onResolutionChange: (Float) -> Unit
+    onResolutionChange: (Float) -> Unit,
+    gizmoMode: GizmoMode,
+    gizmoSpace: GizmoSpace,
+    snapEnabled: Boolean,
+    onGizmoModeChange: (GizmoMode) -> Unit,
+    onGizmoSpaceChange: (GizmoSpace) -> Unit,
+    onSnapChange: (Boolean) -> Unit
 ) {
     Surface(
         color = KenkernSurface,
@@ -497,6 +531,45 @@ private fun EditorTopBar(
             TopBarIcon(Icons.Filled.Stop, "Parar") {
                 vm.setPlayState(PlayState.STOPPED)
             }
+
+            TopBarSeparator()
+
+            // Modo de transformação: Mover / Girar / Escalar
+            TopBarIcon(
+                Icons.Filled.OpenWith, "Mover",
+                active = gizmoMode == GizmoMode.MOVE
+            ) { onGizmoModeChange(GizmoMode.MOVE) }
+            TopBarIcon(
+                Icons.Filled.RotateRight, "Girar",
+                active = gizmoMode == GizmoMode.ROTATE
+            ) { onGizmoModeChange(GizmoMode.ROTATE) }
+            TopBarIcon(
+                Icons.Filled.OpenInFull, "Escalar",
+                active = gizmoMode == GizmoMode.SCALE
+            ) { onGizmoModeChange(GizmoMode.SCALE) }
+
+            // Local/Global
+            TextButton(
+                onClick = {
+                    onGizmoSpaceChange(
+                        if (gizmoSpace == GizmoSpace.GLOBAL) GizmoSpace.LOCAL else GizmoSpace.GLOBAL
+                    )
+                },
+                modifier = Modifier.height(40.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) {
+                Text(
+                    if (gizmoSpace == GizmoSpace.GLOBAL) "Global" else "Local",
+                    fontSize = 12.sp,
+                    color = KenkernTextHigh
+                )
+            }
+
+            // Snap (0,25 m / 15° / 0,1)
+            TopBarIcon(
+                Icons.Filled.GridOn, "Snap",
+                active = snapEnabled
+            ) { onSnapChange(!snapEnabled) }
 
             Spacer(Modifier.weight(1f))
 
