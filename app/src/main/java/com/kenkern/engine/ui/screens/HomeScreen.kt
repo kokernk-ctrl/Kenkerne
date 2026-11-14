@@ -4,11 +4,12 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,21 +22,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Surface
@@ -49,7 +52,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,17 +71,22 @@ import com.kenkern.engine.ui.theme.KenkernOutline
 import com.kenkern.engine.ui.theme.KenkernOutlineSoft
 import com.kenkern.engine.ui.theme.KenkernSurface
 import com.kenkern.engine.ui.theme.KenkernSurfaceHigh
-import com.kenkern.engine.ui.theme.KenkernSurfaceOverlay
 import com.kenkern.engine.ui.theme.KenkernTextHigh
 import com.kenkern.engine.ui.theme.KenkernTextLow
 import com.kenkern.engine.ui.theme.KenkernTextMid
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * HUB da KENKERN: funcional e direto.
- *  - Cabeçalho compacto (marca + versão + "Novo projeto") — sem legendas de tecnologia.
- *  - Lista de projetos recentes imediatamente visível e ROLÁVEL (paisagem inclusive):
- *    todo o conteúdo abaixo do cabeçalho vive numa LazyColumn.
- *  - Apagar pede confirmação e remove o projeto do disco de verdade.
+ * HUB da KENKERN (ETAPA B):
+ *  - Marca: wordmark "Kenkern" (semibold, sem tracking) + versão discreta.
+ *  - "Novo projeto" compacto (40dp) no cabeçalho, à direita; sem "+" redundante.
+ *  - Cartões de recentes: miniatura 16:9 (placeholder céu + cubo), nome,
+ *    data relativa e menu de três pontos (Abrir, Renomear, Apagar).
+ *  - Paisagem: grade de 2 colunas (LazyVerticalGrid).
+ *  - Estado vazio: mensagem curta + um único botão de criar.
+ *  - Fundo plano #1E1E1E, sem gradientes decorativos.
  */
 @Composable
 fun HomeScreen(
@@ -84,10 +96,12 @@ fun HomeScreen(
     onConsumeStatus: () -> Unit,
     onCreateProject: (String) -> Unit,
     onOpenProject: (ProjectHandle) -> Unit,
+    onRenameProject: (ProjectHandle, String) -> Unit,
     onDeleteProject: (ProjectHandle) -> Unit
 ) {
     var showNewDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<ProjectHandle?>(null) }
+    var pendingRename by remember { mutableStateOf<ProjectHandle?>(null) }
 
     Box(
         Modifier
@@ -100,7 +114,7 @@ fun HomeScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            // ---------- Cabeçalho fixo e compacto (56dp) ----------
+            // ---------- Cabeçalho (56dp): wordmark + versão + ação compacta ----------
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -108,103 +122,71 @@ fun HomeScreen(
                     .height(56.dp)
                     .padding(horizontal = 16.dp)
             ) {
-                BrandMark()
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "KENKERN",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    color = KenkernTextHigh
-                )
-                Spacer(Modifier.width(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = KenkernSurfaceHigh
-                ) {
+                Column {
+                    Text(
+                        "Kenkern",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = KenkernTextHigh
+                    )
                     Text(
                         "v${ProjectManager.ENGINE_VERSION}",
-                        fontSize = 11.sp,
-                        color = KenkernTextMid,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        fontSize = 12.sp,
+                        color = KenkernTextLow
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                IconButton(
+                Button(
                     onClick = { showNewDialog = true },
                     enabled = !isLoading,
-                    modifier = Modifier.size(40.dp),
-                    colors = IconButtonDefaults.iconButtonColors(
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
                         containerColor = KenkernAmber,
-                        contentColor = Color(0xFF241300)
-                    )
+                        contentColor = Color(0xFF1E1E1E)
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    modifier = Modifier.height(40.dp)
                 ) {
-                    Icon(
-                        Icons.Filled.Add,
-                        contentDescription = "Novo projeto",
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Text("Novo projeto", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
             HorizontalDivider(thickness = 1.dp, color = KenkernOutlineSoft)
 
-            // ---------- Conteúdo rolável (paisagem inclusive) ----------
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(16.dp, 12.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            ) {
-                item {
-                    Button(
-                        onClick = { showNewDialog = true },
-                        enabled = !isLoading,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = KenkernAmber,
-                            contentColor = Color(0xFF241300)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Novo projeto", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                item {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+            // ---------- Grade de recentes (2 colunas em paisagem/largo) ----------
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                val columns = if (maxWidth >= 600.dp) 2 else 1
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(16.dp, 12.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(
                             "Projetos recentes",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
                             color = KenkernTextMid
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "${projects.size}",
-                            fontSize = 12.sp,
-                            color = KenkernAmber,
-                            fontWeight = FontWeight.SemiBold
-                        )
                     }
-                }
 
-                if (projects.isEmpty()) {
-                    item { EmptyProjectsCard(isLoading) }
-                } else {
-                    items(projects, key = { it.root.absolutePath }) { project ->
-                        ProjectCard(
-                            project = project,
-                            onOpen = { onOpenProject(project) },
-                            onDelete = { pendingDelete = project }
-                        )
+                    if (projects.isEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            EmptyProjectsState(isLoading, onCreate = { showNewDialog = true })
+                        }
+                    } else {
+                        items(projects, key = { it.root.absolutePath }) { project ->
+                            ProjectCard(
+                                project = project,
+                                onOpen = { onOpenProject(project) },
+                                onRename = { pendingRename = project },
+                                onDelete = { pendingDelete = project }
+                            )
+                        }
                     }
                 }
-                item { Spacer(Modifier.height(4.dp)) }
             }
         }
 
@@ -217,7 +199,7 @@ fun HomeScreen(
                 .padding(16.dp)
         ) {
             Snackbar(
-                containerColor = KenkernSurfaceOverlay,
+                containerColor = KenkernSurfaceHigh,
                 contentColor = KenkernTextHigh,
                 action = {
                     TextButton(onClick = onConsumeStatus) { Text("OK", color = KenkernAmber) }
@@ -248,6 +230,18 @@ fun HomeScreen(
             onCreate = { name ->
                 showNewDialog = false
                 onCreateProject(name)
+            }
+        )
+    }
+
+    pendingRename?.let { project ->
+        RenameProjectDialog(
+            project = project,
+            onDismiss = { pendingRename = null },
+            onRename = { newName ->
+                val target = project
+                pendingRename = null
+                onRenameProject(target, newName)
             }
         )
     }
@@ -285,97 +279,94 @@ fun HomeScreen(
     }
 }
 
-/** Marca da engine: quadrado âmbar com "K", estático e discreto. */
-@Composable
-private fun BrandMark() {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(32.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(KenkernAmber)
-    ) {
-        Text(
-            "K",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Black,
-            color = Color(0xFF241300)
-        )
+/** Data relativa curta: "agora", "há 2 h", "ontem", "há 3 dias", dd/MM/yy. */
+private fun relativeDate(created: String): String {
+    val parsed = runCatching {
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).parse(created)?.time
+    }.getOrNull() ?: return created
+    val diffMinutes = (System.currentTimeMillis() - parsed) / 60000L
+    return when {
+        diffMinutes < 1L -> "agora"
+        diffMinutes < 60L -> "há ${diffMinutes} min"
+        diffMinutes < 60L * 24L -> "há ${diffMinutes / 60L} h"
+        diffMinutes < 60L * 48L -> "ontem"
+        diffMinutes < 60L * 24L * 7L -> "há ${diffMinutes / (60L * 24L)} dias"
+        else -> SimpleDateFormat("dd/MM/yy", Locale.getDefault()).format(Date(parsed))
     }
 }
 
+/** Estado vazio: mensagem curta + um único botão de criar. */
 @Composable
-private fun EmptyProjectsCard(isLoading: Boolean) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = KenkernSurface,
-        border = BorderStroke(1.dp, KenkernOutlineSoft)
+private fun EmptyProjectsState(isLoading: Boolean, onCreate: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 32.dp)
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 24.dp, horizontal = 16.dp)
+        Text(
+            if (isLoading) "Carregando..." else "Nenhum projeto ainda",
+            fontSize = 13.sp,
+            color = KenkernTextMid
+        )
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = onCreate,
+            enabled = !isLoading,
+            shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = KenkernAmber,
+                contentColor = Color(0xFF1E1E1E)
+            ),
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            modifier = Modifier.height(40.dp)
         ) {
-            Icon(
-                Icons.Filled.Folder,
-                contentDescription = null,
-                tint = KenkernTextLow,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Nenhum projeto ainda",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = KenkernTextMid
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                if (isLoading) "Carregando..." else "Toque em \"Novo projeto\" para criar o primeiro.",
-                fontSize = 12.sp,
-                color = KenkernTextLow,
-                textAlign = TextAlign.Center
-            )
+            Text("Criar projeto", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
+/**
+ * Cartão de projeto: miniatura 16:9 à esquerda (placeholder: céu em gradiente
+ * com silhueta de cubo, até haver captura real), nome em destaque, data
+ * relativa e menu de três pontos. Toque no cartão abre o projeto.
+ */
 @Composable
 private fun ProjectCard(
     project: ProjectHandle,
     onOpen: () -> Unit,
+    onRename: () -> Unit,
     onDelete: () -> Unit
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
+
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         color = KenkernSurface,
         border = BorderStroke(1.dp, KenkernOutlineSoft),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onOpen)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp)
+                .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = 4.dp)
         ) {
+            // Miniatura 16:9 (placeholder até haver captura real)
             Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(KenkernSurfaceHigh)
-                    .border(1.dp, KenkernOutline.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                Modifier
+                    .size(width = 96.dp, height = 54.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF3A5A8C), Color(0xFFB8C9DC))
+                        )
+                    )
             ) {
-                Icon(
-                    Icons.Filled.Folder,
-                    contentDescription = null,
-                    tint = KenkernAmber,
-                    modifier = Modifier.size(16.dp)
-                )
+                Canvas(Modifier.fillMaxSize()) { drawCubeSilhouette(size.width, size.height) }
             }
 
             Spacer(Modifier.width(12.dp))
@@ -391,7 +382,7 @@ private fun ProjectCard(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "criado em ${project.createdAt}",
+                    relativeDate(project.createdAt),
                     fontSize = 12.sp,
                     color = KenkernTextLow,
                     maxLines = 1,
@@ -399,16 +390,109 @@ private fun ProjectCard(
                 )
             }
 
-            IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    Icons.Filled.DeleteOutline,
-                    contentDescription = "Apagar ${project.name}",
-                    tint = KenkernTextLow,
-                    modifier = Modifier.size(18.dp)
-                )
+            Box {
+                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = "Menu de ${project.name}",
+                        tint = KenkernTextMid,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false },
+                    containerColor = KenkernSurfaceHigh
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Abrir", fontSize = 13.sp, color = KenkernTextHigh) },
+                        onClick = {
+                            menuOpen = false
+                            onOpen()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Renomear", fontSize = 13.sp, color = KenkernTextHigh) },
+                        onClick = {
+                            menuOpen = false
+                            onRename()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Apagar", fontSize = 13.sp, color = KenkernError) },
+                        onClick = {
+                            menuOpen = false
+                            onDelete()
+                        }
+                    )
+                }
             }
         }
     }
+}
+
+/** Silhueta de cubo isométrico para a miniatura (placeholder do viewport). */
+private fun DrawScope.drawCubeSilhouette(w: Float, h: Float) {
+    val cx = w * 0.5f
+    val cy = h * 0.55f
+    val s = h * 0.26f
+    val dx = s * 0.87f
+
+    fun poly(points: List<Offset>, color: Color) {
+        val path = Path()
+        path.moveTo(points[0].x, points[0].y)
+        for (i in 1 until points.size) path.lineTo(points[i].x, points[i].y)
+        path.close()
+        drawPath(path, color)
+    }
+
+    val top = Offset(cx, cy - s)
+    val ur = Offset(cx + dx, cy - s * 0.5f)
+    val lr = Offset(cx + dx, cy + s * 0.5f)
+    val bottom = Offset(cx, cy + s)
+    val ll = Offset(cx - dx, cy + s * 0.5f)
+    val ul = Offset(cx - dx, cy - s * 0.5f)
+    val center = Offset(cx, cy)
+
+    poly(listOf(top, ur, center, ul), Color(0xFF1E2A3A))
+    poly(listOf(ul, center, bottom, ll), Color(0xFF141C28))
+    poly(listOf(center, ur, lr, bottom), Color(0xFF25344A))
+}
+
+@Composable
+private fun RenameProjectDialog(
+    project: ProjectHandle,
+    onDismiss: () -> Unit,
+    onRename: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(project.name) }
+    val valid = text.trim().length >= 2
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = KenkernSurfaceHigh,
+        titleContentColor = KenkernTextHigh,
+        textContentColor = KenkernTextMid,
+        shape = RoundedCornerShape(16.dp),
+        title = { Text("Renomear projeto", fontWeight = FontWeight.SemiBold) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { if (it.length <= 60) text = it },
+                label = { Text("Nome do projeto", fontSize = 12.sp) },
+                singleLine = true,
+                isError = text.isNotBlank() && !valid
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (valid) onRename(text.trim()) },
+                enabled = valid && text.trim() != project.name
+            ) { Text("Renomear", color = KenkernAmber, fontWeight = FontWeight.SemiBold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = KenkernTextMid) }
+        }
+    )
 }
 
 @Composable
@@ -440,7 +524,7 @@ private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) 
                         lineHeight = 17.sp,
                         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                         color = KenkernAmber.copy(alpha = 0.85f),
-                        modifier = Modifier.padding(10.dp)
+                        modifier = Modifier.padding(8.dp)
                     )
                 }
                 Spacer(Modifier.height(12.dp))
@@ -457,7 +541,7 @@ private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) 
                     },
                     singleLine = true,
                     isError = name.isNotBlank() && !valid,
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(8.dp)
                 )
             }
         },

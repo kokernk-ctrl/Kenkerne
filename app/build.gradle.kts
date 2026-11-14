@@ -14,8 +14,8 @@ android {
         applicationId = "com.kenkern.engine"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.1.5-editor"
+        versionCode = 7
+        versionName = "0.1.6-hub"
     }
 
     // Assinatura de release lida de variáveis de ambiente (mesma estratégia usada no CI).

@@ -37,6 +37,7 @@ fun KenkernAppRoot() {
             onConsumeStatus = { vm.consumeStatus() },
             onCreateProject = { name -> vm.createAndEnterProject(name) },
             onOpenProject = { handle -> vm.openProject(handle) },
+            onRenameProject = { handle, name -> vm.renameProject(handle, name) },
             onDeleteProject = { handle -> vm.deleteProject(handle) }
         )
     } else {

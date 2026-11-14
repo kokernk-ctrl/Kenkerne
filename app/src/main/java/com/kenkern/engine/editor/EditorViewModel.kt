@@ -162,6 +162,20 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** Renomeia um projeto do Hub (I/O em background). Nunca crasha. */
+    fun renameProject(handle: ProjectHandle, newName: String) {
+        viewModelScope.launch {
+            val updated = withContext(Dispatchers.IO) {
+                ProjectManager.renameProject(handle, newName)
+            }
+            if (updated == null) {
+                statusMessage.value =
+                    ProjectManager.lastError ?: "Não foi possível renomear o projeto"
+            }
+            refreshProjects()
+        }
+    }
+
     /**
      * APAGA um projeto do disco (com o editor fechado antes, sem gravar nada —
      * salvar depois de apagar recriaria os arquivos). Nunca crasha: falhas

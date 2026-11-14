@@ -132,6 +132,31 @@ object ProjectManager {
         handle.root.deleteRecursively()
     }.onFailure { reportError("deleteProject", it) }.getOrDefault(false)
 
+    /**
+     * Renomeia um projeto (grava o novo nome no project.kenkern e retorna o
+     * handle atualizado). NUNCA lança: null em falha (motivo em [lastError]).
+     */
+    fun renameProject(handle: ProjectHandle, newName: String): ProjectHandle? = runCatching {
+        val clean = newName.trim()
+        if (clean.isBlank()) {
+            lastError = "Nome de projeto inválido"
+            return null
+        }
+        val metaFile = File(handle.root, PROJECT_FILE)
+        if (!metaFile.isFile) {
+            lastError = "project.kenkern não encontrado"
+            return null
+        }
+        val updated = metaFile.readLines().map { line ->
+            if (line.trim().startsWith("name=")) "name=${CkFormat.quote(clean)}" else line
+        }
+        if (!writeFileAtomic(metaFile, updated.joinToString("\n") + "\n")) {
+            lastError = "Falha ao gravar $PROJECT_FILE"
+            return null
+        }
+        ProjectHandle(handle.root, clean, handle.createdAt)
+    }.onFailure { reportError("renameProject", it) }.getOrNull()
+
     fun openProject(context: Context, root: File): ProjectHandle? = runCatching {
         if (!root.isDirectory) return null
         if (!File(root, PROJECT_FILE).isFile) return null
