@@ -4,7 +4,6 @@ import com.kenkern.engine.core.math.Mat4
 import com.kenkern.engine.core.math.Vec3
 import kotlin.math.cos
 import kotlin.math.sin
-import kotlin.math.tan
 
 /** Modo de câmera do viewport. */
 enum class CameraMode { ORBITAL, FLIGHT }
@@ -69,12 +68,20 @@ class OrbitCamera {
         }
     }
 
-    /** Near efetivo: escala com a distância da câmera (mínimo 0,05). */
+    /** Near efetivo: escala com a distância da câmera (mínimo 0,05; NaN cai no padrão). */
     fun effectiveNear(): Float = if (mode == CameraMode.ORBITAL) {
-        (distance * NEAR_DIST_FACTOR).coerceAtLeast(NEAR_MIN)
+        val d = if (distance.isFinite()) distance else 9f
+        (d * NEAR_DIST_FACTOR).coerceAtLeast(NEAR_MIN)
     } else {
         NEAR_MIN
     }
+
+    /** FOV seguro para tan(): 0,1–179,9° (NaN/Inf -> padrão 55). Evita tan→∞/NaN. */
+    private fun safeFov(): Float = if (fovDegrees.isFinite()) fovDegrees.coerceIn(0.1f, 179.9f) else 55f
+
+    /** tan(fov/2) do FOV seguro (nunca 0: tan(0,05°) > 0,0008). */
+    private fun safeTanHalfFov(): Float =
+        kotlin.math.tan(Math.toRadians((safeFov() * 0.5f).toDouble())).toFloat()
 
     // ---------- Orbital: gestos ----------
 
@@ -89,7 +96,10 @@ class OrbitCamera {
 
     /** Pinça ZOOM EXPONENCIAL: distância multiplicada por fator (limites 0,05–5000). */
     fun zoom(scale: Float) {
-        distance = (distance * scale).coerceIn(minDistance, maxDistance)
+        // Guardas ANTI-NaN: fator inválido vira 1 (sem zoom); NaN não atravessa coerceIn.
+        val s = if (scale.isFinite()) scale else 1f
+        val d = if (distance.isFinite()) distance else 9f
+        distance = (d * s).coerceIn(minDistance, maxDistance)
     }
 
     /** Pan em pixels: velocidade proporcional à distância ao pivô. */
@@ -139,17 +149,22 @@ class OrbitCamera {
     /**
      * FOCO (F / toque duplo): posiciona a câmera para enquadrar uma esfera
      * (centro + raio da AABB). Distância pelo FOV com margem de enquadramento.
+     * ANTI-NaN: centro/raio inválidos (AABB vazia ou transform patológico) caem
+     * no ponto padrão da cena; a distância final fica sempre nos limites.
      */
     fun focusOn(centerX: Float, centerY: Float, centerZ: Float, radius: Float) {
-        val halfFovRad = Math.toRadians((fovDegrees * 0.5f).toDouble())
-        val fit = (radius * FOCUS_MARGIN / tan(halfFovRad).toFloat())
+        val cx = if (centerX.isFinite()) centerX else 0f
+        val cy = if (centerY.isFinite()) centerY else 0.8f
+        val cz = if (centerZ.isFinite()) centerZ else 0f
+        val r = if (radius.isFinite() && radius > 0f) radius else 4f
+        val fit = (r * FOCUS_MARGIN / safeTanHalfFov().coerceAtLeast(1e-4f))
             .coerceIn(1.5f, maxDistance)
         if (mode == CameraMode.ORBITAL) {
-            target.set(centerX, centerY, centerZ)
+            target.set(cx, cy, cz)
             distance = fit
         } else {
             computeBasis()
-            flightPosition.set(centerX, centerY, centerZ).addScaled(forward, -fit)
+            flightPosition.set(cx, cy, cz).addScaled(forward, -fit)
         }
     }
 
@@ -210,7 +225,7 @@ class OrbitCamera {
         } else {
             outOrigin.set(flightPosition)
         }
-        val t = kotlin.math.tan(Math.toRadians(fovDegrees.toDouble()).toFloat() * 0.5f)
+        val t = safeTanHalfFov()
         outDir.set(forward)
             .addScaled(right, ndcX * t * aspect)
             .addScaled(up, ndcY * t)
@@ -218,7 +233,8 @@ class OrbitCamera {
     }
 
     fun projection(out: Mat4, aspect: Float) {
-        out.setPerspective(fovDegrees, aspect.coerceAtLeast(0.1f), effectiveNear(), FAR_PLANE)
+        // FOV/near/far sempre finitos e dentro dos limites (nunca NaN nos uniforms).
+        out.setPerspective(safeFov(), aspect.coerceAtLeast(0.1f), effectiveNear(), FAR_PLANE)
     }
 
     companion object {

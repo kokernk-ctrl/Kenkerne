@@ -282,6 +282,33 @@ class GlesBackend : RenderBackend {
         }
     """.trimIndent()
 
+    /*
+     * FALLBACK da grade (ANTI-CRASH): se o shader completo não compilar/linkar
+     * neste driver, este shader mínimo (sem fwidth, sem padrão de grade — só o
+     * plano com fade) assume o lugar. NUNCA lança exceção; o log do erro do
+     * shader vai para o logcat em compile()/buildProgram().
+     */
+    private val gridFallbackFragmentShader = """
+        #version 300 es
+        precision highp float;
+        in vec2 vNdc;
+        uniform vec3 uFwd;
+        uniform vec3 uRight;
+        uniform vec3 uUp;
+        uniform float uTanFov;
+        uniform float uAspect;
+        uniform vec3 uCamPos;
+        out vec4 fragColor;
+        void main() {
+            vec3 dir = normalize(uFwd + uRight * (vNdc.x * uTanFov * uAspect) + uUp * (vNdc.y * uTanFov));
+            if (abs(dir.y) < 1e-4) discard;
+            float t = -uCamPos.y / dir.y;
+            if (t <= 0.0) discard;
+            float alpha = 0.14 * (1.0 - smoothstep(200.0, 900.0, t));
+            fragColor = vec4(0.47, 0.49, 0.53, alpha);
+        }
+    """.trimIndent()
+
     // Flat (contorno inverted hull): cor sólida, sem iluminação.
     private val flatVertexShader = """
         #version 300 es
@@ -392,6 +419,10 @@ class GlesBackend : RenderBackend {
 
         runCatching {
             gridProgram = buildProgram(gridVertexShader, gridFragmentShader)
+            if (gridProgram == 0) {
+                Log.w(TAG, "Shader da grade infinita falhou; tentando fallback simples")
+                gridProgram = buildProgram(gridVertexShader, gridFallbackFragmentShader)
+            }
             if (gridProgram != 0) {
                 uGridFwd = GLES30.glGetUniformLocation(gridProgram, "uFwd")
                 uGridRight = GLES30.glGetUniformLocation(gridProgram, "uRight")
@@ -505,6 +536,12 @@ class GlesBackend : RenderBackend {
         while (GLES30.glGetError() != GLES30.GL_NO_ERROR) { /* descarta erros pendentes */ }
     }
 
+    /**
+     * ANTI-NaN/Inf: nenhum valor não finito chega à GPU. Uniforms NaN/Inf podem
+     * gerar comportamento indefinido em drivers restritos; aqui viram 0 (seguro).
+     */
+    private fun fin(v: Float): Float = if (v.isFinite()) v else 0f
+
     /** Vincula um programa apenas se ele mudou (evita glUseProgram redundante). */
     private fun useProgram(p: Int) {
         if (p != 0 && boundProgram != p) {
@@ -537,11 +574,11 @@ class GlesBackend : RenderBackend {
             sunDirX = -dirX / len; sunDirY = -dirY / len; sunDirZ = -dirZ / len
         }
         useProgram(program)
-        uniformScratch[0] = dirX; uniformScratch[1] = dirY; uniformScratch[2] = dirZ
+        uniformScratch[0] = fin(dirX); uniformScratch[1] = fin(dirY); uniformScratch[2] = fin(dirZ)
         GLES30.glUniform3fv(uLightDir, 1, uniformScratch, 0)
-        uniformScratch[0] = lightR; uniformScratch[1] = lightG; uniformScratch[2] = lightB
+        uniformScratch[0] = fin(lightR); uniformScratch[1] = fin(lightG); uniformScratch[2] = fin(lightB)
         GLES30.glUniform3fv(uLightColor, 1, uniformScratch, 0)
-        GLES30.glUniform1f(uLightIntensity, intensity)
+        GLES30.glUniform1f(uLightIntensity, fin(intensity))
     }
 
     override fun createMesh(mesh: MeshData): Int {
@@ -686,15 +723,15 @@ class GlesBackend : RenderBackend {
         GLES30.glDepthMask(false)
         useProgram(skyProgram)
         GLES30.glBindVertexArray(skyVao)
-        uniformScratch[0] = fwdX; uniformScratch[1] = fwdY; uniformScratch[2] = fwdZ
+        uniformScratch[0] = fin(fwdX); uniformScratch[1] = fin(fwdY); uniformScratch[2] = fin(fwdZ)
         GLES30.glUniform3fv(uSkyFwd, 1, uniformScratch, 0)
-        uniformScratch[0] = rightX; uniformScratch[1] = rightY; uniformScratch[2] = rightZ
+        uniformScratch[0] = fin(rightX); uniformScratch[1] = fin(rightY); uniformScratch[2] = fin(rightZ)
         GLES30.glUniform3fv(uSkyRight, 1, uniformScratch, 0)
-        uniformScratch[0] = upX; uniformScratch[1] = upY; uniformScratch[2] = upZ
+        uniformScratch[0] = fin(upX); uniformScratch[1] = fin(upY); uniformScratch[2] = fin(upZ)
         GLES30.glUniform3fv(uSkyUp, 1, uniformScratch, 0)
-        GLES30.glUniform1f(uSkyTanFov, tanHalfFov)
-        GLES30.glUniform1f(uSkyAspect, aspect)
-        uniformScratch[0] = sunX; uniformScratch[1] = sunY; uniformScratch[2] = sunZ
+        GLES30.glUniform1f(uSkyTanFov, fin(tanHalfFov))
+        GLES30.glUniform1f(uSkyAspect, fin(aspect))
+        uniformScratch[0] = fin(sunX); uniformScratch[1] = fin(sunY); uniformScratch[2] = fin(sunZ)
         GLES30.glUniform3fv(uSkySun, 1, uniformScratch, 0)
         GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
         GLES30.glDepthMask(true)
@@ -720,15 +757,15 @@ class GlesBackend : RenderBackend {
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
         useProgram(gridProgram)
         GLES30.glBindVertexArray(skyVao)
-        uniformScratch[0] = fwdX; uniformScratch[1] = fwdY; uniformScratch[2] = fwdZ
+        uniformScratch[0] = fin(fwdX); uniformScratch[1] = fin(fwdY); uniformScratch[2] = fin(fwdZ)
         GLES30.glUniform3fv(uGridFwd, 1, uniformScratch, 0)
-        uniformScratch[0] = rightX; uniformScratch[1] = rightY; uniformScratch[2] = rightZ
+        uniformScratch[0] = fin(rightX); uniformScratch[1] = fin(rightY); uniformScratch[2] = fin(rightZ)
         GLES30.glUniform3fv(uGridRight, 1, uniformScratch, 0)
-        uniformScratch[0] = upX; uniformScratch[1] = upY; uniformScratch[2] = upZ
+        uniformScratch[0] = fin(upX); uniformScratch[1] = fin(upY); uniformScratch[2] = fin(upZ)
         GLES30.glUniform3fv(uGridUp, 1, uniformScratch, 0)
-        GLES30.glUniform1f(uGridTanFov, tanHalfFov)
-        GLES30.glUniform1f(uGridAspect, aspect)
-        uniformScratch[0] = camX; uniformScratch[1] = camY; uniformScratch[2] = camZ
+        GLES30.glUniform1f(uGridTanFov, fin(tanHalfFov))
+        GLES30.glUniform1f(uGridAspect, fin(aspect))
+        uniformScratch[0] = fin(camX); uniformScratch[1] = fin(camY); uniformScratch[2] = fin(camZ)
         GLES30.glUniform3fv(uGridCam, 1, uniformScratch, 0)
         GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
         GLES30.glDisable(GLES30.GL_BLEND)

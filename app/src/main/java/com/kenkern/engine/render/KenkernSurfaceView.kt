@@ -408,6 +408,11 @@ class KenkernSurfaceView(
         val dy = (focusMax.y - focusMin.y) * 0.5f
         val dz = (focusMax.z - focusMin.z) * 0.5f
         val radius = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz).coerceAtLeast(0.5f)
+        // Guarda ANTI-NaN: AABB patológica (transform inválido) -> foco no padrão.
+        if (!(focusCenter.x.isFinite() && focusCenter.y.isFinite() && focusCenter.z.isFinite())) {
+            camera.focusOn(0f, 0.8f, 0f, 4f)
+            return
+        }
         camera.focusOn(focusCenter.x, focusCenter.y, focusCenter.z, radius)
     }
 

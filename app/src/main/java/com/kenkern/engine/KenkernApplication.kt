@@ -31,6 +31,7 @@ class KenkernApplication : Application() {
                 File(dir, "last_crash.txt").writeText(
                     buildString {
                         appendLine("KENKERN crash report — $stamp")
+                        appendLine("app: ${appVersion()}")
                         appendLine("thread: ${thread.name}")
                         appendLine(throwable.javaClass.name)
                         appendLine(throwable.message ?: "")
@@ -45,4 +46,10 @@ class KenkernApplication : Application() {
             platform?.uncaughtException(thread, throwable)
         }
     }
+
+    /** Versão instalada (versionName + versionCode) para correlacionar o crash à release. */
+    private fun appVersion(): String = runCatching {
+        val pm = packageManager.getPackageInfo(packageName, 0)
+        "${pm.versionName} (vc${pm.versionCode})"
+    }.getOrDefault("desconhecida")
 }
