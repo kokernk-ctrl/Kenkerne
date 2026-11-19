@@ -111,6 +111,7 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
 
     // Scratches (zero alocação por evento)
     private val sModel = Mat4()
+    private val sMvp = Mat4()   // MVP = viewProj × sModel (hit-test em pixels de tela)
     private val sScaleVec = Vec3()
     private val sIdentRot = Quaternion()
     private val sWorldRot = Quaternion()
@@ -176,6 +177,12 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
     ): GizmoHandle {
         val data = dataFor(mode)
         buildModel(worldPos, worldRot, screenScale, space, sModel)
+        // MVP COMPLETO: os alvos do hit-test (segmentos/quadrados LOCAIS do gizmo)
+        // precisam ser projetados pela MESMA matriz do desenho (viewProj × model).
+        // Projetar só pelo model colocava as alças em posições de tela erradas —
+        // o hit-test nunca coincidia com as alças desenhadas (causa raiz da
+        // "alça não reage ao toque"; exposto pelo teste de unidade).
+        sMvp.multiply(viewProj, sModel)
 
         var best = GizmoHandle.NONE
         var bestDist = touchRadiusPx
@@ -186,8 +193,8 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
             var minDist = Float.MAX_VALUE
             var i = 0
             while (i < segs.size) {
-                projectToScreen(sModel, segs[i], segs[i + 1], segs[i + 2], viewportW, viewportH, sQuadX, sQuadY, 0)
-                projectToScreen(sModel, segs[i + 3], segs[i + 4], segs[i + 5], viewportW, viewportH, sQuadX, sQuadY, 1)
+                projectToScreen(sMvp, segs[i], segs[i + 1], segs[i + 2], viewportW, viewportH, sQuadX, sQuadY, 0)
+                projectToScreen(sMvp, segs[i + 3], segs[i + 4], segs[i + 5], viewportW, viewportH, sQuadX, sQuadY, 1)
                 val d = distPointSegment(touchX, touchY, sQuadX[0], sQuadY[0], sQuadX[1], sQuadY[1])
                 if (d < minDist) minDist = d
                 i += 6
@@ -203,7 +210,7 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
         for ((handle, quad) in data.hitQuads) {
             for (c in 0 until 4) {
                 projectToScreen(
-                    sModel, quad[c * 3], quad[c * 3 + 1], quad[c * 3 + 2],
+                    sMvp, quad[c * 3], quad[c * 3 + 1], quad[c * 3 + 2],
                     viewportW, viewportH, sQuadX, sQuadY, c
                 )
             }
