@@ -14,8 +14,15 @@ android {
         applicationId = "com.kenkern.engine"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.1.10-touch-diag"
+        versionCode = 12
+        versionName = "0.1.11-cam-fix"
+    }
+
+    // Testes de unidade JVM: métodos do android.jar (ex.: Log.d feito a cada
+    // reset de baseline no TouchController) retornam padrão em vez de lançar
+    // "not mocked" — sem isso os testes da pinça quebrariam no Log.d.
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 
     // Assinatura de release lida de variáveis de ambiente (mesma estratégia usada no CI).
@@ -86,4 +93,7 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
+    // mockito-core 5.x: mock-maker INLINE por padrão — mocka MotionEvent (classe
+    // final do framework) em testes de unidade JVM puros (sem Robolectric).
+    testImplementation(libs.mockito.core)
 }

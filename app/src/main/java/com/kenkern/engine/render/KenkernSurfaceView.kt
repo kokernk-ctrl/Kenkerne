@@ -85,6 +85,18 @@ class ViewportDebugState {
     @Volatile var gizmoNearestDp = -1f
     @Volatile var gizmoNote: String? = null
 
+    // ---- Pinça/câmera (thread UI, a cada evento de toque) ---- diagnóstico
+    // do zoom orbital preso: nº de dedos, span inicial/atual da pinça, fator
+    // do último MOVE e o motivo do último reset de baseline.
+    @Volatile var pinchFingers = 0
+    @Volatile var pinchStartSpan = 0f  // span quando o 2º dedo pousou (px da view)
+    @Volatile var pinchSpan = 0f       // span corrente entre os dedos (px da view)
+    @Volatile var pinchLastFactor = 1f // oldDist/newDist do último MOVE da pinça
+    @Volatile var pinchResetReason: String = TouchController.RESET_NONE
+
+    // ---- Voo (thread UI) ---- gesto de olhar (1 ou 2 dedos)
+    @Volatile var flightGesture: String = "—"
+
     fun clearHandles() {
         for (i in handleValid.indices) handleValid[i] = false
         handleVersion++
@@ -157,6 +169,26 @@ fun ViewportDebugState.publishGizmoHit(handle: GizmoHandle, nearestDp: Float, no
     gizmoHit = handle
     gizmoNearestDp = nearestDp
     gizmoNote = note
+}
+
+/** Estado da pinça para a linha de diagnóstico da câmera (só primitivos). */
+fun ViewportDebugState.publishPinch(
+    fingers: Int,
+    startSpan: Float,
+    currentSpan: Float,
+    lastFactor: Float,
+    resetReason: String
+) {
+    pinchFingers = fingers
+    pinchStartSpan = startSpan
+    pinchSpan = currentSpan
+    pinchLastFactor = lastFactor
+    pinchResetReason = resetReason
+}
+
+/** Gesto de olhar do modo VOO para a linha de diagnóstico (constante, sem alocação). */
+fun ViewportDebugState.publishFlight(gesture: String) {
+    flightGesture = gesture
 }
 
 /**
@@ -375,7 +407,15 @@ class KenkernSurfaceView(
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             onFirstTouch()
         }
-        val handled = runCatching { touch.onTouch(event) }.getOrDefault(false)
+        // runCatching NUNCA derruba o app por um evento de toque, mas o erro
+        // era engolido EM SILÊNCIO (getOrDefault(false)) — foi assim que a
+        // IllegalArgumentException do "dedo morto" da pinça congelou a câmera
+        // sem nenhum rastro. Agora sempre deixa uma linha no logcat.
+        val handled = runCatching { touch.onTouch(event) }
+            .onFailure {
+                Log.e(TAG, "onTouch descartado: ${it.javaClass.simpleName}: ${it.message}", it)
+            }
+            .getOrDefault(false)
         // Posse do gesto decidida no DOWN: se o gizmo capturou a alça, nenhum pai
         // intercepta o gesto até o ACTION_UP (o sistema limpa a flag no próximo DOWN).
         if (event.actionMasked == MotionEvent.ACTION_DOWN &&

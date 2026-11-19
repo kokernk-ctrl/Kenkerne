@@ -927,6 +927,32 @@ private fun buildDebugLines(sv: KenkernSurfaceView, viewPx: android.util.Size): 
     if (sv.isGizmoDegraded) {
         lines.add("GIZMO VAZIO (fallback do runCatching) — hit-test sem alvos")
     }
+
+    // CÂMERA/PINÇA (diagnóstico do zoom preso): modo/distância/min/max/yaw/pitch
+    // lidos da CÂMERA VIVA (mesmo padrão do FlightControls, 10 Hz); nº de dedos,
+    // spans, fator do último MOVE e motivo do reset do baseline vêm do
+    // TouchController (publicados por evento, só primitivos).
+    val cam = sv.camera
+    val isFlight = cam.mode == CameraMode.FLIGHT
+    lines.add(
+        String.format(
+            Locale.US,
+            "cam: %s · dist %.2fm [%.2f–%.0f] · dedos %d · span %.0f→%.0fpx · fator %.3f · reset: %s",
+            if (isFlight) "VOO" else "ORBITAL",
+            cam.distance, cam.minDistance, cam.maxDistance,
+            dbg.pinchFingers, dbg.pinchStartSpan, dbg.pinchSpan,
+            dbg.pinchLastFactor, dbg.pinchResetReason
+        )
+    )
+    if (isFlight) {
+        lines.add(
+            String.format(
+                Locale.US,
+                "voo: yaw %.1f° · pitch %.1f° · gesto: %s",
+                cam.flightYawDegrees, cam.flightPitchDegrees, dbg.flightGesture
+            )
+        )
+    }
     return lines
 }
 

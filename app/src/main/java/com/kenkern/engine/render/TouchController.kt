@@ -1,5 +1,6 @@
 package com.kenkern.engine.render
 
+import android.util.Log
 import android.view.MotionEvent
 
 /** Roteamento de gestos do gizmo (o toque começa numa alça => controla o gizmo). */
@@ -18,7 +19,8 @@ enum class TouchClass { NONE, PENDING, TAP, DRAG, GIZMO }
  *  - toque sobre alça do gizmo => arrasto do gizmo (conflito resolvido no DOWN,
  *    sem touch slop: o gizmo assume o gesto imediatamente);
  *  - modo ORBITAL: 1 dedo = orbitar (tap curto => seleção; duplo toque => foco);
- *  - modo VOO: 1 dedo = girar o olhar; 2 dedos ignorados (movimento é do joystick);
+ *  - modo VOO: 1 dedo OU 2 dedos arrastando = girar o olhar (movimento é do
+ *    joystick/botões — nada de movimento foi realocado para o toque);
  *  - 2 dedos no orbital = pan + pinça de zoom exponencial.
  * Sem alocação por evento (arrays pré-alocados por id de ponteiro).
  *
@@ -61,6 +63,16 @@ class TouchController(
     private var lastTapX = 0f
     private var lastTapY = 0f
 
+    // ---- Diagnóstico da pinça (overlay de debug, ETAPA A) ----
+    // span no momento em que a pinça começou (2º dedo pousou); 0 = sem pinça
+    private var pinchStartSpan = 0f
+    // span corrente entre os 2 dedos (0 quando não há pinça)
+    private var pinchCurrentSpan = 0f
+    // fator aplicado no último MOVE da pinça (oldDist/newDist; 1 = sem zoom)
+    private var pinchLastFactor = 1f
+    // motivo do último reset de baseline (DOWN/UP/CANCEL/troca de dedos)
+    private var lastBaselineReset: String = RESET_NONE
+
     fun onTouch(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -78,14 +90,24 @@ class TouchController(
                 // (e a câmera ignora todo o resto até o ACTION_UP).
                 gizmoCaptured = gizmoHandler?.onGizmoDown(downX, downY) ?: false
                 debug?.publishDown(downX, downY, gizmoCaptured)
+                // baseline da pinça nasce limpo a cada DOWN
+                pinchCurrentSpan = 0f
+                markBaselineReset(RESET_DOWN, event)
+                publishPinchDebug(0)
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
-                val idx = event.actionIndex
-                if (idx in 0 until MAX_POINTERS) {
-                    track(event, idx)
-                    activeCount++
-                    multiTouchSeen = true
-                }
+                // FIX DO ZOOM PRESO: reancora TODOS os ponteiros presentes no
+                // evento (o track só do novo dedo deixava a primeira distância
+                // da pinça com âncora velha do gesto de 1 dedo). O nº de dedos
+                // passa a ser o pointerCount do evento (verdade absoluta) em vez
+                // de contador incremental que podia inflar com dedos mortos.
+                for (i in 0 until event.pointerCount) track(event, i)
+                activeCount = event.pointerCount
+                multiTouchSeen = true
+                // novo baseline da pinça: span no instante em que ela começa
+                pinchStartSpan = spanOf(event)
+                markBaselineReset(RESET_JOIN, event)
+                publishPinchDebug(event.pointerCount)
                 if (gizmoCaptured) {
                     // segundo dedo durante arrasto do gizmo: cancela o gesto
                     gizmoHandler?.onGizmoUp(lastX, lastY)
@@ -120,6 +142,7 @@ class TouchController(
                             val dy = y - prevY[p0]
                             if (camera.mode == CameraMode.FLIGHT) {
                                 camera.rotateFlight(dx, dy)
+                                debug?.publishFlight(GESTURE_LOOK_1)
                             } else {
                                 camera.orbit(dx, dy)
                             }
@@ -127,11 +150,15 @@ class TouchController(
                             prevY[p0] = y
                         }
                         debug?.publishMove(x, y, false, moved, event.eventTime - downTimeMs)
+                        publishPinchDebug(1)
                     }
                 } else if (activeCount >= 2 && camera.mode == CameraMode.ORBITAL) {
                     val a = trackedIndex(event, 0)
                     val b = trackedIndex(event, 1)
-                    if (a >= 0 && b >= 0) {
+                    // Guarda de consistência: só leia os ponteiros 0/1 se o EVENTO
+                    // realmente os tem — um estado residual nunca mais lança
+                    // IllegalArgumentException engolida pelo runCatching da view.
+                    if (a >= 0 && b >= 0 && event.pointerCount >= 2) {
                         val ax = event.getX(0); val ay = event.getY(0)
                         val bx = event.getX(1); val by = event.getY(1)
                         val newDist = kotlin.math.hypot((bx - ax).toDouble(), (by - ay).toDouble()).toFloat()
@@ -140,8 +167,11 @@ class TouchController(
                         ).toFloat()
                         if (oldDist > 1f && newDist > 1f) {
                             // ZOOM EXPONENCIAL: dist *= fator
-                            camera.zoom(oldDist / newDist)
+                            val factor = oldDist / newDist
+                            camera.zoom(factor)
+                            pinchLastFactor = factor
                         }
+                        pinchCurrentSpan = newDist // span corrente para o overlay
                         val newMidX = (ax + bx) * 0.5f
                         val newMidY = (ay + by) * 0.5f
                         val oldMidX = (prevX[a] + prevX[b]) * 0.5f
@@ -150,6 +180,29 @@ class TouchController(
                         prevX[a] = ax; prevY[a] = ay
                         prevX[b] = bx; prevY[b] = by
                         debug?.publishMove((ax + bx) * 0.5f, (ay + by) * 0.5f, false, true, event.eventTime - downTimeMs)
+                        publishPinchDebug(event.pointerCount)
+                    }
+                } else if (activeCount >= 2 && camera.mode == CameraMode.FLIGHT) {
+                    // VOO + 2 DEDOS = OLHAR (antes os 2 dedos eram simplesmente
+                    // ignorados; o movimento continua no joystick/botões — nada foi
+                    // realocado). Delta do PONTO MÉDIO convertido para DP e passado
+                    // ao rotateFlight: 0,25°/dp efetivos (especificação). Os SINAIS
+                    // são os MESMOS do gesto de 1 dedo: nesta câmera yaw DIMINUI
+                    // para olhar à direita (forward.x = -sin(yaw), veja OrbitCamera
+                    // computeBasis) — dedo à direita => olha à direita; dedo para
+                    // cima => olha para cima. Clamp ±89° fica no rotateFlight.
+                    // Zero alocação por evento.
+                    val a = trackedIndex(event, 0)
+                    val b = trackedIndex(event, 1)
+                    if (a >= 0 && b >= 0 && event.pointerCount >= 2) {
+                        val ax = event.getX(0); val ay = event.getY(0)
+                        val bx = event.getX(1); val by = event.getY(1)
+                        val dxdp = ((ax + bx) * 0.5f - (prevX[0] + prevX[1]) * 0.5f) / density
+                        val dydp = ((ay + by) * 0.5f - (prevY[0] + prevY[1]) * 0.5f) / density
+                        camera.rotateFlight(dxdp, dydp)
+                        debug?.publishFlight(GESTURE_LOOK_2)
+                        prevX[0] = ax; prevY[0] = ay
+                        prevX[1] = bx; prevY[1] = by
                     }
                 }
             }
@@ -161,13 +214,23 @@ class TouchController(
                     debug?.publishClass(TouchClass.GIZMO, "gizmo solto (2º dedo)")
                     return true
                 }
-                // O Android re-indexa os ponteiros restantes: reancora tudo do zero
-                // para evitar saltos de câmera.
+                // FIX DO ZOOM PRESO (causa raiz): o evento de POINTER_UP AINDA
+                // CONTÉM o dedo que está subindo (pointerCount o inclui). Reancorar
+                // tudo mantinha o DEDO MORTO como ativo com activeCount=2 — e o
+                // próximo MOVE (com pointerCount=1) caía na pinça e lançava
+                // IllegalArgumentException em getX(1), engolida pelo runCatching
+                // da KenkernSurfaceView: câmera presa até soltar TUDO. Agora só os
+                // ponteiros que FICARAM são reancorados.
                 resetAll()
                 for (i in 0 until event.pointerCount) {
+                    if (i == event.actionIndex) continue // pula o dedo que subiu
                     track(event, i)
                 }
-                activeCount = event.pointerCount
+                activeCount = (event.pointerCount - 1).coerceAtLeast(0)
+                pinchStartSpan = 0f // pinça terminou: sem span de baseline
+                pinchCurrentSpan = 0f
+                markBaselineReset(RESET_SPLIT, event)
+                publishPinchDebug(activeCount)
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (gizmoCaptured) {
@@ -230,6 +293,12 @@ class TouchController(
                             debug?.publishClass(TouchClass.NONE, "sem gesto")
                     }
                 }
+                markBaselineReset(
+                    if (event.actionMasked == MotionEvent.ACTION_CANCEL) RESET_CANCEL else RESET_UP,
+                    event
+                )
+                pinchCurrentSpan = 0f
+                publishPinchDebug(0)
                 resetAll()
             }
         }
@@ -249,6 +318,29 @@ class TouchController(
         activeCount = 0
     }
 
+    /** Span (distância) entre os ponteiros 0 e 1; 0 quando há menos de 2. */
+    private fun spanOf(event: MotionEvent): Float {
+        if (event.pointerCount < 2) return 0f
+        return kotlin.math.hypot(
+            (event.getX(1) - event.getX(0)).toDouble(),
+            (event.getY(1) - event.getY(0)).toDouble()
+        ).toFloat()
+    }
+
+    /** Logcat + registro do motivo do último reset de baseline da pinça. */
+    private fun markBaselineReset(reason: String, event: MotionEvent) {
+        lastBaselineReset = reason
+        Log.d(TAG, "baseline reset: $reason · dedos=${event.pointerCount} · span=${spanOf(event)}")
+    }
+
+    /**
+     * Publica o estado da pinça para a linha de debug do overlay (ETAPA A).
+     * Só escritas de primitivos @Volatile — ZERO alocação por evento.
+     */
+    private fun publishPinchDebug(fingers: Int) {
+        debug?.publishPinch(fingers, pinchStartSpan, pinchCurrentSpan, pinchLastFactor, lastBaselineReset)
+    }
+
     private fun track(event: MotionEvent, pointerIndex: Int) {
         val slot = pointerIndex.coerceIn(0, MAX_POINTERS - 1)
         active[slot] = true
@@ -263,7 +355,20 @@ class TouchController(
     }
 
     companion object {
+        private const val TAG = "Kenkern/Touch"
         private const val MAX_POINTERS = 8
+
+        // Motivos de reset de baseline (constantes: ZERO alocação por evento)
+        const val RESET_NONE = "—"
+        const val RESET_DOWN = "DOWN"
+        const val RESET_UP = "UP"
+        const val RESET_CANCEL = "CANCEL"
+        const val RESET_JOIN = "1→2 dedos"
+        const val RESET_SPLIT = "2→1 dedos"
+
+        // Rótulos do gesto de voo para o overlay (constantes)
+        const val GESTURE_LOOK_1 = "olhar (1 dedo)"
+        const val GESTURE_LOOK_2 = "olhar (2 dedos)"
 
         /** Seleção: gesto de no máximo 250 ms (antes 200 ms — dedos reais seguram mais). */
         const val TAP_MAX_MS = 250L
