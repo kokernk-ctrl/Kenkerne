@@ -610,7 +610,7 @@ class KenkernSurfaceView(
                 if (sd >= 0f && sd < nearestOverall) nearestOverall = sd
                 if (sd in 0f..tolPx) {
                     val better = sd < bestScreen - 0.5f ||
-                        (sd <= bestScreen + 0.5f && t in 0f until bestT)
+                        (sd <= bestScreen + 0.5f && t >= 0f && t < bestT)
                     if (better) {
                         bestScreen = sd
                         bestT = if (t >= 0f) t else -1f
