@@ -207,29 +207,50 @@ class OrbitCamera {
         }
     }
 
-    /** Direção "para frente" da câmera, sem alocar. */
+    /**
+     * Direção "para frente" da câmera = DIREÇÃO DE OLHAR real (a mesma da
+     * matriz de view), sem alocar. No ORBITAL a base interna `forward` aponta
+     * do alvo para o olho (vetor de COSTA), então aqui ela é invertida; no VOO
+     * `forward` já é o olhar.
+     */
     fun forwardVector(out: Vec3) {
         computeBasis()
-        out.set(forward)
+        if (mode == CameraMode.ORBITAL) {
+            out.set(-forward.x, -forward.y, -forward.z)
+        } else {
+            out.set(forward)
+        }
     }
 
     /**
-     * Raio em mundo que passa pelo ponto de tela (NDC), mesma convenção do
-     * shader do céu/grade: dir = fwd + right*(ndcX*tan*aspect) + up*(ndcY*tan).
-     * Usado pelo picking e pelo gizmo. Sem alocação.
+     * Raio em mundo que passa pelo ponto de tela (NDC), com a MESMA convenção
+     * da matriz de projeção (foi validado por teste de unidade: um ponto na
+     * borda superior do raio projeta ndcY = +1). Usado pelo picking e pelo gizmo.
+     *
+     * CONVENÇÕES POR MODO:
+     *  - VOO: `forward` É o olhar => dir = fwd + right*(ndcX*t*aspect) + up*(ndcY*t).
+     *  - ORBITAL: `forward` aponta do alvo para o OLHO (costa); o olhar real é
+     *    -forward, e o "direita da tela" é -right (o `up` é o mesmo). Usar +forward
+     *    aqui mandava o raio para TRÁS da câmera: o toque no cubo nunca acertava
+     *    (seleção por toque morta no modo orbital — causa raiz corrigida aqui).
+     * Sem alocação.
      */
     fun screenRay(ndcX: Float, ndcY: Float, aspect: Float, outOrigin: Vec3, outDir: Vec3) {
         computeBasis()
+        val t = safeTanHalfFov()
         if (mode == CameraMode.ORBITAL) {
             outOrigin.set(target).addScaled(forward, distance)
+            outDir.set(forward).scale(-1f)
+                .addScaled(right, -ndcX * t * aspect)
+                .addScaled(up, ndcY * t)
+                .normalize()
         } else {
             outOrigin.set(flightPosition)
+            outDir.set(forward)
+                .addScaled(right, ndcX * t * aspect)
+                .addScaled(up, ndcY * t)
+                .normalize()
         }
-        val t = safeTanHalfFov()
-        outDir.set(forward)
-            .addScaled(right, ndcX * t * aspect)
-            .addScaled(up, ndcY * t)
-            .normalize()
     }
 
     fun projection(out: Mat4, aspect: Float) {
