@@ -131,6 +131,7 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
     // Scratches EXCLUSIVOS do thread GL para publicação de debug (projectHandles
     // ToScreen): NÃO compartilham os scratches acima, que o hit-test da UI usa.
     private val dbgModel = Mat4()
+    private val dbgMvp = Mat4()
     private val dbgScaleVec = Vec3()
     private val dbgIdentRot = Quaternion()
 
@@ -258,7 +259,10 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
             dbgIdentRot.setIdentity()
             dbgModel.setTRS(worldPos, dbgIdentRot, dbgScaleVec)
         }
-        val mm = dbgModel.m
+        // MVP = viewProj × model: projeta o ponto LOCAL pela matriz COMPLETA
+        // (a mesma do desenho). Projetar só pelo model ignoraria a câmera.
+        dbgMvp.multiply(viewProj, dbgModel)
+        val mm = dbgMvp.m
         val n = minOf(DEBUG_HANDLE_POINTS.size, outX.size, outY.size, outValid.size)
         for (i in 0 until n) {
             val p = DEBUG_HANDLE_POINTS[i]
