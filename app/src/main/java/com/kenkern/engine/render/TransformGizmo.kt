@@ -77,17 +77,17 @@ class GizmoModeData(
  *
  * Cores: X #E5534B, Y #57AB5A, Z #539BF5; alça sob o dedo: amarelo.
  */
-class TransformGizmo {
+class TransformGizmo private constructor(buildMesh: Boolean) {
 
-    val moveData: GizmoModeData = buildMoveData()
-    val rotateData: GizmoModeData = buildRotateData()
-    val scaleData: GizmoModeData = buildScaleData()
-
-    fun dataFor(mode: GizmoMode): GizmoModeData = when (mode) {
-        GizmoMode.MOVE -> moveData
-        GizmoMode.ROTATE -> rotateData
-        GizmoMode.SCALE -> scaleData
-    }
+    /*
+     * ORDEM DE INICIALIZAÇÃO (corrige o NPE em torusPoint via buildRotateData):
+     * inicializadores de propriedade executam NA ORDEM EM QUE SÃO DECLARADOS.
+     * moveData/rotateData/scaleData chamam build*Data(), então TODAS as outras
+     * propriedades (estado de arrasto, vetores auxiliares, buffers) são
+     * declaradas ANTES deles — auditado: buildMoveData, buildRotateData e
+     * buildScaleData não leem nem escrevem nenhum campo declarado abaixo
+     * (torus/torusPoint usam buffers LOCAIS, não campos).
+     */
 
     // ---------- Sessão de arrasto (instância única, pré-alocada) ----------
     private var dragHandle: GizmoHandle = GizmoHandle.NONE
@@ -127,6 +127,22 @@ class TransformGizmo {
     private val sLocalTarget = Vec3()
     private val sQuadX = FloatArray(4)
     private val sQuadY = FloatArray(4)
+
+    // ---------- Dados estáticos dos três modos (POR ÚLTIMO: só aqui os campos
+    // acima já existem; a cadeia build*Data -> torus/torusPoint usa apenas
+    // variáveis locais, então nada depende de propriedades declaradas abaixo) ----------
+    val moveData: GizmoModeData = if (buildMesh) buildMoveData() else EMPTY_MODE_DATA
+    val rotateData: GizmoModeData = if (buildMesh) buildRotateData() else EMPTY_MODE_DATA
+    val scaleData: GizmoModeData = if (buildMesh) buildScaleData() else EMPTY_MODE_DATA
+
+    /** Construtor padrão do app: gizmo completo, com as malhas dos três modos. */
+    constructor() : this(buildMesh = true)
+
+    fun dataFor(mode: GizmoMode): GizmoModeData = when (mode) {
+        GizmoMode.MOVE -> moveData
+        GizmoMode.ROTATE -> rotateData
+        GizmoMode.SCALE -> scaleData
+    }
 
     /** Escala do gizmo em unidades de mundo para tamanho CONSTANTE na tela (braço ≈ 18% da altura). */
     fun screenScaleFor(camera: OrbitCamera, worldPos: Vec3): Float {
@@ -498,29 +514,32 @@ class TransformGizmo {
         val u = unitVec(axis)
         val p = perpVec(axis)
         val q = crossVec(u, p)
+        // Buffers LOCAIS (antigos campos sPa/sPb/sPc/sPd): torus() roda só na
+        // CONSTRUÇÃO (init-only). Um campo declarado depois do inicializador de
+        // rotateData ainda seria null aqui — a causa exata do NPE em torusPoint.
+        // Variáveis locais não dependem da ordem de inicialização de campos.
+        val pa = FloatArray(3)
+        val pb = FloatArray(3)
+        val pc = FloatArray(3)
+        val pd = FloatArray(3)
         for (i in 0 until majorSegs) {
             val m0 = (i.toFloat() / majorSegs) * 2f * Math.PI.toFloat()
             val m1 = ((i + 1).toFloat() / majorSegs) * 2f * Math.PI.toFloat()
             for (j in 0 until minorSegs) {
                 val n0 = (j.toFloat() / minorSegs) * 2f * Math.PI.toFloat()
                 val n1 = ((j + 1).toFloat() / minorSegs) * 2f * Math.PI.toFloat()
-                torusPoint(u, p, q, majorR, minorR, m0, n0, sPa)
-                torusPoint(u, p, q, majorR, minorR, m1, n0, sPb)
-                torusPoint(u, p, q, majorR, minorR, m1, n1, sPc)
-                torusPoint(u, p, q, majorR, minorR, m0, n1, sPd)
+                torusPoint(u, p, q, majorR, minorR, m0, n0, pa)
+                torusPoint(u, p, q, majorR, minorR, m1, n0, pb)
+                torusPoint(u, p, q, majorR, minorR, m1, n1, pc)
+                torusPoint(u, p, q, majorR, minorR, m0, n1, pd)
                 b.quad(
-                    sPa[0], sPa[1], sPa[2], sPb[0], sPb[1], sPb[2],
-                    sPc[0], sPc[1], sPc[2], sPd[0], sPd[1], sPd[2],
+                    pa[0], pa[1], pa[2], pb[0], pb[1], pb[2],
+                    pc[0], pc[1], pc[2], pd[0], pd[1], pd[2],
                     c[0], c[1], c[2], alpha
                 )
             }
         }
     }
-
-    private val sPa = FloatArray(3)
-    private val sPb = FloatArray(3)
-    private val sPc = FloatArray(3)
-    private val sPd = FloatArray(3)
 
     private fun torusPoint(
         u: FloatArray, p: FloatArray, q: FloatArray,
@@ -899,5 +918,16 @@ class TransformGizmo {
         /** Raio do anel de rotação e espessura do tubo (fração do braço). */
         const val RING_R = 0.82f
         const val RING_TUBE = 0.032f
+
+        /** Dados vazios compartilhados: sem malha e sem alças (render desenha nada). */
+        private val EMPTY_MODE_DATA =
+            GizmoModeData(FloatArray(0), HashMap(), HashMap(), HashMap())
+
+        /**
+         * GIZMO VAZIO (fallback anti-crash): pula a construção das malhas.
+         * O render não desenha nada (tris vazio => total == 0) e o hit-test
+         * devolve NONE (mapas vazios) — o editor segue vivo, sem gizmo.
+         */
+        fun empty(): TransformGizmo = TransformGizmo(buildMesh = false)
     }
 }

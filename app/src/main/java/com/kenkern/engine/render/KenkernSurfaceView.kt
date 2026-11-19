@@ -63,7 +63,24 @@ class KenkernSurfaceView(
     val camera = OrbitCamera()
     val loop = FixedStepLoop()
     val gizmoState = GizmoSharedState()
-    private val gizmo = TransformGizmo()
+
+    /** True = construção do gizmo falhou e caiu no modo VAZIO (aviso na StatusBar). */
+    @Volatile
+    var isGizmoDegraded: Boolean = false
+        private set
+
+    /**
+     * Construção do gizmo blindada (runCatching): qualquer exceção na
+     * inicialização do TransformGizmo (ordem de campos, OOM, etc.) cai para um
+     * GIZMO VAZIO — o viewport renderiza sem gizmo, o hit-test devolve NONE e
+     * a StatusBar mostra o aviso. NUNCA derruba o editor.
+     */
+    private val gizmo: TransformGizmo = runCatching { TransformGizmo() }
+        .getOrElse {
+            Log.e(TAG, "Construção do TransformGizmo falhou: ${it.message} — usando gizmo vazio", it)
+            isGizmoDegraded = true
+            TransformGizmo.empty()
+        }
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val density = resources.displayMetrics.density

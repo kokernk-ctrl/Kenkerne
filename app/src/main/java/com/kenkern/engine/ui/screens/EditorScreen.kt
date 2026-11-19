@@ -910,6 +910,7 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
     val drawTimeMs = surfaceView?.rendererDrawMs(fpsTick) ?: 0f
     val draws = surfaceView?.rendererDrawCalls(fpsTick) ?: 0
     val healthy = surfaceView?.isEngineHealthy ?: true
+    val gizmoDegraded = surfaceView?.isGizmoDegraded ?: false
 
     Surface(
         color = KenkernSurface,
@@ -970,6 +971,17 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
                     modifier = Modifier.size(12.dp)
                 )
                 Text("GL limitado (modo seguro)", fontSize = 12.sp, color = KenkernError)
+            }
+
+            // Gizmo caiu no modo vazio (construção falhou): aviso visível, app vivo.
+            if (gizmoDegraded) {
+                Icon(
+                    Icons.Filled.WarningAmber,
+                    contentDescription = null,
+                    tint = KenkernError,
+                    modifier = Modifier.size(12.dp)
+                )
+                Text("Gizmo indisponível (modo vazio)", fontSize = 12.sp, color = KenkernError)
             }
 
             Spacer(Modifier.weight(1f))
