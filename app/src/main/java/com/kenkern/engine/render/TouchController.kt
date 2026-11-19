@@ -90,10 +90,10 @@ class TouchController(
                 // (e a câmera ignora todo o resto até o ACTION_UP).
                 gizmoCaptured = gizmoHandler?.onGizmoDown(downX, downY) ?: false
                 debug?.publishDown(downX, downY, gizmoCaptured)
-                // baseline da pinça nasce limpo a cada DOWN
+                // baseline da pinça nasce limpo a cada DOWN (1 dedo na tela)
                 pinchCurrentSpan = 0f
                 markBaselineReset(RESET_DOWN, event)
-                publishPinchDebug(0)
+                publishPinchDebug(1)
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 // FIX DO ZOOM PRESO: reancora TODOS os ponteiros presentes no
