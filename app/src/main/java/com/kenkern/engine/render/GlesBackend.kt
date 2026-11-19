@@ -4,6 +4,7 @@ import android.opengl.GLES30
 import android.util.Log
 import com.kenkern.engine.assets.mesh.MeshData
 import com.kenkern.engine.core.math.Mat4
+import com.kenkern.engine.diag.BootTrace
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -394,6 +395,9 @@ class GlesBackend : RenderBackend {
             isDegraded = true
             return true // app continua vivo; viewport mostra só o fundo
         }
+
+        // Marcador de progresso: o programa principal (ou fallback) linkou.
+        BootTrace.mark("shader compilado")
 
         uMvp = GLES30.glGetUniformLocation(program, "uMVP")
         uModel = GLES30.glGetUniformLocation(program, "uModel")

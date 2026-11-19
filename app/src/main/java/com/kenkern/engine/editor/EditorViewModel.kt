@@ -24,6 +24,7 @@ import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.TransformSnapshot
+import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.engine.PlayState
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
@@ -85,6 +86,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     /** Cria um projeto novo (I/O em background) e abre o editor. Nunca crasha. */
     fun createAndEnterProject(rawName: String) {
         if (isLoading.value) return
+        // Marcador de progresso: criar também abre o editor — mesma trilha de
+        // etapas rastreada para localizar crash nativo (a última etapa gravada
+        // é exibida no diálogo de crash do Hub).
+        BootTrace.reset()
+        BootTrace.mark("openProject início")
         isLoading.value = true
         viewModelScope.launch {
             val handle = withContext(Dispatchers.IO) {
@@ -102,6 +108,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     /** Abre um projeto existente (I/O em background). Nunca crasha. */
     fun openProject(handle: ProjectHandle) {
         if (isLoading.value) return
+        // Marcador de progresso: nova tentativa de abertura — zera o rastreio
+        // e grava a primeira etapa com flush (localiza crash nativo no Hub).
+        BootTrace.reset()
+        BootTrace.mark("openProject início")
         isLoading.value = true
         viewModelScope.launch {
             val valid = withContext(Dispatchers.IO) {
@@ -123,6 +133,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             runCatching {
                 val recovered = withContext(Dispatchers.IO) { ProjectManager.hasAutosave(handle) }
                 val loaded = withContext(Dispatchers.IO) { ProjectManager.loadScene(handle) }
+                BootTrace.mark("cena carregada") // loadScene retornou sem exceção
                 // Encerra o estado anterior DEPOIS que a cena nova carregou com sucesso.
                 detachEngineState()
                 project.value = handle

@@ -12,6 +12,7 @@ import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.RotationFromMatrix
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.TransformSnapshot
+import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.core.math.Mat4
 import com.kenkern.engine.core.math.Quaternion
 import com.kenkern.engine.core.math.Vec3
@@ -487,6 +488,9 @@ class KenkernSurfaceView(
         private val engineRenderer = EngineRenderer()
         private var surfaceReady = false
 
+        // Marcador de progresso: "primeiro frame" só é gravado 1x por sessão.
+        private var firstFrameMarked = false
+
         fun currentFps(): Int = engineRenderer.fps
 
         fun currentUpdateMs(): Float = engineRenderer.updateMs
@@ -498,6 +502,10 @@ class KenkernSurfaceView(
         fun isKernRoundtripOk(): Boolean = engineRenderer.isKernRoundtripOk()
 
         override fun onSurfaceCreated(gl: javax.microedition.khronos.opengles.GL10?, config: EGLConfig?) {
+            // Marcador de progresso: EGL criou a surface (o trecho entre "EditorScreen
+            // composto" e esta linha cobre eglCreateContext/eglCreateWindowSurface,
+            // janela típica de crash NATIVO em driver GL).
+            BootTrace.mark("surface criada")
             surfaceReady = false
             isEngineHealthy = false
             runCatching {
@@ -549,6 +557,13 @@ class KenkernSurfaceView(
                     engineRenderer.renderFrame(
                         backend, scene, camera, loop.engineTime, selectionProvider(), gizmoState
                     )
+                    // Marcador de progresso: primeiro frame COMPLETO no thread GL.
+                    // Gravado DEPOIS do renderFrame: crash nativo dentro do draw
+                    // deixa a última etapa em "shader compilado".
+                    if (!firstFrameMarked) {
+                        firstFrameMarked = true
+                        BootTrace.mark("primeiro frame")
+                    }
                 }
             } catch (e: Throwable) {
                 Log.e(TAG, "Frame descartado", e)

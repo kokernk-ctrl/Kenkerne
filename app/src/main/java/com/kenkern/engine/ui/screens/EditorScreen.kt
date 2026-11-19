@@ -86,6 +86,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kenkern.engine.editor.EditorViewModel
 import com.kenkern.engine.editor.PanelUiState
+import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.engine.PlayState
 import com.kenkern.engine.render.CameraMode
 import com.kenkern.engine.render.GizmoMode
@@ -134,6 +135,9 @@ object ViewportSession {
  */
 @Composable
 fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
+    // Marcador de progresso (diagnóstico de crash nativo): esta tela COMPOSTOU.
+    // remember = grava 1x por composição, não a cada recomposição.
+    remember { BootTrace.mark("EditorScreen composto") }
     var surfaceView by remember { mutableStateOf<KenkernSurfaceView?>(null) }
     var resolutionScale by remember { mutableStateOf(1f) }
     var fpsTick by remember { mutableStateOf(0) }

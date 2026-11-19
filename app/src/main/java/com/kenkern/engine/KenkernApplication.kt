@@ -3,6 +3,7 @@ package com.kenkern.engine
 import android.app.Application
 import android.util.Log
 import com.kenkern.engine.core.KenkernBuiltInClasses
+import com.kenkern.engine.diag.BootTrace
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -17,6 +18,9 @@ class KenkernApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Marcador de progresso da abertura do editor (diagnóstico de crash nativo):
+        // captura o contexto de app para gravação com flush a partir de qualquer thread.
+        BootTrace.init(this)
         KenkernBuiltInClasses.registerAll()
         installCrashLogger()
     }
