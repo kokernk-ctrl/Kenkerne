@@ -33,6 +33,9 @@ jobs:
             echo "KEYSTORE_BASE64 ausente: o release será assinado com a chave debug."
           fi
 
+      - name: Testes de unidade (raio de câmera / projeção do gizmo)
+        run: ./gradlew testReleaseUnitTest --stacktrace
+
       - name: assembleRelease
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}

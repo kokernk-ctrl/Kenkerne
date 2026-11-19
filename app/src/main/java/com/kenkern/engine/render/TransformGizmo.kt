@@ -128,6 +128,12 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
     private val sQuadX = FloatArray(4)
     private val sQuadY = FloatArray(4)
 
+    // Scratches EXCLUSIVOS do thread GL para publicação de debug (projectHandles
+    // ToScreen): NÃO compartilham os scratches acima, que o hit-test da UI usa.
+    private val dbgModel = Mat4()
+    private val dbgScaleVec = Vec3()
+    private val dbgIdentRot = Quaternion()
+
     // ---------- Dados estáticos dos três modos (POR ÚLTIMO: só aqui os campos
     // acima já existem; a cadeia build*Data -> torus/torusPoint usa apenas
     // variáveis locais, então nada depende de propriedades declaradas abaixo) ----------
@@ -155,19 +161,24 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
     /**
      * HIT-TEST EM PIXELS: alça mais próxima do toque; tolerância
      * [touchRadiusPx] (28dp). Empate vale a mais próxima (sem viés artificial).
+     * [outNearestPx] opcional: recebe a distância (px) à alça mais próxima MESMO
+     * quando nenhuma alça fica dentro da tolerância (diagnóstico do overlay:
+     * "nenhuma alça, mais próxima a Ndp"). Sem alocação.
      */
     fun hitTest(
         touchX: Float, touchY: Float,
         viewProj: Mat4, viewportW: Float, viewportH: Float,
         worldPos: Vec3, worldRot: Quaternion, screenScale: Float,
         space: GizmoSpace, mode: GizmoMode,
-        touchRadiusPx: Float
+        touchRadiusPx: Float,
+        outNearestPx: FloatArray? = null
     ): GizmoHandle {
         val data = dataFor(mode)
         buildModel(worldPos, worldRot, screenScale, space, sModel)
 
         var best = GizmoHandle.NONE
         var bestDist = touchRadiusPx
+        var nearest = Float.MAX_VALUE
 
         // Segmentos (eixos, anéis, hastes, cubo central): distância ao segmento projetado.
         for ((handle, segs) in data.hitSegments) {
@@ -180,6 +191,7 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
                 if (d < minDist) minDist = d
                 i += 6
             }
+            if (minDist < nearest) nearest = minDist
             if (minDist < bestDist) {
                 bestDist = minDist
                 best = handle
@@ -213,12 +225,56 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
                 }
             }
             val d = if (inside) edgeDist * 0.5f else edgeDist
+            if (d < nearest) nearest = d
             if (d < bestDist) {
                 bestDist = d
                 best = handle
             }
         }
+        if (outNearestPx != null && outNearestPx.isNotEmpty()) {
+            // -1 = nenhum alvo de hit-test (gizmo vazio/degradado); senão a distância px.
+            outNearestPx[0] = if (nearest == Float.MAX_VALUE) -1f else nearest
+        }
         return best
+    }
+
+    /**
+     * PUBLICAÇÃO DE DEBUG (thread GL, por frame): projeta UM ponto representativo
+     * de cada alça para a tela (px do FRAMEBUFFER). O overlay desenha círculos
+     * verdes nesses pontos: se não coincidirem com as alças desenhadas, a
+     * projeção (viewProj/viewport) está errada. Ponto válido exige cw > 0
+     * (na frente da câmera) e NDC dentro da tela com margem. Sem alocação.
+     */
+    fun projectHandlesToScreen(
+        viewProj: Mat4, viewportW: Float, viewportH: Float,
+        worldPos: Vec3, worldRot: Quaternion, screenScale: Float,
+        space: GizmoSpace, mode: GizmoMode,
+        outX: FloatArray, outY: FloatArray, outValid: BooleanArray
+    ) {
+        dbgScaleVec.set(screenScale, screenScale, screenScale)
+        if (space == GizmoSpace.LOCAL) {
+            dbgModel.setTRS(worldPos, worldRot, dbgScaleVec)
+        } else {
+            dbgIdentRot.setIdentity()
+            dbgModel.setTRS(worldPos, dbgIdentRot, dbgScaleVec)
+        }
+        val mm = dbgModel.m
+        val n = minOf(DEBUG_HANDLE_POINTS.size, outX.size, outY.size, outValid.size)
+        for (i in 0 until n) {
+            val p = DEBUG_HANDLE_POINTS[i]
+            val cw = mm[3] * p[0] + mm[7] * p[1] + mm[11] * p[2] + mm[15]
+            if (abs(cw) < 1e-6f) {
+                outX[i] = -1f; outY[i] = -1f; outValid[i] = false
+                continue
+            }
+            val inv = 1f / cw
+            val ndcX = (mm[0] * p[0] + mm[4] * p[1] + mm[8] * p[2] + mm[12]) * inv
+            val ndcY = (mm[1] * p[0] + mm[5] * p[1] + mm[9] * p[2] + mm[13]) * inv
+            val valid = cw > 0f && ndcX >= -1.5f && ndcX <= 1.5f && ndcY >= -1.5f && ndcY <= 1.5f
+            outX[i] = (ndcX * 0.5f + 0.5f) * viewportW
+            outY[i] = (1f - (ndcY * 0.5f + 0.5f)) * viewportH
+            outValid[i] = valid
+        }
     }
 
     /**
@@ -918,6 +974,43 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
         /** Raio do anel de rotação e espessura do tubo (fração do braço). */
         const val RING_R = 0.82f
         const val RING_TUBE = 0.032f
+
+        /**
+         * Ordem FIXA das alças publicadas para o overlay de debug (mesma ordem de
+         * [DEBUG_HANDLE_POINTS]). O overlay mapeia índice -> nome por esta tabela.
+         */
+        val DEBUG_HANDLE_ORDER: Array<GizmoHandle> = arrayOf(
+            GizmoHandle.TX, GizmoHandle.TY, GizmoHandle.TZ,
+            GizmoHandle.TXY, GizmoHandle.TXZ, GizmoHandle.TYZ,
+            GizmoHandle.RX, GizmoHandle.RY, GizmoHandle.RZ,
+            GizmoHandle.SX, GizmoHandle.SY, GizmoHandle.SZ,
+            GizmoHandle.SXYZ
+        )
+
+        /**
+         * Pontos representativos de cada alça em coordenadas LOCAIS do gizmo
+         * (ponta da seta, canto externo do plano, ponto do anel, cubo da haste,
+         * centro). Multiplicados pela matriz do gizmo em projectHandlesToScreen.
+         */
+        val DEBUG_HANDLE_POINTS: Array<FloatArray> = arrayOf(
+            floatArrayOf(1f, 0f, 0f),                       // TX (ponta da seta)
+            floatArrayOf(0f, 1f, 0f),                       // TY
+            floatArrayOf(0f, 0f, 1f),                       // TZ
+            floatArrayOf(PLANE_HI, PLANE_HI, 0f),           // TXY (canto do plano)
+            floatArrayOf(PLANE_HI, 0f, PLANE_HI),           // TXZ
+            floatArrayOf(0f, PLANE_HI, PLANE_HI),           // TYZ
+            floatArrayOf(0f, RING_R, 0f),                   // RX (ponto do anel)
+            floatArrayOf(RING_R, 0f, 0f),                   // RY
+            floatArrayOf(RING_R, 0f, 0f),                   // RZ (mesmo ponto: os anéis passam por aqui)
+            floatArrayOf(0.88f, 0f, 0f),                    // SX (cubo da haste)
+            floatArrayOf(0f, 0.88f, 0f),                    // SY
+            floatArrayOf(0f, 0f, 0.88f),                    // SZ
+            floatArrayOf(0f, 0f, 0f)                        // SXYZ (centro)
+        )
+
+        /** Número de alças publicadas para o overlay ([ViewportDebugState]). */
+        @JvmField
+        val DEBUG_HANDLE_COUNT = DEBUG_HANDLE_ORDER.size
 
         /** Dados vazios compartilhados: sem malha e sem alças (render desenha nada). */
         private val EMPTY_MODE_DATA =

@@ -3,6 +3,7 @@ package com.kenkern.engine.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Flight
@@ -72,9 +74,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -89,9 +94,11 @@ import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.engine.PlayState
 import com.kenkern.engine.render.CameraMode
+import com.kenkern.engine.render.GizmoHandle
 import com.kenkern.engine.render.GizmoMode
 import com.kenkern.engine.render.GizmoSpace
 import com.kenkern.engine.render.KenkernSurfaceView
+import com.kenkern.engine.render.TransformGizmo
 import java.util.Locale
 import com.kenkern.engine.ui.panels.DockedPanel
 import com.kenkern.engine.ui.panels.FloatingPanel
@@ -144,6 +151,10 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     var hintVisible by remember { mutableStateOf(!ViewportSession.gestureHintDismissed) }
     val density = LocalDensity.current
 
+    // Overlay de diagnóstico de toque (botão de inseto na TopBar):
+    // texto ao vivo + ponto vermelho no toque + círculos verdes nas alças.
+    var debugOverlay by rememberSaveable { mutableStateOf(false) }
+
     // Modo de transformação (gizmo): Mover/Girar/Escalar + Local/Global + Snap
     var gizmoMode by rememberSaveable { mutableStateOf(GizmoMode.MOVE) }
     var gizmoSpace by rememberSaveable { mutableStateOf(GizmoSpace.GLOBAL) }
@@ -185,7 +196,9 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 onSnapChange = { snapEnabled = it },
                 cameraMode = cameraMode,
                 onCameraModeChange = { cameraMode = it },
-                onFocusClick = { surfaceView?.focusSelected() }
+                onFocusClick = { surfaceView?.focusSelected() },
+                debugOverlay = debugOverlay,
+                onDebugToggle = { debugOverlay = !debugOverlay }
             )
 
             // ---------- Row central: painéis acoplados | viewport | painéis ----------
@@ -251,6 +264,13 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             },
                             modifier = Modifier.fillMaxSize()
                         )
+
+                        // ---------- Overlay de diagnóstico de toque (bug na TopBar) ----------
+                        // SEM pointerInput: não intercepta toques — o viewport
+                        // continua recebendo todos os eventos.
+                        if (debugOverlay) {
+                            TouchDebugOverlay(surfaceView)
+                        }
 
                         // Dica de controle do viewport: some no 1º toque e não volta na sessão.
                         if (hintVisible) {
@@ -421,6 +441,11 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
             surfaceView?.setGizmoConfig(gizmoMode, gizmoSpace, snapEnabled)
         }
 
+        // Overlay de debug: liga/desliga a publicação por frame no thread GL.
+        LaunchedEffect(debugOverlay, surfaceView) {
+            surfaceView?.debugState?.enabled = debugOverlay
+        }
+
         // Modo da câmera: TopBar -> câmera (Orbital <-> Voo preservando olhar/posição).
         LaunchedEffect(surfaceView, cameraMode) {
             val sv = surfaceView ?: return@LaunchedEffect
@@ -540,7 +565,9 @@ private fun EditorTopBar(
     onSnapChange: (Boolean) -> Unit,
     cameraMode: CameraMode,
     onCameraModeChange: (CameraMode) -> Unit,
-    onFocusClick: () -> Unit
+    onFocusClick: () -> Unit,
+    debugOverlay: Boolean,
+    onDebugToggle: () -> Unit
 ) {
     Surface(
         color = KenkernSurface,
@@ -630,6 +657,14 @@ private fun EditorTopBar(
 
             // FOCAR (F): enquadra o Nick selecionado (duplo toque no vazio = cena toda)
             TopBarIcon(Icons.Filled.CenterFocusStrong, "Focar seleção (F)") { onFocusClick() }
+
+            // Diagnóstico de toque: overlay ao vivo (ponto vermelho = toque,
+            // círculos verdes = alças) para ver por que seleção/gizmo não respondem.
+            TopBarIcon(
+                Icons.Filled.BugReport,
+                "Diagnóstico de toque (overlay)",
+                active = debugOverlay
+            ) { onDebugToggle() }
 
             Spacer(Modifier.weight(1f))
 
@@ -738,6 +773,161 @@ private fun TopBarSeparator() {
             .height(24.dp)
             .background(KenkernOutline)
     )
+}
+
+// ===================== Overlay de diagnóstico de toque =====================
+
+private val DebugRed = Color(0xFFFF3B30)
+private val DebugGreen = Color(0xFF34C759)
+
+/**
+ * Overlay de diagnóstico do toque, ligado pelo botão de inseto na TopBar:
+ *  - TEXTO ao vivo: posição do toque, tamanhos view/render, tempo e distância
+ *    desde o DOWN, classificação (TAP/ARRASTO e por quê), raio de picking,
+ *    resultado do picking (nome/"nenhum" + distância) e resultado do hit-test
+ *    do gizmo (alça/"nenhuma" + distância em dp);
+ *  - PONTO VERMELHO onde o toque caiu;
+ *  - CÍRCULOS VERDES nas posições de tela das alças publicadas pelo thread GL.
+ * Se os círculos não coincidirem com as alças desenhadas, a projeção está errada.
+ *
+ * SEM pointerInput em nenhum filho: o overlay NÃO intercepta toques — o
+ * viewport continua recebendo todos os eventos normalmente.
+ */
+@Composable
+private fun TouchDebugOverlay(sv: KenkernSurfaceView?) {
+    // Recomposição ~10 Hz: lê os campos @Volatile do snapshot sem acoplar o
+    // Compose ao thread GL.
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(100)
+            tick++
+        }
+    }
+    if (sv == null) return
+    val dbg = sv.debugState
+    var viewPx by remember { mutableStateOf(android.util.Size(0, 0)) }
+
+    Box(Modifier.fillMaxSize()) {
+        // ---------- Canvas: ponto vermelho + círculos verdes ----------
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .onSizeChanged { viewPx = android.util.Size(it.width, it.height) }
+        ) {
+            // Alças publicadas em px de FRAMEBUFFER -> converte para px da view.
+            val scale = if (dbg.renderW > 0 && viewPx.width > 0) {
+                size.width / dbg.renderW.toFloat()
+            } else 1f
+            for (i in 0 until TransformGizmo.DEBUG_HANDLE_COUNT) {
+                if (!dbg.handleValid[i]) continue
+                val hx = dbg.handleX[i] * scale
+                val hy = dbg.handleY[i] * scale
+                if (hx < 0f || hy < 0f || hx > size.width || hy > size.height) continue
+                drawCircle(DebugGreen, radius = 15f, center = Offset(hx, hy), style = Stroke(width = 3f))
+            }
+            // Ponto vermelho: onde o toque caiu (px da view).
+            if (dbg.touchX >= 0f) {
+                drawCircle(DebugRed, radius = 7f, center = Offset(dbg.touchX, dbg.touchY))
+                drawCircle(DebugRed, radius = 20f, center = Offset(dbg.touchX, dbg.touchY), style = Stroke(width = 2f))
+            }
+        }
+
+        // ---------- Texto ao vivo (monoespaçado, 10sp) ----------
+        val lines = remember(tick) { buildDebugLines(sv, viewPx) }
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(6.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.Black.copy(alpha = 0.72f))
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+            lines.forEach { line ->
+                Text(
+                    line,
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = KenkernTextHigh
+                )
+            }
+        }
+    }
+}
+
+/** Monta as linhas de texto do overlay (roda na UI, 10 Hz — alocação ok). */
+private fun buildDebugLines(sv: KenkernSurfaceView, viewPx: android.util.Size): List<String> {
+    val dbg = sv.debugState
+    val d = dbg.density.coerceAtLeast(0.1f)
+    val lines = ArrayList<String>(9)
+
+    lines.add(
+        String.format(
+            Locale.US,
+            "toque: (%.0f, %.0f)px · ΔDOWN %.0fpx (%.0fdp) · %dms",
+            dbg.touchX, dbg.touchY, dbg.touchMovedPx, dbg.touchMovedPx / d, dbg.touchElapsedMs
+        )
+    )
+    lines.add("classe: ${dbg.touchClass} — ${dbg.touchReason}")
+
+    val scale = if (dbg.renderW > 0 && viewPx.width > 0) viewPx.width.toFloat() / dbg.renderW else 1f
+    lines.add(
+        String.format(
+            Locale.US,
+            "view: %dx%dpx · render: %dx%dpx · escala %.0f%%",
+            viewPx.width, viewPx.height, dbg.renderW, dbg.renderH, scale * 100f
+        )
+    )
+
+    val ro = dbg.pickRayOrigin
+    val rd = dbg.pickRayDir
+    lines.add(
+        String.format(
+            Locale.US,
+            "raio: o(%.2f, %.2f, %.2f) · d(%.2f, %.2f, %.2f)",
+            ro[0], ro[1], ro[2], rd[0], rd[1], rd[2]
+        )
+    )
+
+    val pickScreen = dbg.pickScreenDistPx / d
+    lines.add(
+        when {
+            dbg.pickName != null ->
+                String.format(
+                    Locale.US,
+                    "pick: “%s” · t=%.2fm · tela %.0fdp",
+                    dbg.pickName, dbg.pickT, pickScreen
+                )
+            dbg.pickCount > 0 ->
+                String.format(
+                    Locale.US,
+                    "pick: nenhum · AABB mais próx: %.0fdp (tol %.0fdp) · %d nicks",
+                    pickScreen, dbg.pickTolPx / d, dbg.pickCount
+                )
+            else -> "pick: — (sem tap ainda)"
+        }
+    )
+
+    lines.add(
+        when {
+            dbg.gizmoHit != GizmoHandle.NONE ->
+                String.format(
+                    Locale.US,
+                    "gizmo: alça %s · dist %.0fdp (tol 28dp)",
+                    dbg.gizmoHit, dbg.gizmoNearestDp
+                )
+            dbg.gizmoNote != null -> "gizmo: ${dbg.gizmoNote}"
+            dbg.gizmoNearestDp >= 0f ->
+                String.format(Locale.US, "gizmo: nenhuma · alça mais próx: %.0fdp (tol 28dp)", dbg.gizmoNearestDp)
+            else -> "gizmo: — (toque com o cubo selecionado)"
+        }
+    )
+
+    if (sv.isGizmoDegraded) {
+        lines.add("GIZMO VAZIO (fallback do runCatching) — hit-test sem alvos")
+    }
+    return lines
 }
 
 // ============================== Câmera de VOO ==============================

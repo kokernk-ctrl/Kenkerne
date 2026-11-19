@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import com.kenkern.engine.core.Nick
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.RotationFromMatrix
@@ -22,6 +23,7 @@ import javax.microedition.khronos.egl.EGL10
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.egl.EGLDisplay
 import kotlin.math.abs
+import kotlin.math.sqrt
 
 /** Controles do motor expostos ao editor (Play/Pause/Stop). */
 interface EngineControls {
@@ -30,18 +32,149 @@ interface EngineControls {
 }
 
 /**
+ * SNAPSHOT DE DEBUG compartilhado GL (escreve) <-> UI/overlay (lê), sobre
+ * seleção por toque e gizmo. Publicado a cada frame quando o overlay está
+ * ligado (botão de inseto na TopBar). Só arrays primitivos pré-alocados e
+ * campos @Volatile — ZERO alocação no thread GL. A leitura sem lock pode
+ * rasgar UM frame — aceitável para diagnóstico (não interfere no jogo/editor).
+ *
+ * Duas referências de tamanho, EXPLÍCITAS:
+ *  - px da VIEW: layout do AndroidView (o espaço do MotionEvent e do overlay);
+ *  - px do FRAMEBUFFER: surface real do GL (afetada pela escala de resolução).
+ * O toque é normalizado pela VIEW (nunca pelo framebuffer reduzido) e as alças
+ * publicadas em px de framebuffer; o overlay converte buffer->view para desenhar.
+ */
+class ViewportDebugState {
+    /** Overlay ligado (botão de inseto na TopBar). O GL só publica quando true. */
+    @Volatile var enabled: Boolean = false
+
+    /** Densidade da tela (px <-> dp nas mensagens). Escrito 1x na criação da view. */
+    @Volatile var density: Float = 1f
+
+    // ---- Toque (thread UI) ---- coordenadas em px da VIEW ----
+    @Volatile var touchDownX = -1f
+    @Volatile var touchDownY = -1f
+    @Volatile var touchX = -1f
+    @Volatile var touchY = -1f
+    @Volatile var touchMovedPx = 0f
+    @Volatile var touchElapsedMs = 0L
+    @Volatile var touchClass: TouchClass = TouchClass.NONE
+    @Volatile var touchReason: String = "sem toque ainda"
+
+    // ---- Render (thread GL, por frame) ---- tamanho em px do FRAMEBUFFER ----
+    @Volatile var renderW = 0
+    @Volatile var renderH = 0
+
+    // ---- Picking (thread GL, no frame em que o pick rodou) ----
+    val pickRayOrigin = FloatArray(3)
+    val pickRayDir = FloatArray(3)
+    @Volatile var pickName: String? = null
+    @Volatile var pickT = -1f            // distância ao longo do raio até a AABB (m)
+    @Volatile var pickScreenDistPx = -1f // distância do toque à AABB projetada (px da view)
+    @Volatile var pickTolPx = 0f         // tolerância de proximidade (px da view)
+    @Volatile var pickCount = 0          // nicks testados no último pick
+
+    // ---- Alças do gizmo (thread GL, por frame) ---- px do FRAMEBUFFER ----
+    val handleX = FloatArray(TransformGizmo.DEBUG_HANDLE_COUNT)
+    val handleY = FloatArray(TransformGizmo.DEBUG_HANDLE_COUNT)
+    val handleValid = BooleanArray(TransformGizmo.DEBUG_HANDLE_COUNT)
+    @Volatile var handleVersion = 0L
+
+    // ---- Hit-test do gizmo (thread UI, no ACTION_DOWN) ----
+    @Volatile var gizmoHit: GizmoHandle = GizmoHandle.NONE
+    @Volatile var gizmoNearestDp = -1f
+    @Volatile var gizmoNote: String? = null
+
+    fun clearHandles() {
+        for (i in handleValid.indices) handleValid[i] = false
+        handleVersion++
+    }
+
+    fun bumpHandles() {
+        handleVersion++
+    }
+}
+
+// ---- Publicadores do estado de debug (chamados do thread de UI, sem alocação relevante) ----
+
+fun ViewportDebugState.publishDown(x: Float, y: Float, gizmoCaptured: Boolean) {
+    touchDownX = x; touchDownY = y
+    touchX = x; touchY = y
+    touchMovedPx = 0f
+    touchElapsedMs = 0L
+    touchClass = if (gizmoCaptured) TouchClass.GIZMO else TouchClass.PENDING
+    touchReason = if (gizmoCaptured) "alça capturada no DOWN — gizmo tem a posse do gesto" else "DOWN — aguardando soltar"
+}
+
+fun ViewportDebugState.publishMove(x: Float, y: Float, gizmoCaptured: Boolean, moved: Boolean, elapsedMs: Long) {
+    touchX = x; touchY = y
+    val dx = x - touchDownX
+    val dy = y - touchDownY
+    touchMovedPx = sqrt(dx * dx + dy * dy)
+    touchElapsedMs = elapsedMs
+    when {
+        gizmoCaptured -> {
+            touchClass = TouchClass.GIZMO
+            touchReason = "arrastando alça do gizmo"
+        }
+        moved -> {
+            touchClass = TouchClass.DRAG
+            touchReason = "arrastando câmera"
+        }
+        else -> {
+            touchClass = TouchClass.PENDING
+            touchReason = "jitter sob o slop — ainda pode virar tap"
+        }
+    }
+}
+
+fun ViewportDebugState.publishUp(cls: TouchClass, reason: String, elapsedMs: Long, movedPx: Float) {
+    touchClass = cls
+    touchReason = reason
+    touchElapsedMs = elapsedMs
+    touchMovedPx = movedPx
+}
+
+fun ViewportDebugState.publishClass(cls: TouchClass, reason: String) {
+    touchClass = cls
+    touchReason = reason
+}
+
+fun ViewportDebugState.publishPickRay(origin: Vec3, dir: Vec3) {
+    pickRayOrigin[0] = origin.x; pickRayOrigin[1] = origin.y; pickRayOrigin[2] = origin.z
+    pickRayDir[0] = dir.x; pickRayDir[1] = dir.y; pickRayDir[2] = dir.z
+}
+
+fun ViewportDebugState.publishPickResult(name: String?, t: Float, screenDistPx: Float, tolPx: Float, tested: Int) {
+    pickName = name
+    pickT = t
+    pickScreenDistPx = screenDistPx
+    pickTolPx = tolPx
+    pickCount = tested
+}
+
+fun ViewportDebugState.publishGizmoHit(handle: GizmoHandle, nearestDp: Float, note: String? = null) {
+    gizmoHit = handle
+    gizmoNearestDp = nearestDp
+    gizmoNote = note
+}
+
+/**
  * GLSurfaceView da KENKERN: embutido no editor via AndroidView.
  * Loop próprio com timestep fixo; câmera orbital por toque.
  *
  * SELEÇÃO E GIZMOS (Fase 1):
- *  - tap curto (< 200 ms, < 10 px) => picking (raio da câmera × AABB de cada Nick,
- *    no thread GL, com as matrizes de mundo recém-atualizadas); resultado via
- *    [onNickPicked]. Arrasto SEM alça move só a câmera (nunca muda seleção/transform).
+ *  - tap curto (< 250 ms, < 12dp — nunca px crus; mínimo = scaledTouchSlop do
+ *    sistema) => picking no ACTION_UP (raio da câmera × AABB de cada Nick, no
+ *    thread GL, com as matrizes de mundo recém-atualizadas; tolerância extra de
+ *    24dp da AABB projetada); resultado via [onNickPicked]. Arrasto SEM alça
+ *    move só a câmera (nunca muda seleção/transform).
  *  - duplo toque => foco: no vazio enquadra a CENA toda; sobre seleção, o Nick.
  *  - botão FOCAR (F) => enquadra o Nick selecionado ([focusSelected]).
- *  - toque sobre alça do gizmo => arrasto no thread de UI (posse decidida no DOWN,
- *    requestDisallowInterceptTouchEvent); ao soltar, [onGizmoDragEnd] entrega o
- *    snapshot inicial para UM único Command de undo.
+ *  - toque sobre alça do gizmo => hit-test no ACTION_DOWN (28dp) ANTES da
+ *    câmera; se acertou, a câmera ignora o gesto inteiro até o ACTION_UP
+ *    (requestDisallowInterceptTouchEvent); ao soltar, [onGizmoDragEnd] entrega
+ *    o snapshot inicial para UM único Command de undo.
  *
  * ANTI-CRASH (GPU restrita):
  *  - EGLConfigChooser com cadeia de fallback (RGBA8+D24 → RGBA8+D16 → RGB565 → qualquer config);
@@ -64,6 +197,13 @@ class KenkernSurfaceView(
     val loop = FixedStepLoop()
     val gizmoState = GizmoSharedState()
 
+    /**
+     * Snapshot de diagnóstico publicado pelo thread GL / UI e lido pelo overlay
+     * de debug (botão de inseto na TopBar). NUNCA usado pela lógica do editor —
+     * só exibição.
+     */
+    val debugState = ViewportDebugState()
+
     /** True = construção do gizmo falhou e caiu no modo VAZIO (aviso na StatusBar). */
     @Volatile
     var isGizmoDegraded: Boolean = false
@@ -84,13 +224,27 @@ class KenkernSurfaceView(
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val density = resources.displayMetrics.density
+
+    /**
+     * Limiar de tap em DP, nunca em px crus: 12dp mínimo especificado, ou o
+     * scaledTouchSlop do sistema quando maior (dedo tremendo não desqualifica
+     * mais o tap — 10px crus em tela densa eram quase nada).
+     */
+    private val tapSlopPx = maxOf(
+        12f * density,
+        ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    )
+
     private val touch = TouchController(
         camera,
-        tapSlopPx = 10f * density,
+        tapSlopPx = tapSlopPx,
+        density = density,
         onTap = { x, y -> requestPick(x, y) },
         onDoubleTap = { _, _ -> handleDoubleTap() },
-        gizmoHandler = GizmoTouchHandler()
+        gizmoHandler = GizmoTouchHandler(),
+        debug = debugState
     )
+
     private val glRenderer = KenkernGLRenderer()
     private val controls = object : EngineControls {
         override fun setPlayState(state: PlayState) {
@@ -136,11 +290,41 @@ class KenkernSurfaceView(
     @Volatile
     private var pickNdcY = 0f
 
+    // Toque em px da VIEW (overlay + distância de tolerância em tela).
+    @Volatile
+    private var pickTouchX = 0f
+    @Volatile
+    private var pickTouchY = 0f
+
+    // Pré-alocados para o picking (thread GL; zero alocação por tap).
+    private val pickStack = arrayOfNulls<Nick>(256)
+    private val pickOrigin = Vec3()
+    private val pickDir = Vec3()
+    private val pickProj = Mat4()
+    private val pickView = Mat4()
+    private val pickVp = Mat4()
+
+    // Pré-alocados para a publicação de debug das alças (thread GL).
+    private val dbgProj = Mat4()
+    private val dbgView = Mat4()
+    private val dbgVp = Mat4()
+    private val dbgWorldPos = Vec3()
+    private val dbgWorldRot = Quaternion()
+    private val dbgExtractor = RotationFromMatrix()
+
+    /**
+     * Converte o toque em NDC usando a LARGURA/ALTURA DA VIEW (mesmo espaço do
+     * MotionEvent). Com a escala de resolução ativa o framebuffer é menor, mas
+     * o NDC é normalizado: multiplicar pela view (não pelo buffer reduzido) é
+     * o que mantém o raio correto. Y invertido: NDC +1 = topo da tela.
+     */
     private fun requestPick(xPx: Float, yPx: Float) {
         val w = width.toFloat().coerceAtLeast(1f)
         val h = height.toFloat().coerceAtLeast(1f)
         pickNdcX = (xPx / w) * 2f - 1f
         pickNdcY = 1f - (yPx / h) * 2f
+        pickTouchX = xPx
+        pickTouchY = yPx
         pickPending = true
     }
 
@@ -169,6 +353,7 @@ class KenkernSurfaceView(
     }
 
     init {
+        debugState.density = density
         val es3 = deviceSupportsGles3(context)
         // Fábrica e chooser próprios definem a versão do contexto (ES3 com fallback ES2).
         setEGLContextFactory(SafeContextFactory())
@@ -201,6 +386,63 @@ class KenkernSurfaceView(
         return handled
     }
 
+    /**
+     * Publica no [debugState] as posições de tela das alças do gizmo (px do
+     * FRAMEBUFFER) e o tamanho do render. Roda no thread GL DEPOIS do render —
+     * usa a MESMA câmera/projeção do frame que acabou de ser desenhado, então
+     * os círculos verdes do overlay correspondem ao que está na tela.
+     */
+    private fun publishDebugFrameGL(scene: Scene?) {
+        val rw = glRenderer.backendViewportW()
+        val rh = glRenderer.backendViewportH()
+        debugState.renderW = rw
+        debugState.renderH = rh
+        val sel = selectionProvider()
+        val s = scene
+        if (sel == null || s == null || rw < 1 || rh < 1) {
+            debugState.clearHandles()
+            return
+        }
+        val nick = s.findNick(sel)
+        if (nick == null || !nick.active || !nick.visible) {
+            debugState.clearHandles()
+            return
+        }
+        val aspect = rw.toFloat() / rh.coerceAtLeast(1).toFloat()
+        camera.projection(dbgProj, aspect)
+        camera.view(dbgView)
+        dbgVp.multiply(dbgProj, dbgView)
+        val wm = nick.transform.worldMatrix
+        dbgWorldPos.set(wm.m[12], wm.m[13], wm.m[14])
+        extractWorldRotationTo(wm, dbgWorldRot)
+        val ss = gizmo.screenScaleFor(camera, dbgWorldPos)
+        gizmo.projectHandlesToScreen(
+            dbgVp, rw.toFloat(), rh.toFloat(),
+            dbgWorldPos, dbgWorldRot, ss,
+            gizmoState.space, gizmoState.mode,
+            debugState.handleX, debugState.handleY, debugState.handleValid
+        )
+        debugState.bumpHandles()
+    }
+
+    /** Extrai rotação de mundo de uma matriz TRS (colunas normalizadas), sem alocação. */
+    private fun extractWorldRotationTo(m: Mat4, out: Quaternion) {
+        val mm = m.m
+        val sx = kotlin.math.sqrt(mm[0] * mm[0] + mm[1] * mm[1] + mm[2] * mm[2])
+        val sy = kotlin.math.sqrt(mm[4] * mm[4] + mm[5] * mm[5] + mm[6] * mm[6])
+        val sz = kotlin.math.sqrt(mm[8] * mm[8] + mm[9] * mm[9] + mm[10] * mm[10])
+        if (sx > 1e-9f && sy > 1e-9f && sz > 1e-9f) {
+            dbgExtractor.set(
+                mm[0] / sx, mm[4] / sy, mm[8] / sz,
+                mm[1] / sx, mm[5] / sy, mm[9] / sz,
+                mm[2] / sx, mm[6] / sy, mm[10] / sz
+            )
+            dbgExtractor.toMatrixComponents(out)
+        } else {
+            out.setIdentity()
+        }
+    }
+
     // ---------- Handler de arrasto do gizmo (thread de UI, zero alocação) ----------
 
     private inner class GizmoTouchHandler : GizmoDragHandler {
@@ -210,6 +452,7 @@ class KenkernSurfaceView(
         private val dragWorldPos = Vec3()
         private val dragWorldRot = Quaternion()
         private val dragExtractor = RotationFromMatrix()
+        private val hitNearest = FloatArray(1)
         private var dragNick: Nick? = null
 
         private fun refreshMatrices(w: Float, h: Float) {
@@ -237,23 +480,46 @@ class KenkernSurfaceView(
         }
 
         override fun onGizmoDown(x: Float, y: Float): Boolean {
-            val scene = sceneProvider() ?: return false
-            val sel = selectionProvider() ?: return false
-            val nick = scene.findNick(sel) ?: return false
-            if (!nick.active || !nick.visible) return false
+            val scene = sceneProvider()
+            if (scene == null) {
+                debugState.publishGizmoHit(GizmoHandle.NONE, -1f, "cena nula")
+                return false
+            }
+            val sel = selectionProvider()
+            if (sel == null) {
+                debugState.publishGizmoHit(GizmoHandle.NONE, -1f, "sem seleção — toque no cubo primeiro")
+                return false
+            }
+            val nick = scene.findNick(sel)
+            if (nick == null || !nick.active || !nick.visible) {
+                debugState.publishGizmoHit(GizmoHandle.NONE, -1f, "Nick selecionado inativo/invisível")
+                return false
+            }
             val w = width.toFloat()
             val h = height.toFloat()
-            if (w < 1f || h < 1f) return false
+            if (w < 1f || h < 1f) {
+                debugState.publishGizmoHit(GizmoHandle.NONE, -1f, "viewport sem tamanho")
+                return false
+            }
             refreshMatrices(w, h)
             dragWorldPos.set(nick.transform.worldMatrix.m[12], nick.transform.worldMatrix.m[13], nick.transform.worldMatrix.m[14])
             extractRotation(nick.transform.worldMatrix, dragWorldRot)
             val ss = gizmo.screenScaleFor(camera, dragWorldPos)
             val radius = 28f * density // tolerância de hit-test: 28dp
+            hitNearest[0] = -1f
             val handle = gizmo.hitTest(
                 x, y, dragVp, w, h, dragWorldPos, dragWorldRot, ss,
-                gizmoState.space, gizmoState.mode, radius
+                gizmoState.space, gizmoState.mode, radius, hitNearest
             )
-            if (handle == GizmoHandle.NONE) return false
+            val nearestDp = if (hitNearest[0].isFinite() && hitNearest[0] >= 0f) hitNearest[0] / density else -1f
+            if (handle == GizmoHandle.NONE) {
+                debugState.publishGizmoHit(
+                    GizmoHandle.NONE, nearestDp,
+                    "nenhuma alça dentro de 28dp (alça mais próxima: ${if (nearestDp >= 0f) "%.0f".format(nearestDp) else "?"}dp)"
+                )
+                return false
+            }
+            debugState.publishGizmoHit(handle, nearestDp, null)
             dragNick = nick
             gizmo.beginDrag(nick, handle, x, y, camera, dragVp, w, h, w / h, gizmoState.space, ss)
             gizmoState.highlighted = handle
@@ -287,43 +553,131 @@ class KenkernSurfaceView(
     }
 
     /**
-     * Picking no thread GL: raio da câmera contra a AABB (em mundo) de cada Nick
-     * ativo/visível; escolhe o mais próximo. Slab test sem alocação.
+     * Picking no thread GL, em DUAS camadas:
+     *  1. EXATO: raio da câmera × AABB (em mundo) de cada Nick ativo/visível —
+     *     slab test sem alocação; escolhe o MENOR t (mais próximo da câmera);
+     *  2. TOLERÂNCIA: se o toque caiu fora de todas as AABBs, aceita um toque a
+     *     até [PICK_TOLERANCE_DP]dp da AABB PROJETADA na tela (cubo pequeno ou
+     *     longe não pode ser impossível de tocar). Empate de distância de tela
+     *     vale o menor t.
+     * O toque é normalizado pela VIEW (requestPick) e comparado em px da view:
+     * os cantos projetados (px do framebuffer) são convertidos por bufToView.
+     * Publica raio e resultado no [debugState] (overlay de diagnóstico).
      */
-    private fun pickNickAt(scene: Scene, aspect: Float): ReferenceId? {
-        val origin = Vec3()
-        val dir = Vec3()
-        camera.screenRay(pickNdcX, pickNdcY, aspect, origin, dir)
-        val stack = arrayOfNulls<Nick>(256)
+    private fun pickNickAt(
+        scene: Scene,
+        aspect: Float,
+        viewProj: Mat4,
+        renderW: Int,
+        renderH: Int
+    ): ReferenceId? {
+        camera.screenRay(pickNdcX, pickNdcY, aspect, pickOrigin, pickDir)
+        debugState.publishPickRay(pickOrigin, pickDir)
+
+        val bufToView = if (renderW > 0) width.toFloat() / renderW else 1f
+        val tolPx = PICK_TOLERANCE_DP * density
+
+        pickStack.fill(null)
         var top = 0
         for (r in scene.roots.indices) {
-            if (top >= stack.size) break
-            stack[top++] = scene.roots[r]
+            if (top >= pickStack.size) break
+            pickStack[top++] = scene.roots[r]
         }
         var bestId: ReferenceId? = null
+        var bestScreen = Float.MAX_VALUE
         var bestT = Float.MAX_VALUE
+        var nearestOverall = Float.MAX_VALUE // AABB projetada mais próxima, mesmo fora da tolerância
+        var tested = 0
         while (top > 0) {
-            val nick = stack[--top] ?: continue
+            val nick = pickStack[--top] ?: continue
             if (nick.active && nick.visible) {
+                tested++
                 val m = nick.transform.worldMatrix.m
                 val cx = m[12]; val cy = m[13]; val cz = m[14]
                 // meia-diagonal da AABB em mundo (box conservativa p/ rotação)
                 val ex = 0.5f * (abs(m[0]) + abs(m[4]) + abs(m[8]))
                 val ey = 0.5f * (abs(m[1]) + abs(m[5]) + abs(m[9]))
                 val ez = 0.5f * (abs(m[2]) + abs(m[6]) + abs(m[10]))
-                val t = rayAabb(origin, dir, cx, cy, cz, ex, ey, ez)
-                if (t >= 0f && t < bestT) {
-                    bestT = t
-                    bestId = nick.id
+                val t = rayAabb(pickOrigin, pickDir, cx, cy, cz, ex, ey, ez)
+                val sd = if (t >= 0f) {
+                    0f // hit exato: o toque está DENTRO da AABB projetada
+                } else {
+                    projectedAabbDistance(
+                        viewProj, renderW.toFloat(), renderH.toFloat(), bufToView,
+                        pickTouchX, pickTouchY, cx, cy, cz, ex, ey, ez
+                    )
+                }
+                if (sd >= 0f && sd < nearestOverall) nearestOverall = sd
+                if (sd in 0f..tolPx) {
+                    val better = sd < bestScreen - 0.5f ||
+                        (sd <= bestScreen + 0.5f && t in 0f until bestT)
+                    if (better) {
+                        bestScreen = sd
+                        bestT = if (t >= 0f) t else -1f
+                        bestId = nick.id
+                    }
                 }
             }
             val children = nick.children
             for (ci in children.indices) {
-                if (top >= stack.size) break
-                stack[top++] = children[ci]
+                if (top >= pickStack.size) break
+                pickStack[top++] = children[ci]
             }
         }
+        val name = bestId?.let { scene.findNick(it)?.name }
+        val screenOut = when {
+            bestId != null && bestScreen.isFinite() -> bestScreen
+            nearestOverall.isFinite() -> nearestOverall // nada dentro da tolerância: mostra a mais próxima
+            else -> -1f
+        }
+        debugState.publishPickResult(
+            name,
+            if (bestId != null && bestT.isFinite()) bestT else -1f,
+            screenOut,
+            tolPx,
+            tested
+        )
         return bestId
+    }
+
+    /**
+     * Distância (px da VIEW) do toque à AABB projetada na tela: projeta os 8
+     * cantos da caixa para o framebuffer, converte para px da view e mede a
+     * distância ao retângulo. Retorna -1 se algum canto cair atrás da câmera
+     * (a caixa cruza o plano da câmera — só o teste exato vale nesse caso).
+     */
+    private fun projectedAabbDistance(
+        vp: Mat4, renderW: Float, renderH: Float, bufToView: Float,
+        touchX: Float, touchY: Float,
+        cx: Float, cy: Float, cz: Float,
+        ex: Float, ey: Float, ez: Float
+    ): Float {
+        var minX = Float.MAX_VALUE
+        var minY = Float.MAX_VALUE
+        var maxX = -Float.MAX_VALUE
+        var maxY = -Float.MAX_VALUE
+        val mm = vp.m
+        var i = 0
+        while (i < 8) {
+            val px = if (i and 1 == 0) cx - ex else cx + ex
+            val py = if (i and 2 == 0) cy - ey else cy + ey
+            val pz = if (i and 4 == 0) cz - ez else cz + ez
+            val cw = mm[3] * px + mm[7] * py + mm[11] * pz + mm[15]
+            if (abs(cw) < 1e-6f || cw <= 0f) return -1f
+            val inv = 1f / cw
+            val ndcX = (mm[0] * px + mm[4] * py + mm[8] * pz + mm[12]) * inv
+            val ndcY = (mm[1] * px + mm[5] * py + mm[9] * pz + mm[13]) * inv
+            val bx = (ndcX * 0.5f + 0.5f) * renderW * bufToView
+            val by = (1f - (ndcY * 0.5f + 0.5f)) * renderH * bufToView
+            if (bx < minX) minX = bx
+            if (bx > maxX) maxX = bx
+            if (by < minY) minY = by
+            if (by > maxY) maxY = by
+            i++
+        }
+        val dx = maxOf(minX - touchX, 0f, touchX - maxX)
+        val dy = maxOf(minY - touchY, 0f, touchY - maxY)
+        return sqrt(dx * dx + dy * dy)
     }
 
     /** Slab test raio-AABB; retorna t (>= 0) ou -1 se não há interseção. */
@@ -518,6 +872,11 @@ class KenkernSurfaceView(
 
         fun isKernRoundtripOk(): Boolean = engineRenderer.isKernRoundtripOk()
 
+        /** Tamanho do framebuffer real (pode diferir da view com escala de resolução). */
+        fun backendViewportW(): Int = backend.viewportWidth
+
+        fun backendViewportH(): Int = backend.viewportHeight
+
         override fun onSurfaceCreated(gl: javax.microedition.khronos.opengles.GL10?, config: EGLConfig?) {
             // Marcador de progresso: EGL criou a surface (o trecho entre "EditorScreen
             // composto" e esta linha cobre eglCreateContext/eglCreateWindowSurface,
@@ -559,9 +918,17 @@ class KenkernSurfaceView(
                         pickPending = false
                         val s = scene
                         if (s != null && s.roots.isNotEmpty()) {
-                            val aspect = backend.viewportWidth.toFloat() /
-                                backend.viewportHeight.coerceAtLeast(1).toFloat()
-                            val picked = runCatching { pickNickAt(s, aspect) }.getOrNull()
+                            val rw = backend.viewportWidth
+                            val rh = backend.viewportHeight.coerceAtLeast(1)
+                            val aspect = rw.toFloat() / rh.toFloat()
+                            // Mesma projeção usada no render deste frame: o raio do
+                            // picking usa o MESMO aspect/FOV da matriz de projeção.
+                            camera.projection(pickProj, aspect)
+                            camera.view(pickView)
+                            pickVp.multiply(pickProj, pickView)
+                            val picked = runCatching {
+                                pickNickAt(s, aspect, pickVp, rw, rh)
+                            }.getOrNull()
                             mainHandler.post { onNickPicked(picked) }
                         }
                     }
@@ -574,6 +941,11 @@ class KenkernSurfaceView(
                     engineRenderer.renderFrame(
                         backend, scene, camera, loop.engineTime, selectionProvider(), gizmoState
                     )
+                    // Publicação de debug (overlay de toque): alças em px de
+                    // framebuffer + tamanho do render. Só quando o overlay está ON.
+                    if (debugState.enabled) {
+                        runCatching { publishDebugFrameGL(scene) }
+                    }
                     // Marcador de progresso: primeiro frame COMPLETO no thread GL.
                     // Gravado DEPOIS do renderFrame: crash nativo dentro do draw
                     // deixa a última etapa em "shader compilado".
@@ -594,5 +966,8 @@ class KenkernSurfaceView(
 
     companion object {
         private const val TAG = "Kenkern/SurfaceView"
+
+        /** Tolerância de proximidade do picking: toque a até 24dp da AABB projetada. */
+        private const val PICK_TOLERANCE_DP = 24f
     }
 }

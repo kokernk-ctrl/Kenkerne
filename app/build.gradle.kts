@@ -14,8 +14,8 @@ android {
         applicationId = "com.kenkern.engine"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.1.9-fix-crash"
+        versionCode = 11
+        versionName = "0.1.10-touch-diag"
     }
 
     // Assinatura de release lida de variáveis de ambiente (mesma estratégia usada no CI).
@@ -85,4 +85,5 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.kotlinx.coroutines.android)
+    testImplementation(libs.junit)
 }
