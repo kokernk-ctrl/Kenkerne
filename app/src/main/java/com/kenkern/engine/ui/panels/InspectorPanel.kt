@@ -43,10 +43,15 @@ import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.editor.EditorViewModel
+import com.kenkern.engine.ui.common.AxisNumberField
 import com.kenkern.engine.ui.common.CollapsibleSection
 import com.kenkern.engine.ui.common.FloatField
 import com.kenkern.engine.ui.common.SectionTitle
 import com.kenkern.engine.ui.common.Vec3AxisField
+import com.kenkern.engine.ui.theme.KenkernAxisX
+import com.kenkern.engine.ui.theme.KenkernAxisY
+import com.kenkern.engine.ui.theme.KenkernAxisZ
+import com.kenkern.engine.ui.theme.KenkernTextHigh
 import com.kenkern.engine.ui.theme.KenkernTextMid
 
 /**
@@ -140,22 +145,26 @@ fun InspectorPanel(vm: EditorViewModel) {
                 vm.setTransform(nick.id, snap.copy(qx = q.x, qy = q.y, qz = q.z, qw = q.w))
             }
 
-            SectionTitle("Rotação (quaternion)")
-            Vec3AxisField(
-                nick.transform.rotation.x, nick.transform.rotation.y, nick.transform.rotation.z
-            ) { x, y, z ->
-                val snap = nick.transform.snapshot()
-                vm.setTransform(nick.id, snap.copy(qx = x, qy = y, qz = z))
+            SectionTitle("Rotação (quaternion) · somente leitura")
+            // SOMENTE LEITURA (girar pelo anel do gizmo ou por euler); campos de 28dp,
+            // incluindo o W, iguais aos demais. Normalizado ao editar não se aplica.
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                AxisNumberField(
+                    "X", KenkernAxisX, nick.transform.rotation.x, {}, Modifier.weight(1f), readOnly = true
+                )
+                AxisNumberField(
+                    "Y", KenkernAxisY, nick.transform.rotation.y, {}, Modifier.weight(1f), readOnly = true
+                )
+                AxisNumberField(
+                    "Z", KenkernAxisZ, nick.transform.rotation.z, {}, Modifier.weight(1f), readOnly = true
+                )
+                AxisNumberField(
+                    "W", KenkernTextHigh, nick.transform.rotation.w, {}, Modifier.weight(1f), readOnly = true
+                )
             }
-            FloatField(
-                "qw",
-                nick.transform.rotation.w,
-                { w ->
-                    val snap = nick.transform.snapshot()
-                    vm.setTransform(nick.id, snap.copy(qw = w))
-                },
-                Modifier.fillMaxWidth()
-            )
         }
 
         // ---------- CLASSES (seção recolhível) ----------

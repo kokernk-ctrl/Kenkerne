@@ -14,8 +14,8 @@ android {
         applicationId = "com.kenkern.engine"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.1.7-gizmos"
+        versionCode = 9
+        versionName = "0.1.8-camera-gizmo"
     }
 
     // Assinatura de release lida de variáveis de ambiente (mesma estratégia usada no CI).

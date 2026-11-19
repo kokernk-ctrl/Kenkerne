@@ -9,7 +9,7 @@ import com.kenkern.engine.core.math.Mat4
  * depois sem mexer no Core da engine.
  *
  * Orçamento de draw calls do editor (cena padrão 1 cubo + grade):
- * céu 1 + grade 1 + malhas N + contorno (se seleção) 1 + gizmo 1.
+ * céu 1 + malhas N + contorno (se seleção) 1 + grade infinita 1 + gizmo ≤ 2 + eixos 1.
  */
 interface RenderBackend {
     val name: String
@@ -34,13 +34,7 @@ interface RenderBackend {
     /** Cria/upload de malha; retorna handle opaco (0 = falha). */
     fun createMesh(mesh: MeshData): Int
 
-    /**
-     * Cria buffer da grade: interleaved [x, y, z, ênfase] por vértice.
-     * Ênfase: 0 = linha 1 m, 1 = linha 10 m, 2 = eixo X, 3 = eixo Z.
-     */
-    fun createGridBuffer(data: FloatArray): Int
-
-    /** Cria buffer de linhas coloridas (interleaved x, y, z, r, g, b) — usado pelo gizmo. */
+    /** Cria buffer de linhas coloridas (interleaved x, y, z, r, g, b) — gizmo de eixos. */
     fun createColoredLineBuffer(data: FloatArray): Int
 
     /** Céu: triângulo de tela cheia com gradiente zênite→horizonte e sol na direção da luz. */
@@ -52,8 +46,18 @@ interface RenderBackend {
         sunX: Float, sunY: Float, sunZ: Float
     )
 
-    /** Grade em 1 draw call (GL_LINES), com fade por distância no fragment shader. */
-    fun drawGrid(handle: Int, vertexCount: Int, viewProj: Mat4, camX: Float, camY: Float, camZ: Float)
+    /**
+     * GRADE INFINITA: 1 draw call (triângulo de tela cheia). O fragment shader
+     * traça um raio por pixel contra o plano Y=0 e desenha as linhas com fade
+     * por distância e anti-moiré por fwidth. Dupla face (câmera abaixo do chão).
+     */
+    fun drawInfiniteGrid(
+        fwdX: Float, fwdY: Float, fwdZ: Float,
+        rightX: Float, rightY: Float, rightZ: Float,
+        upX: Float, upY: Float, upZ: Float,
+        tanHalfFov: Float, aspect: Float,
+        camX: Float, camY: Float, camZ: Float
+    )
 
     fun drawMesh(handle: Int, model: Mat4, viewProj: Mat4, r: Float, g: Float, b: Float, a: Float)
 
@@ -65,18 +69,18 @@ interface RenderBackend {
 
     /**
      * Cria buffer do gizmo de transformação: interleaved [x, y, z, r, g, b, a]
-     * por vértice (stride 28). Desenhado sem teste de profundidade, com blend.
+     * por vértice (stride 28), GL_TRIANGLES. Desenhado sem teste de profundidade.
      */
     fun createGizmoBuffer(data: FloatArray): Int
 
-    /** Linhas do gizmo de transformação (sub-ranges por alça), sem depth test. */
-    fun drawGizmoLines(handle: Int, offset: Int, vertexCount: Int, mvp: Mat4)
-
-    /** Triângulos do gizmo de transformação (preenchimento dos planos). */
+    /** Malha completa do gizmo (alças: cilindros/cones/toros/cubos), sem depth test. */
     fun drawGizmoTris(handle: Int, offset: Int, vertexCount: Int, mvp: Mat4)
 
-    /** Redesenha uma alça com cor sólida (destaque amarelo sob o dedo). */
-    fun drawGizmoHandleOverride(
+    /** Desenha o gizmo inteiro com alpha multiplicado (demais eixos apagados). */
+    fun drawGizmoTrisDimmed(handle: Int, offset: Int, vertexCount: Int, mvp: Mat4, alphaMul: Float)
+
+    /** Redesenha uma alça com cor sólida (destaque AMARELO sob o dedo). */
+    fun drawGizmoTrisSolid(
         handle: Int, offset: Int, vertexCount: Int, mvp: Mat4,
         r: Float, g: Float, b: Float, a: Float
     )

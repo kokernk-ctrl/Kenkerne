@@ -4,6 +4,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -27,8 +31,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -44,6 +52,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -57,14 +66,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -74,6 +87,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kenkern.engine.editor.EditorViewModel
 import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.engine.PlayState
+import com.kenkern.engine.render.CameraMode
 import com.kenkern.engine.render.GizmoMode
 import com.kenkern.engine.render.GizmoSpace
 import com.kenkern.engine.render.KenkernSurfaceView
@@ -131,6 +145,9 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     var gizmoSpace by rememberSaveable { mutableStateOf(GizmoSpace.GLOBAL) }
     var snapEnabled by rememberSaveable { mutableStateOf(false) }
 
+    // Modo da câmera: Orbital ou Voo
+    var cameraMode by rememberSaveable { mutableStateOf(CameraMode.ORBITAL) }
+
     val hierarchy = remember {
         vm.panelStore.get("hierarchy", "Hierarquia", 200f, 140f, 320f, 280f, 340f)
     }
@@ -161,7 +178,10 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 snapEnabled = snapEnabled,
                 onGizmoModeChange = { gizmoMode = it },
                 onGizmoSpaceChange = { gizmoSpace = it },
-                onSnapChange = { snapEnabled = it }
+                onSnapChange = { snapEnabled = it },
+                cameraMode = cameraMode,
+                onCameraModeChange = { cameraMode = it },
+                onFocusClick = { surfaceView?.focusSelected() }
             )
 
             // ---------- Row central: painéis acoplados | viewport | painéis ----------
@@ -240,11 +260,21 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Text(
-                                    "1 dedo: orbitar · 2 dedos: mover e zoom",
+                                    if (cameraMode == CameraMode.FLIGHT) {
+                                        "Joystick move · arraste para olhar · botões sobem/descem"
+                                    } else {
+                                        "1 dedo: orbitar · 2 dedos: mover e zoom"
+                                    },
                                     fontSize = 12.sp,
                                     color = KenkernTextMid
                                 )
                             }
+                        }
+
+                        // Controles da câmera de VOO (joystick, subir/descer, velocidade)
+                        val svForFlight = surfaceView
+                        if (cameraMode == CameraMode.FLIGHT && svForFlight != null) {
+                            FlightControls(svForFlight)
                         }
 
                         // Telas estreitas: painel "acoplado" vira overlay de lateral
@@ -387,6 +417,13 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
             surfaceView?.setGizmoConfig(gizmoMode, gizmoSpace, snapEnabled)
         }
 
+        // Modo da câmera: TopBar -> câmera (Orbital <-> Voo preservando olhar/posição).
+        LaunchedEffect(surfaceView, cameraMode) {
+            val sv = surfaceView ?: return@LaunchedEffect
+            val targetMode = if (cameraMode == CameraMode.FLIGHT) CameraMode.FLIGHT else CameraMode.ORBITAL
+            if (sv.camera.mode != targetMode) sv.camera.toggleMode()
+        }
+
         // ---------- Aviso de recuperação pós-crash ----------
         if (vm.recoveryNotice.value) {
             Snackbar(
@@ -480,7 +517,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
 
 // ============================== TopBar (48dp) ==============================
 
-/** Voltar | Undo | Redo | sep | Play/Stop | sep | Mover/Girar/Escalar | Local/Global | Snap | espaço | resolução | painéis. */
+/** Voltar | Undo | Redo | sep | Play/Stop | sep | Mover/Girar/Escalar | Local/Global | Snap | sep | Orbital/Voo | Focar | espaço | resolução | painéis. */
 @Composable
 private fun EditorTopBar(
     vm: EditorViewModel,
@@ -496,7 +533,10 @@ private fun EditorTopBar(
     snapEnabled: Boolean,
     onGizmoModeChange: (GizmoMode) -> Unit,
     onGizmoSpaceChange: (GizmoSpace) -> Unit,
-    onSnapChange: (Boolean) -> Unit
+    onSnapChange: (Boolean) -> Unit,
+    cameraMode: CameraMode,
+    onCameraModeChange: (CameraMode) -> Unit,
+    onFocusClick: () -> Unit
 ) {
     Surface(
         color = KenkernSurface,
@@ -570,6 +610,22 @@ private fun EditorTopBar(
                 Icons.Filled.GridOn, "Snap",
                 active = snapEnabled
             ) { onSnapChange(!snapEnabled) }
+
+            TopBarSeparator()
+
+            // Câmera: Orbital <-> Voo
+            TopBarIcon(
+                Icons.Filled.Flight,
+                if (cameraMode == CameraMode.FLIGHT) "Voltar à câmera orbital" else "Câmera de voo",
+                active = cameraMode == CameraMode.FLIGHT
+            ) {
+                onCameraModeChange(
+                    if (cameraMode == CameraMode.FLIGHT) CameraMode.ORBITAL else CameraMode.FLIGHT
+                )
+            }
+
+            // FOCAR (F): enquadra o Nick selecionado (duplo toque no vazio = cena toda)
+            TopBarIcon(Icons.Filled.CenterFocusStrong, "Focar seleção (F)") { onFocusClick() }
 
             Spacer(Modifier.weight(1f))
 
@@ -678,6 +734,164 @@ private fun TopBarSeparator() {
             .height(24.dp)
             .background(KenkernOutline)
     )
+}
+
+// ============================== Câmera de VOO ==============================
+
+/**
+ * Controles do modo VOO:
+ *  - joystick virtual à esquerda: frente/trás/lados;
+ *  - dois botões à direita: subir e descer;
+ *  - slider de velocidade em escala logarítmica (0,1 a 100 m/s) no centro.
+ * O Box externo NÃO captura toques (só os controles): o resto da tela continua
+ * entregando eventos ao viewport (arrastar gira o olhar via TouchController).
+ */
+@Composable
+private fun FlightControls(sv: KenkernSurfaceView) {
+    val cam = sv.camera
+    val fwd = remember { mutableStateOf(0f) }
+    val strafe = remember { mutableStateOf(0f) }
+    val vert = remember { mutableStateOf(0f) }
+    val knob = remember { mutableStateOf(Offset.Zero) }
+    var speedT by remember { mutableStateOf(cam.flightSpeedNormalized()) }
+    var speedLabel by remember {
+        mutableStateOf(String.format(Locale.US, "%.1f m/s", cam.flightSpeed))
+    }
+
+    // Movimento contínuo sincronizado com os frames (dt real, sem alocação relevante).
+    LaunchedEffect(Unit) {
+        var lastNanos = 0L
+        while (true) {
+            withFrameNanos { now ->
+                if (lastNanos > 0L) {
+                    val dt = ((now - lastNanos) / 1e9).toFloat().coerceIn(0f, 0.1f)
+                    val f = fwd.value
+                    val s = strafe.value
+                    val v = vert.value
+                    if (f != 0f || s != 0f || v != 0f) {
+                        cam.moveFlight(f, s, dt)
+                        cam.elevateFlight(v, dt)
+                    }
+                }
+                lastNanos = now
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        // ---------- Joystick virtual (canto inferior esquerdo) ----------
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(16.dp)
+                .size(108.dp)
+                .clip(CircleShape)
+                .background(KenkernSurfaceOverlay.copy(alpha = 0.60f))
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown()
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+                            val cx = size.width * 0.5f
+                            val cy = size.height * 0.5f
+                            val maxR = size.width * 0.5f
+                            var ox = change.position.x - cx
+                            var oy = change.position.y - cy
+                            val len = kotlin.math.sqrt(ox * ox + oy * oy)
+                            if (len > maxR) {
+                                ox = ox / len * maxR
+                                oy = oy / len * maxR
+                            }
+                            knob.value = Offset(ox, oy)
+                            strafe.value = ox / maxR
+                            fwd.value = -(oy / maxR) // cima = frente
+                            change.consume()
+                        }
+                        knob.value = Offset.Zero
+                        fwd.value = 0f
+                        strafe.value = 0f
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .offset { IntOffset(knob.value.x.toInt(), knob.value.y.toInt()) }
+                    .clip(CircleShape)
+                    .background(KenkernTextMid.copy(alpha = 0.75f))
+            )
+        }
+
+        // ---------- Slider de velocidade (canto inferior central) ----------
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .width(200.dp)
+        ) {
+            Text(speedLabel, fontSize = 12.sp, color = KenkernTextMid)
+            Slider(
+                value = speedT,
+                onValueChange = { t ->
+                    speedT = t
+                    cam.setFlightSpeedNormalized(t)
+                    speedLabel = String.format(Locale.US, "%.1f m/s", cam.flightSpeed)
+                },
+                modifier = Modifier.fillMaxWidth().height(28.dp)
+            )
+        }
+
+        // ---------- Botões subir/descer (canto inferior direito) ----------
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
+        ) {
+            FlightHoldButton(Icons.Filled.KeyboardArrowUp, "Subir") { held ->
+                vert.value = if (held) 1f else 0f
+            }
+            FlightHoldButton(Icons.Filled.KeyboardArrowDown, "Descer") { held ->
+                vert.value = if (held) -1f else 0f
+            }
+        }
+    }
+}
+
+/** Botão de voo com pressão contínua (48dp+): onHold(true) no down, onHold(false) no up. */
+@Composable
+private fun FlightHoldButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onHold: (Boolean) -> Unit
+) {
+    var pressed by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .size(52.dp)
+            .clip(CircleShape)
+            .background(if (pressed) KenkernOutline else KenkernSurfaceOverlay.copy(alpha = 0.75f))
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown()
+                    pressed = true
+                    onHold(true)
+                    waitForUpOrCancellation()
+                    pressed = false
+                    onHold(false)
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = KenkernTextHigh,
+            modifier = Modifier.size(26.dp)
+        )
+    }
 }
 
 // ============================== StatusBar (24dp) ==============================

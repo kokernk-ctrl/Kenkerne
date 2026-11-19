@@ -42,12 +42,13 @@ object GizmoSnap {
     const val MIN_SCALE = 0.01f
 }
 
-/** Dados estáticos de um modo: buffers de vértices + ranges por alça + alvos de hit-test. */
+/**
+ * Dados estáticos de um modo: MALHA de triângulos (alças sólidas: cilindros,
+ * cones, toros e cubos — NUNCA GL_LINES), ranges por alça e alvos de hit-test.
+ */
 class GizmoModeData(
-    val lines: FloatArray,                          // [x,y,z,r,g,b,a] por vértice (GL_LINES)
-    val tris: FloatArray,                           // idem (GL_TRIANGLES; vazio em ROTATE/SCALE)
-    val lineRanges: HashMap<GizmoHandle, IntArray>, // alça -> [offset, count] (vértices)
-    val triRanges: HashMap<GizmoHandle, IntArray>,
+    val tris: FloatArray,                              // [x,y,z,r,g,b,a] por vértice (GL_TRIANGLES)
+    val triRanges: HashMap<GizmoHandle, IntArray>,     // alça -> [offset, count] (vértices)
     val hitSegments: HashMap<GizmoHandle, FloatArray>, // alça -> [x1,y1,z1,x2,y2,z2, ...]
     val hitQuads: HashMap<GizmoHandle, FloatArray>     // alça -> 4 cantos [x,y,z] x4
 )
@@ -55,16 +56,26 @@ class GizmoModeData(
 /**
  * GIZMO DE TRANSFORMAÇÃO da KENKERN (Mover / Girar / Escalar).
  *
- *  - Geometria construída UMA vez (o renderer envia à GPU no init).
- *  - Tamanho constante na tela: escala do modelo = distância da câmera × fator.
- *  - Hit-test em ESPAÇO DE TELA (distância ponto-segmento projetada); raio de
- *    toque mínimo de 24px (~48dp de área por alça).
- *  - Arrasto: eixo/plano restringem o movimento (ponto mais próximo raio-reta
- *    ou raio-plano), rotação por QUATERNION em torno do eixo, escala por haste
- *    ou uniforme (cubo central).
- *  - ZERO alocação por evento: todos os temporários são campos pré-alocados.
+ *  DESENHO: alças como MALHA (cilindro + cone nas setas, toros nos anéis,
+ *  hastes + cubos de extremidade + cubo central na escala). Tamanho CONSTANTE
+ *  na tela: braço = ~18% da altura do viewport. Sem teste de profundidade
+ *  (sempre sobre a cena). Alça sob o dedo em AMARELO; demais eixos APAGADOS.
  *
- * Cores: X #E5534B, Y #57AB5A, Z #539BF5; alça sob o dedo: amarelo (GL).
+ *  HIT-TEST EM PIXELS: cada alça é projetada para a tela; distância do toque
+ *  ao segmento projetado; tolerância 28dp. Empate vale a alça mais próxima.
+ *  Planos (XY/XZ/YZ) = quadrados ~40dp perto da origem.
+ *
+ *  ARRASTO (a partir do ponto de pegada):
+ *   - eixo: ponto mais próximo raio-reta; desloca pela diferença do inicial;
+ *   - plano: interseção raio-plano;
+ *   - girar: ângulo do toque em torno do centro MEDIDO NO PLANO DO ANEL
+ *     (interseção raio-plano), diferença angular a partir do início;
+ *   - escalar: razão entre a distância atual e a inicial ao longo do eixo.
+ *  Estado: UM único Command por arrasto (snapshot inicial + final).
+ *
+ *  ZERO alocação por evento: todos os temporários são campos pré-alocados.
+ *
+ * Cores: X #E5534B, Y #57AB5A, Z #539BF5; alça sob o dedo: amarelo.
  */
 class TransformGizmo {
 
@@ -87,10 +98,12 @@ class TransformGizmo {
     private val axisWorld = Vec3()
     private val planeNormalW = Vec3()
     private val startHitPoint = Vec3()
-    private var startAxisS = 0f
-    private var startScreenAngle = 0f
+    private val startRadial = Vec3()      // rotação: vetor centro->toque no plano do anel
+    private var startAxisS = 0f           // eixo: parâmetro da pegada na reta do eixo
+    private var startTouchDist = 0f       // escala uniforme: distância de tela inicial
+    private var startScreenAngle = 0f     // fallback de rotação (anel de perfil)
     private var rotateSign = 1f
-    private var startTouchDist = 0f
+    private var rotateUseScreen = false   // true = anel visto de perfil -> ângulo de tela
     private val parentRot = Quaternion()
     private val parentRotInv = Quaternion()
     private var parentMatrix: Mat4? = null
@@ -105,6 +118,7 @@ class TransformGizmo {
     private val sRayDir = Vec3()
     private val sTmpA = Vec3()
     private val sTmpB = Vec3()
+    private val sTmpC = Vec3()
     private val sQa = Quaternion()
     private val sQb = Quaternion()
     private val sQc = Quaternion()
@@ -114,7 +128,7 @@ class TransformGizmo {
     private val sQuadX = FloatArray(4)
     private val sQuadY = FloatArray(4)
 
-    /** Escala do gizmo em unidades de mundo para tamanho CONSTANTE na tela. */
+    /** Escala do gizmo em unidades de mundo para tamanho CONSTANTE na tela (braço ≈ 18% da altura). */
     fun screenScaleFor(camera: OrbitCamera, worldPos: Vec3): Float {
         camera.eyePoint(sEye)
         val d = sEye.distanceTo(worldPos).coerceAtLeast(0.5f)
@@ -123,8 +137,8 @@ class TransformGizmo {
     }
 
     /**
-     * HIT-TEST: alça mais próxima do toque em espaço de tela.
-     * [touchRadiusPx] = raio de toque (>= 24px => ~48dp de área).
+     * HIT-TEST EM PIXELS: alça mais próxima do toque; tolerância
+     * [touchRadiusPx] (28dp). Empate vale a mais próxima (sem viés artificial).
      */
     fun hitTest(
         touchX: Float, touchY: Float,
@@ -139,7 +153,7 @@ class TransformGizmo {
         var best = GizmoHandle.NONE
         var bestDist = touchRadiusPx
 
-        // Segmentos (eixos, anéis, hastes, cubos)
+        // Segmentos (eixos, anéis, hastes, cubo central): distância ao segmento projetado.
         for ((handle, segs) in data.hitSegments) {
             var minDist = Float.MAX_VALUE
             var i = 0
@@ -150,15 +164,13 @@ class TransformGizmo {
                 if (d < minDist) minDist = d
                 i += 6
             }
-            // Eixos ganham prioridade sobre planos/cubos sob o dedo.
-            val biased = if (isAxisHandle(handle)) minDist * 0.7f else minDist
-            if (biased < bestDist) {
-                bestDist = biased
+            if (minDist < bestDist) {
+                bestDist = minDist
                 best = handle
             }
         }
 
-        // Planos de movimento (quad projetado): dentro do polígono = acerto.
+        // Planos de movimento (quadrado ~40dp projetado): dentro do polígono = acerto.
         for ((handle, quad) in data.hitQuads) {
             for (c in 0 until 4) {
                 projectToScreen(
@@ -176,7 +188,6 @@ class TransformGizmo {
                     edgeDist,
                     distPointSegment(touchX, touchY, sQuadX[a], sQuadY[a], sQuadX[bIdx], sQuadY[bIdx])
                 )
-                // teste de meio-plano consistente (quad convexo projetado)
                 val ex = sQuadX[bIdx] - sQuadX[a]
                 val ey = sQuadY[bIdx] - sQuadY[a]
                 val cross = ex * (touchY - sQuadY[a]) - ey * (touchX - sQuadX[a])
@@ -196,7 +207,7 @@ class TransformGizmo {
 
     /**
      * Inicia o arrasto de [handle] sobre [nick]: captura snapshot inicial e os
-     * parâmetros geométricos do gesto (eixo, plano, anel).
+     * parâmetros geométricos do gesto (eixo, plano, anel) A PARTIR DA PEGADA.
      */
     fun beginDrag(
         nick: Nick, handle: GizmoHandle,
@@ -220,7 +231,6 @@ class TransformGizmo {
         } else {
             parentRot.setIdentity()
         }
-        // conjugado (inverso p/ rotação unitária), sem depender de Core
         parentRotInv.set(-parentRot.x, -parentRot.y, -parentRot.z, parentRot.w)
 
         val localRot = nick.transform.rotation
@@ -229,11 +239,13 @@ class TransformGizmo {
         val ndcY = 1f - (touchY / viewportH) * 2f
 
         when (dragHandle) {
+            // MOVER EIXO: parâmetro s da pegada na reta do eixo (ponto mais próximo raio-reta).
             GizmoHandle.TX, GizmoHandle.TY, GizmoHandle.TZ -> {
                 worldAxis(handleAxisLocal(dragHandle), localRot, space, axisWorld)
                 camera.screenRay(ndcX, ndcY, aspect, sRayOrigin, sRayDir)
                 startAxisS = rayAxisParam(sRayOrigin, sRayDir, startWorldPos, axisWorld)
             }
+            // MOVER PLANO: interseção raio-plano na pegada.
             GizmoHandle.TXY, GizmoHandle.TXZ, GizmoHandle.TYZ -> {
                 when (dragHandle) {
                     GizmoHandle.TXY -> planeNormalW.set(0f, 0f, 1f)
@@ -247,18 +259,34 @@ class TransformGizmo {
                 camera.screenRay(ndcX, ndcY, aspect, sRayOrigin, sRayDir)
                 rayPlanePoint(sRayOrigin, sRayDir, startWorldPos, planeNormalW, startHitPoint)
             }
+            // GIRAR: vetor radial (centro->pegada) NO PLANO DO ANEL via raio-plano.
             GizmoHandle.RX, GizmoHandle.RY, GizmoHandle.RZ -> {
                 worldAxis(handleAxisLocal(dragHandle), localRot, space, axisWorld)
-                // sinal: eixo apontando para a câmera => rotação positiva CCW na tela
                 rotateSign = if (axisWorld.dot(sFwd) < 0f) 1f else -1f
-                projectToScreen(viewProj, startWorldPos.x, startWorldPos.y, startWorldPos.z, viewportW, viewportH, sQuadX, sQuadY, 0)
-                startScreenAngle = screenAngle(touchX, touchY, sQuadX[0], sQuadY[0])
+                camera.screenRay(ndcX, ndcY, aspect, sRayOrigin, sRayDir)
+                rotateUseScreen = true
+                if (rayPlanePoint(sRayOrigin, sRayDir, startWorldPos, axisWorld, sTmpB)) {
+                    sTmpA.set(sTmpB).sub(startWorldPos)
+                    sTmpA.addScaled(axisWorld, -sTmpA.dot(axisWorld)) // projeta no plano do anel
+                    if (sTmpA.lengthSquared() > 1e-8f) {
+                        startRadial.set(sTmpA).normalize()
+                        rotateUseScreen = false
+                    }
+                }
+                if (rotateUseScreen) {
+                    // anel de perfil: fallback por ângulo de tela em torno do centro
+                    projectToScreen(viewProj, startWorldPos.x, startWorldPos.y, startWorldPos.z, viewportW, viewportH, sQuadX, sQuadY, 0)
+                    startScreenAngle = screenAngle(touchX, touchY, sQuadX[0], sQuadY[0])
+                }
             }
+            // ESCALAR EIXO: razão s_atual / s_inicial ao longo do eixo.
             GizmoHandle.SX, GizmoHandle.SY, GizmoHandle.SZ -> {
                 worldAxis(handleAxisLocal(dragHandle), localRot, space, axisWorld)
                 camera.screenRay(ndcX, ndcY, aspect, sRayOrigin, sRayDir)
                 startAxisS = rayAxisParam(sRayOrigin, sRayDir, startWorldPos, axisWorld)
+                if (abs(startAxisS) < 1e-3f) startAxisS = 1e-3f
             }
+            // ESCALAR UNIFORME: razão das distâncias de tela ao centro.
             GizmoHandle.SXYZ -> {
                 projectToScreen(viewProj, startWorldPos.x, startWorldPos.y, startWorldPos.z, viewportW, viewportH, sQuadX, sQuadY, 0)
                 startTouchDist = dist2D(touchX, touchY, sQuadX[0], sQuadY[0]).coerceAtLeast(1f)
@@ -279,6 +307,7 @@ class TransformGizmo {
         val ndcY = 1f - (touchY / viewportH) * 2f
 
         when (dragHandle) {
+            // MOVER EIXO: ponto mais próximo raio-reta; desloca pela diferença p/ inicial.
             GizmoHandle.TX, GizmoHandle.TY, GizmoHandle.TZ -> {
                 camera.screenRay(ndcX, ndcY, aspect, sRayOrigin, sRayDir)
                 val s = rayAxisParam(sRayOrigin, sRayDir, startWorldPos, axisWorld)
@@ -287,6 +316,7 @@ class TransformGizmo {
                 if (snapEnabled) snapVec(sLocalTarget, GizmoSnap.MOVE)
                 nick.transform.position.set(sLocalTarget)
             }
+            // MOVER PLANO: interseção raio-plano; desloca pela diferença p/ pegada.
             GizmoHandle.TXY, GizmoHandle.TXZ, GizmoHandle.TYZ -> {
                 camera.screenRay(ndcX, ndcY, aspect, sRayOrigin, sRayDir)
                 if (!rayPlanePoint(sRayOrigin, sRayDir, startWorldPos, planeNormalW, sTmpB)) return
@@ -295,12 +325,30 @@ class TransformGizmo {
                 if (snapEnabled) snapVec(sLocalTarget, GizmoSnap.MOVE)
                 nick.transform.position.set(sLocalTarget)
             }
+            // GIRAR: diferença angular em torno do eixo, MEDIDA NO PLANO DO ANEL.
             GizmoHandle.RX, GizmoHandle.RY, GizmoHandle.RZ -> {
-                projectToScreen(viewProj, startWorldPos.x, startWorldPos.y, startWorldPos.z, viewportW, viewportH, sQuadX, sQuadY, 0)
-                var deltaDeg = Math.toDegrees(
-                    (screenAngle(touchX, touchY, sQuadX[0], sQuadY[0]) - startScreenAngle).toDouble()
-                ).toFloat()
-                deltaDeg = wrapDegrees(deltaDeg) * rotateSign
+                var deltaDeg = Float.NaN
+                if (!rotateUseScreen) {
+                    camera.screenRay(ndcX, ndcY, aspect, sRayOrigin, sRayDir)
+                    if (rayPlanePoint(sRayOrigin, sRayDir, startWorldPos, axisWorld, sTmpB)) {
+                        sTmpA.set(sTmpB).sub(startWorldPos)
+                        sTmpA.addScaled(axisWorld, -sTmpA.dot(axisWorld))
+                        if (sTmpA.lengthSquared() > 1e-8f) {
+                            // ângulo assinado de startRadial para o vetor atual em torno do eixo
+                            sTmpC.cross(startRadial, sTmpA)
+                            val sine = sTmpC.dot(axisWorld)
+                            val cosine = startRadial.dot(sTmpA)
+                            deltaDeg = Math.toDegrees(atan2(sine.toDouble(), cosine.toDouble()).toDouble()).toFloat()
+                        }
+                    }
+                } else {
+                    projectToScreen(viewProj, startWorldPos.x, startWorldPos.y, startWorldPos.z, viewportW, viewportH, sQuadX, sQuadY, 0)
+                    deltaDeg = Math.toDegrees(
+                        (screenAngle(touchX, touchY, sQuadX[0], sQuadY[0]) - startScreenAngle).toDouble()
+                    ).toFloat()
+                    deltaDeg = wrapDegrees(deltaDeg) * rotateSign
+                }
+                if (deltaDeg.isNaN()) return
                 if (snapEnabled) {
                     deltaDeg = Math.round(deltaDeg / GizmoSnap.ROTATE_DEG).toFloat() * GizmoSnap.ROTATE_DEG
                 }
@@ -325,13 +373,16 @@ class TransformGizmo {
                     nick.transform.rotation.set(sQa.x, sQa.y, sQa.z, sQa.w)
                 }
             }
+            // ESCALAR EIXO: razão entre distância atual e inicial ao longo do eixo.
             GizmoHandle.SX, GizmoHandle.SY, GizmoHandle.SZ -> {
                 camera.screenRay(ndcX, ndcY, aspect, sRayOrigin, sRayDir)
                 val s = rayAxisParam(sRayOrigin, sRayDir, startWorldPos, axisWorld)
-                var factor = 1f + (s - startAxisS) / dragScreenScale
+                var factor = s / startAxisS
                 if (factor < 0.01f) factor = 0.01f
+                if (factor > 1000f) factor = 1000f
                 applyAxisScale(nick, start, factor, snapEnabled, uniform = false)
             }
+            // ESCALAR UNIFORME: razão das distâncias de tela ao centro.
             GizmoHandle.SXYZ -> {
                 projectToScreen(viewProj, startWorldPos.x, startWorldPos.y, startWorldPos.z, viewportW, viewportH, sQuadX, sQuadY, 0)
                 val d = dist2D(touchX, touchY, sQuadX[0], sQuadY[0]).coerceAtLeast(1f)
@@ -356,22 +407,22 @@ class TransformGizmo {
 
     // ---------- Geometria estática (init-only; pode alocar) ----------
 
-    private class Builder {
-        val out = ArrayList<Float>(512)
+    private class TriBuilder {
+        val out = ArrayList<Float>(2048)
         fun v(x: Float, y: Float, z: Float, r: Float, g: Float, b: Float, a: Float) {
             out.add(x); out.add(y); out.add(z); out.add(r); out.add(g); out.add(b); out.add(a)
         }
-        fun seg(x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float,
-                r: Float, g: Float, b: Float, a: Float = 1f) {
-            v(x1, y1, z1, r, g, b, a); v(x2, y2, z2, r, g, b, a)
-        }
-        fun tri(x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float,
-                x3: Float, y3: Float, z3: Float, r: Float, g: Float, b: Float, a: Float) {
+        fun tri(
+            x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float,
+            x3: Float, y3: Float, z3: Float, r: Float, g: Float, b: Float, a: Float
+        ) {
             v(x1, y1, z1, r, g, b, a); v(x2, y2, z2, r, g, b, a); v(x3, y3, z3, r, g, b, a)
         }
-        fun quad(x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float,
-                 x3: Float, y3: Float, z3: Float, x4: Float, y4: Float, z4: Float,
-                 r: Float, g: Float, b: Float, a: Float) {
+        fun quad(
+            x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float,
+            x3: Float, y3: Float, z3: Float, x4: Float, y4: Float, z4: Float,
+            r: Float, g: Float, b: Float, a: Float
+        ) {
             tri(x1, y1, z1, x2, y2, z2, x3, y3, z3, r, g, b, a)
             tri(x1, y1, z1, x3, y3, z3, x4, y4, z4, r, g, b, a)
         }
@@ -385,192 +436,241 @@ class TransformGizmo {
         else -> floatArrayOf(0.325f, 0.608f, 0.961f) // Z #539BF5
     }
 
+    /** Cilindro sólido ao longo de [axis], de [from] a [to], com tampas. */
+    private fun cylinder(
+        b: TriBuilder, axis: Int, from: Float, to: Float, radius: Float,
+        segs: Int, c: FloatArray, alpha: Float = 1f
+    ) {
+        val u = unitVec(axis)
+        val p = perpVec(axis)
+        val q = crossVec(u, p)
+        for (i in 0 until segs) {
+            val t0 = (i.toFloat() / segs) * 2f * Math.PI.toFloat()
+            val t1 = ((i + 1).toFloat() / segs) * 2f * Math.PI.toFloat()
+            val c0 = cos(t0); val s0 = sin(t0); val c1 = cos(t1); val s1 = sin(t1)
+            val ax0 = u[0] * from + p[0] * (radius * c0) + q[0] * (radius * s0)
+            val ay0 = u[1] * from + p[1] * (radius * c0) + q[1] * (radius * s0)
+            val az0 = u[2] * from + p[2] * (radius * c0) + q[2] * (radius * s0)
+            val ax1 = u[0] * from + p[0] * (radius * c1) + q[0] * (radius * s1)
+            val ay1 = u[1] * from + p[1] * (radius * c1) + q[1] * (radius * s1)
+            val az1 = u[2] * from + p[2] * (radius * c1) + q[2] * (radius * s1)
+            val bx0 = u[0] * to + p[0] * (radius * c0) + q[0] * (radius * s0)
+            val by0 = u[1] * to + p[1] * (radius * c0) + q[1] * (radius * s0)
+            val bz0 = u[2] * to + p[2] * (radius * c0) + q[2] * (radius * s0)
+            val bx1 = u[0] * to + p[0] * (radius * c1) + q[0] * (radius * s1)
+            val by1 = u[1] * to + p[1] * (radius * c1) + q[1] * (radius * s1)
+            val bz1 = u[2] * to + p[2] * (radius * c1) + q[2] * (radius * s1)
+            b.quad(ax0, ay0, az0, bx0, by0, bz0, bx1, by1, bz1, ax1, ay1, az1, c[0], c[1], c[2], alpha)
+            // tampas (cull desativado no draw; ventos consistentes por segurança)
+            b.tri(u[0] * from, u[1] * from, u[2] * from, ax1, ay1, az1, ax0, ay0, az0, c[0], c[1], c[2], alpha)
+            b.tri(u[0] * to, u[1] * to, u[2] * to, bx0, by0, bz0, bx1, by1, bz1, c[0], c[1], c[2], alpha)
+        }
+    }
+
+    /** Cone sólido: base circular em [base], ponta em [tip]. */
+    private fun cone(
+        b: TriBuilder, axis: Int, base: Float, tip: Float, baseRadius: Float,
+        segs: Int, c: FloatArray, alpha: Float = 1f
+    ) {
+        val u = unitVec(axis)
+        val p = perpVec(axis)
+        val q = crossVec(u, p)
+        for (i in 0 until segs) {
+            val t0 = (i.toFloat() / segs) * 2f * Math.PI.toFloat()
+            val t1 = ((i + 1).toFloat() / segs) * 2f * Math.PI.toFloat()
+            val c0 = cos(t0); val s0 = sin(t0); val c1 = cos(t1); val s1 = sin(t1)
+            val ax0 = u[0] * base + p[0] * (baseRadius * c0) + q[0] * (baseRadius * s0)
+            val ay0 = u[1] * base + p[1] * (baseRadius * c0) + q[1] * (baseRadius * s0)
+            val az0 = u[2] * base + p[2] * (baseRadius * c0) + q[2] * (baseRadius * s0)
+            val ax1 = u[0] * base + p[0] * (baseRadius * c1) + q[0] * (baseRadius * s1)
+            val ay1 = u[1] * base + p[1] * (baseRadius * c1) + q[1] * (baseRadius * s1)
+            val az1 = u[2] * base + p[2] * (baseRadius * c1) + q[2] * (baseRadius * s1)
+            b.tri(u[0] * tip, u[1] * tip, u[2] * tip, ax0, ay0, az0, ax1, ay1, az1, c[0], c[1], c[2], alpha)
+            b.tri(u[0] * base, u[1] * base, u[2] * base, ax1, ay1, az1, ax0, ay0, az0, c[0], c[1], c[2], alpha)
+        }
+    }
+
+    /** Toro sólido no plano perpendicular a [axis], centro na origem. */
+    private fun torus(
+        b: TriBuilder, axis: Int, majorR: Float, minorR: Float,
+        majorSegs: Int, minorSegs: Int, c: FloatArray, alpha: Float = 1f
+    ) {
+        val u = unitVec(axis)
+        val p = perpVec(axis)
+        val q = crossVec(u, p)
+        for (i in 0 until majorSegs) {
+            val m0 = (i.toFloat() / majorSegs) * 2f * Math.PI.toFloat()
+            val m1 = ((i + 1).toFloat() / majorSegs) * 2f * Math.PI.toFloat()
+            for (j in 0 until minorSegs) {
+                val n0 = (j.toFloat() / minorSegs) * 2f * Math.PI.toFloat()
+                val n1 = ((j + 1).toFloat() / minorSegs) * 2f * Math.PI.toFloat()
+                torusPoint(u, p, q, majorR, minorR, m0, n0, sPa)
+                torusPoint(u, p, q, majorR, minorR, m1, n0, sPb)
+                torusPoint(u, p, q, majorR, minorR, m1, n1, sPc)
+                torusPoint(u, p, q, majorR, minorR, m0, n1, sPd)
+                b.quad(
+                    sPa[0], sPa[1], sPa[2], sPb[0], sPb[1], sPb[2],
+                    sPc[0], sPc[1], sPc[2], sPd[0], sPd[1], sPd[2],
+                    c[0], c[1], c[2], alpha
+                )
+            }
+        }
+    }
+
+    private val sPa = FloatArray(3)
+    private val sPb = FloatArray(3)
+    private val sPc = FloatArray(3)
+    private val sPd = FloatArray(3)
+
+    private fun torusPoint(
+        u: FloatArray, p: FloatArray, q: FloatArray,
+        majorR: Float, minorR: Float, m: Float, n: Float, out: FloatArray
+    ) {
+        val cm = cos(m); val sm = sin(m)
+        val cn = cos(n); val sn = sin(n)
+        val ring = majorR + minorR * cn
+        out[0] = p[0] * (ring * cm) + q[0] * (ring * sm) + u[0] * (minorR * sn)
+        out[1] = p[1] * (ring * cm) + q[1] * (ring * sm) + u[1] * (minorR * sn)
+        out[2] = p[2] * (ring * cm) + q[2] * (ring * sm) + u[2] * (minorR * sn)
+    }
+
+    /** Cubo sólido centrado em (cx,cy,cz). */
+    private fun solidBox(
+        b: TriBuilder, cx: Float, cy: Float, cz: Float, half: Float,
+        r: Float, g: Float, bl: Float, alpha: Float = 1f
+    ) {
+        val x0 = cx - half; val x1 = cx + half
+        val y0 = cy - half; val y1 = cy + half
+        val z0 = cz - half; val z1 = cz + half
+        // +X / -X
+        b.quad(x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1, r, g, bl, alpha)
+        b.quad(x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0, r, g, bl, alpha)
+        // +Y / -Y
+        b.quad(x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0, r, g, bl, alpha)
+        b.quad(x0, y0, z1, x0, y0, z0, x1, y0, z0, x1, y0, z1, r, g, bl, alpha)
+        // +Z / -Z
+        b.quad(x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1, r, g, bl, alpha)
+        b.quad(x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0, r, g, bl, alpha)
+    }
+
+    /** Preenchimento do plano de movimento (quadrado entre [lo] e [hi] nos dois eixos). */
+    private fun planeFill(
+        b: TriBuilder, axisA: Int, axisB: Int, lo: Float, hi: Float,
+        c: FloatArray, alpha: Float
+    ) {
+        val p1 = mixPlane(axisA, axisB, lo, lo)
+        val p2 = mixPlane(axisA, axisB, hi, lo)
+        val p3 = mixPlane(axisA, axisB, hi, hi)
+        val p4 = mixPlane(axisA, axisB, lo, hi)
+        b.quad(
+            p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], p3[0], p3[1], p3[2], p4[0], p4[1], p4[2],
+            c[0], c[1], c[2], alpha
+        )
+    }
+
+    // ---------- Construção dos modos ----------
+
     private fun buildMoveData(): GizmoModeData {
-        val b = Builder()
-        val lineRanges = HashMap<GizmoHandle, IntArray>()
+        val b = TriBuilder()
         val triRanges = HashMap<GizmoHandle, IntArray>()
         val hitSegments = HashMap<GizmoHandle, FloatArray>()
         val hitQuads = HashMap<GizmoHandle, FloatArray>()
-        val planeColor = floatArrayOf(0.78f, 0.78f, 0.78f)
+        val planeColor = floatArrayOf(0.82f, 0.82f, 0.82f)
 
-        var start = 0
-        writeArrow(b, 0)
-        lineRanges[GizmoHandle.TX] = intArrayOf(start, b.vertexCount() - start)
-        hitSegments[GizmoHandle.TX] = arrowHitSegments(0)
-        start = b.vertexCount()
-        writeArrow(b, 1)
-        lineRanges[GizmoHandle.TY] = intArrayOf(start, b.vertexCount() - start)
-        hitSegments[GizmoHandle.TY] = arrowHitSegments(1)
-        start = b.vertexCount()
-        writeArrow(b, 2)
-        lineRanges[GizmoHandle.TZ] = intArrayOf(start, b.vertexCount() - start)
-        hitSegments[GizmoHandle.TZ] = arrowHitSegments(2)
-
-        start = b.vertexCount()
-        writePlaneOutline(b, 0, 1, planeColor) // XY
-        lineRanges[GizmoHandle.TXY] = intArrayOf(start, b.vertexCount() - start)
+        // Setas: haste (cilindro) + ponta (cone) por eixo.
+        for (axis in 0 until 3) {
+            val c = axisColor(axis)
+            val start = b.vertexCount()
+            cylinder(b, axis, 0.15f, 0.72f, 0.034f, 12, c)
+            cone(b, axis, 0.72f, 1.0f, 0.095f, 12, c)
+            triRanges[axisHandle(axis)] = intArrayOf(start, b.vertexCount() - start)
+            hitSegments[axisHandle(axis)] = axisHitSegment(axis)
+        }
+        // Planos de movimento: quadrados ~40dp perto da origem.
+        var start = b.vertexCount()
+        planeFill(b, 0, 1, PLANE_LO, PLANE_HI, planeColor, 0.30f) // XY
+        triRanges[GizmoHandle.TXY] = intArrayOf(start, b.vertexCount() - start)
         hitQuads[GizmoHandle.TXY] = planeCorners(0, 1)
         start = b.vertexCount()
-        writePlaneOutline(b, 0, 2, planeColor) // XZ
-        lineRanges[GizmoHandle.TXZ] = intArrayOf(start, b.vertexCount() - start)
+        planeFill(b, 0, 2, PLANE_LO, PLANE_HI, planeColor, 0.30f) // XZ
+        triRanges[GizmoHandle.TXZ] = intArrayOf(start, b.vertexCount() - start)
         hitQuads[GizmoHandle.TXZ] = planeCorners(0, 2)
         start = b.vertexCount()
-        writePlaneOutline(b, 1, 2, planeColor) // YZ
-        lineRanges[GizmoHandle.TYZ] = intArrayOf(start, b.vertexCount() - start)
+        planeFill(b, 1, 2, PLANE_LO, PLANE_HI, planeColor, 0.30f) // YZ
+        triRanges[GizmoHandle.TYZ] = intArrayOf(start, b.vertexCount() - start)
         hitQuads[GizmoHandle.TYZ] = planeCorners(1, 2)
 
-        val tb = Builder()
-        start = 0
-        writePlaneFill(tb, 0, 1, planeColor, 0.22f)
-        triRanges[GizmoHandle.TXY] = intArrayOf(start, tb.vertexCount() - start)
-        start = tb.vertexCount()
-        writePlaneFill(tb, 0, 2, planeColor, 0.22f)
-        triRanges[GizmoHandle.TXZ] = intArrayOf(start, tb.vertexCount() - start)
-        start = tb.vertexCount()
-        writePlaneFill(tb, 1, 2, planeColor, 0.22f)
-        triRanges[GizmoHandle.TYZ] = intArrayOf(start, tb.vertexCount() - start)
-
-        return GizmoModeData(b.toFloatArray(), tb.toFloatArray(), lineRanges, triRanges, hitSegments, hitQuads)
+        return GizmoModeData(b.toFloatArray(), triRanges, hitSegments, hitQuads)
     }
 
     private fun buildRotateData(): GizmoModeData {
-        val b = Builder()
-        val ranges = HashMap<GizmoHandle, IntArray>()
-        val hit = HashMap<GizmoHandle, FloatArray>()
-        val segs = 48
+        val b = TriBuilder()
+        val triRanges = HashMap<GizmoHandle, IntArray>()
+        val hitSegments = HashMap<GizmoHandle, FloatArray>()
         val handles = arrayOf(GizmoHandle.RX, GizmoHandle.RY, GizmoHandle.RZ)
         for (axis in 0 until 3) {
             val c = axisColor(axis)
             val start = b.vertexCount()
-            val hs = FloatArray(segs * 6)
-            for (i in 0 until segs) {
-                val a0 = (i.toFloat() / segs) * 2f * Math.PI.toFloat()
-                val a1 = ((i + 1).toFloat() / segs) * 2f * Math.PI.toFloat()
-                val p0 = ringPoint(axis, a0)
-                val p1 = ringPoint(axis, a1)
-                b.seg(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], c[0], c[1], c[2])
-                var k = i * 6
-                hs[k++] = p0[0]; hs[k++] = p0[1]; hs[k++] = p0[2]
-                hs[k++] = p1[0]; hs[k++] = p1[1]; hs[k] = p1[2]
-            }
-            ranges[handles[axis]] = intArrayOf(start, b.vertexCount() - start)
-            hit[handles[axis]] = hs
+            torus(b, axis, RING_R, RING_TUBE, 44, 8, c)
+            triRanges[handles[axis]] = intArrayOf(start, b.vertexCount() - start)
+            hitSegments[handles[axis]] = ringHitSegments(axis)
         }
-        return GizmoModeData(b.toFloatArray(), FloatArray(0), ranges, HashMap(), hit, HashMap())
+        return GizmoModeData(b.toFloatArray(), triRanges, hitSegments, HashMap())
     }
 
     private fun buildScaleData(): GizmoModeData {
-        val b = Builder()
-        val ranges = HashMap<GizmoHandle, IntArray>()
-        val hit = HashMap<GizmoHandle, FloatArray>()
-
+        val b = TriBuilder()
+        val triRanges = HashMap<GizmoHandle, IntArray>()
+        val hitSegments = HashMap<GizmoHandle, FloatArray>()
         for (axis in 0 until 3) {
             val c = axisColor(axis)
             val u = unitVec(axis)
             val start = b.vertexCount()
-            b.seg(0f, 0f, 0f, u[0] * 0.9f, u[1] * 0.9f, u[2] * 0.9f, c[0], c[1], c[2])
-            writeBoxOutline(b, u[0], u[1], u[2], 0.09f, c[0], c[1], c[2])
-            ranges[axisScaleHandle(axis)] = intArrayOf(start, b.vertexCount() - start)
-            val hs = FloatArray(6 + 12 * 6)
-            hs[0] = 0f; hs[1] = 0f; hs[2] = 0f
-            hs[3] = u[0] * 0.9f; hs[4] = u[1] * 0.9f; hs[5] = u[2] * 0.9f
-            writeBoxHitSegments(hs, 6, u[0], u[1], u[2], 0.09f)
-            hit[axisScaleHandle(axis)] = hs
+            cylinder(b, axis, 0.15f, 0.72f, 0.034f, 12, c)
+            solidBox(b, u[0] * 0.88f, u[1] * 0.88f, u[2] * 0.88f, 0.10f, c[0], c[1], c[2])
+            triRanges[axisScaleHandle(axis)] = intArrayOf(start, b.vertexCount() - start)
+            hitSegments[axisScaleHandle(axis)] = axisHitSegment(axis)
         }
+        // Cubo central (escala uniforme)
         val start = b.vertexCount()
-        writeBoxOutline(b, 0f, 0f, 0f, 0.13f, 0.85f, 0.85f, 0.85f)
-        ranges[GizmoHandle.SXYZ] = intArrayOf(start, b.vertexCount() - start)
-        val hs = FloatArray(12 * 6)
-        writeBoxHitSegments(hs, 0, 0f, 0f, 0f, 0.13f)
-        hit[GizmoHandle.SXYZ] = hs
-
-        return GizmoModeData(b.toFloatArray(), FloatArray(0), ranges, HashMap(), hit, HashMap())
+        solidBox(b, 0f, 0f, 0f, 0.14f, 0.85f, 0.85f, 0.85f)
+        triRanges[GizmoHandle.SXYZ] = intArrayOf(start, b.vertexCount() - start)
+        hitSegments[GizmoHandle.SXYZ] = FloatArray(6) // segmento degenerado = ponto central
+        return GizmoModeData(b.toFloatArray(), triRanges, hitSegments, HashMap())
     }
 
-    /** Seta de movimento em torno do eixo [axis] (0=X,1=Y,2=Z): haste + ponta. */
-    private fun writeArrow(b: Builder, axis: Int) {
-        val c = axisColor(axis)
+    // ---------- Alvos de hit-test ----------
+
+    /** Segmento central->extremidade do braço do eixo (usado por mover e escalar). */
+    private fun axisHitSegment(axis: Int): FloatArray {
         val u = unitVec(axis)
-        val p = perpVec(axis)
-        val q = crossVec(u, p)
-        b.seg(0f, 0f, 0f, u[0] * 0.82f, u[1] * 0.82f, u[2] * 0.82f, c[0], c[1], c[2])
-        for (s in intArrayOf(-1, 1)) {
-            b.seg(u[0], u[1], u[2],
-                u[0] * 0.86f + p[0] * 0.055f * s, u[1] * 0.86f + p[1] * 0.055f * s, u[2] * 0.86f + p[2] * 0.055f * s,
-                c[0], c[1], c[2])
-            b.seg(u[0], u[1], u[2],
-                u[0] * 0.86f + q[0] * 0.055f * s, u[1] * 0.86f + q[1] * 0.055f * s, u[2] * 0.86f + q[2] * 0.055f * s,
-                c[0], c[1], c[2])
-        }
+        return floatArrayOf(0f, 0f, 0f, u[0], u[1], u[2])
     }
 
-    private fun writePlaneOutline(b: Builder, axisA: Int, axisB: Int, c: FloatArray) {
-        val lo = 0.25f; val hi = 0.65f
-        val p1 = mixPlane(axisA, axisB, lo, lo)
-        val p2 = mixPlane(axisA, axisB, hi, lo)
-        val p3 = mixPlane(axisA, axisB, hi, hi)
-        val p4 = mixPlane(axisA, axisB, lo, hi)
-        b.seg(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], c[0], c[1], c[2], 0.8f)
-        b.seg(p2[0], p2[1], p2[2], p3[0], p3[1], p3[2], c[0], c[1], c[2], 0.8f)
-        b.seg(p3[0], p3[1], p3[2], p4[0], p4[1], p4[2], c[0], c[1], c[2], 0.8f)
-        b.seg(p4[0], p4[1], p4[2], p1[0], p1[1], p1[2], c[0], c[1], c[2], 0.8f)
-    }
-
-    private fun writePlaneFill(b: Builder, axisA: Int, axisB: Int, c: FloatArray, alpha: Float) {
-        val lo = 0.25f; val hi = 0.65f
-        val p1 = mixPlane(axisA, axisB, lo, lo)
-        val p2 = mixPlane(axisA, axisB, hi, lo)
-        val p3 = mixPlane(axisA, axisB, hi, hi)
-        val p4 = mixPlane(axisA, axisB, lo, hi)
-        b.quad(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], p3[0], p3[1], p3[2], p4[0], p4[1], p4[2],
-            c[0], c[1], c[2], alpha)
-    }
-
-    /** Box outline (12 arestas) centrado em (cx,cy,cz) com meia-aresta [half]. */
-    private fun writeBoxOutline(b: Builder, cx: Float, cy: Float, cz: Float, half: Float, r: Float, g: Float, bl: Float) {
-        for (sx in intArrayOf(-1, 1)) for (sy in intArrayOf(-1, 1)) for (sz in intArrayOf(-1, 1)) {
-            val x = cx + sx * half; val y = cy + sy * half; val z = cz + sz * half
-            if (sx == -1) b.seg(x, y, z, cx + half, y, z, r, g, bl)
-            if (sy == -1) b.seg(x, y, z, x, cy + half, z, r, g, bl)
-            if (sz == -1) b.seg(x, y, z, x, y, cz + half, r, g, bl)
-        }
-    }
-
-    /** Escreve 12 arestas de box em FloatArray de hit-test a partir de [at]. */
-    private fun writeBoxHitSegments(hs: FloatArray, at: Int, cx: Float, cy: Float, cz: Float, half: Float) {
-        var k = at
-        for (sx in intArrayOf(-1, 1)) for (sy in intArrayOf(-1, 1)) for (sz in intArrayOf(-1, 1)) {
-            val x = cx + sx * half; val y = cy + sy * half; val z = cz + sz * half
-            if (sx == -1) {
-                hs[k++] = x; hs[k++] = y; hs[k++] = z
-                hs[k++] = cx + half; hs[k++] = y; hs[k++] = z
-            }
-            if (sy == -1) {
-                hs[k++] = x; hs[k++] = y; hs[k++] = z
-                hs[k++] = x; hs[k++] = cy + half; hs[k++] = z
-            }
-            if (sz == -1) {
-                hs[k++] = x; hs[k++] = y; hs[k++] = z
-                hs[k++] = x; hs[k++] = y; hs[k++] = cz + half
-            }
-        }
-    }
-
-    private fun arrowHitSegments(axis: Int): FloatArray {
-        val u = unitVec(axis)
-        val p = perpVec(axis)
-        val q = crossVec(u, p)
-        val hs = FloatArray(5 * 6)
+    /** Anéis: [chords] cordas ao longo do círculo (aproximação fina para pixels). */
+    private fun ringHitSegments(axis: Int, chords: Int = 24): FloatArray {
+        val hs = FloatArray(chords * 6)
         var k = 0
-        hs[k++] = 0f; hs[k++] = 0f; hs[k++] = 0f
-        hs[k++] = u[0]; hs[k++] = u[1]; hs[k++] = u[2]
-        for (s in intArrayOf(-1, 1)) {
-            hs[k++] = u[0]; hs[k++] = u[1]; hs[k++] = u[2]
-            hs[k++] = u[0] * 0.86f + p[0] * 0.055f * s; hs[k++] = u[1] * 0.86f + p[1] * 0.055f * s; hs[k++] = u[2] * 0.86f + p[2] * 0.055f * s
-            hs[k++] = u[0]; hs[k++] = u[1]; hs[k++] = u[2]
-            hs[k++] = u[0] * 0.86f + q[0] * 0.055f * s; hs[k++] = u[1] * 0.86f + q[1] * 0.055f * s; hs[k++] = u[2] * 0.86f + q[2] * 0.055f * s
+        for (i in 0 until chords) {
+            val a0 = (i.toFloat() / chords) * 2f * Math.PI.toFloat()
+            val a1 = ((i + 1).toFloat() / chords) * 2f * Math.PI.toFloat()
+            val p0 = ringPoint(axis, a0)
+            val p1 = ringPoint(axis, a1)
+            hs[k++] = p0[0]; hs[k++] = p0[1]; hs[k++] = p0[2]
+            hs[k++] = p1[0]; hs[k++] = p1[1]; hs[k] = p1[2]
         }
         return hs
+    }
+
+    private fun planeCorners(axisA: Int, axisB: Int): FloatArray {
+        val p1 = mixPlane(axisA, axisB, PLANE_LO, PLANE_LO)
+        val p2 = mixPlane(axisA, axisB, PLANE_HI, PLANE_LO)
+        val p3 = mixPlane(axisA, axisB, PLANE_HI, PLANE_HI)
+        val p4 = mixPlane(axisA, axisB, PLANE_LO, PLANE_HI)
+        return floatArrayOf(
+            p1[0], p1[1], p1[2], p2[0], p2[1], p2[2],
+            p3[0], p3[1], p3[2], p4[0], p4[1], p4[2]
+        )
     }
 
     // ---------- Matemática (in-place / estáticos; zero alocação por evento) ----------
@@ -645,17 +745,16 @@ class TransformGizmo {
         else -> 2
     }
 
+    private fun axisHandle(axis: Int): GizmoHandle = when (axis) {
+        0 -> GizmoHandle.TX
+        1 -> GizmoHandle.TY
+        else -> GizmoHandle.TZ
+    }
+
     private fun axisScaleHandle(axis: Int): GizmoHandle = when (axis) {
         0 -> GizmoHandle.SX
         1 -> GizmoHandle.SY
         else -> GizmoHandle.SZ
-    }
-
-    private fun isAxisHandle(h: GizmoHandle): Boolean = when (h) {
-        GizmoHandle.TX, GizmoHandle.TY, GizmoHandle.TZ,
-        GizmoHandle.RX, GizmoHandle.RY, GizmoHandle.RZ,
-        GizmoHandle.SX, GizmoHandle.SY, GizmoHandle.SZ -> true
-        else -> false
     }
 
     /** Direção do eixo no mundo (LOCAL gira pela rotação do nick; GLOBAL é a base do mundo). */
@@ -789,20 +888,16 @@ class TransformGizmo {
         return p
     }
 
-    private fun planeCorners(axisA: Int, axisB: Int): FloatArray {
-        val lo = 0.25f; val hi = 0.65f
-        val p1 = mixPlane(axisA, axisB, lo, lo)
-        val p2 = mixPlane(axisA, axisB, hi, lo)
-        val p3 = mixPlane(axisA, axisB, hi, hi)
-        val p4 = mixPlane(axisA, axisB, lo, hi)
-        return floatArrayOf(
-            p1[0], p1[1], p1[2], p2[0], p2[1], p2[2],
-            p3[0], p3[1], p3[2], p4[0], p4[1], p4[2]
-        )
-    }
-
     companion object {
-        /** Braço do gizmo = 16% da altura do viewport. */
-        const val SCREEN_FRACTION = 0.16f
+        /** Braço do gizmo = 18% da altura do viewport (especificação). */
+        const val SCREEN_FRACTION = 0.18f
+
+        /** Quadrado dos planos de movimento: ~40dp na tela (0,33 do braço de 18%). */
+        const val PLANE_LO = 0.12f
+        const val PLANE_HI = 0.45f
+
+        /** Raio do anel de rotação e espessura do tubo (fração do braço). */
+        const val RING_R = 0.82f
+        const val RING_TUBE = 0.032f
     }
 }

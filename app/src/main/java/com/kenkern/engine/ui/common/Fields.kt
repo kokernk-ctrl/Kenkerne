@@ -56,6 +56,7 @@ fun formatFloat(v: Float): String {
  * Campo numérico compacto (28dp) com rótulo de eixo colorido:
  * fundo #1E1E1E, borda 1px (#3C3C3C; âmbar no foco), texto 12sp #CCCCCC.
  * Commit no "done" do teclado ou perda de foco (não polui o undo por tecla).
+ * [readOnly] = exibição (quaternion do Inspetor): altura/estilo idênticos, sem edição.
  */
 @Composable
 fun AxisNumberField(
@@ -63,7 +64,8 @@ fun AxisNumberField(
     axisColor: Color,
     value: Float,
     onCommit: (Float) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    readOnly: Boolean = false
 ) {
     var text by remember(value) { mutableStateOf(formatFloat(value)) }
     var wasFocused by remember { mutableStateOf(false) }
@@ -80,7 +82,8 @@ fun AxisNumberField(
         Spacer(Modifier.width(2.dp))
         BasicTextField(
             value = text,
-            onValueChange = { text = it },
+            onValueChange = { if (!readOnly) text = it },
+            readOnly = readOnly,
             singleLine = true,
             textStyle = TextStyle(fontSize = 12.sp, color = KenkernTextHigh),
             cursorBrush = SolidColor(KenkernAmber),
@@ -90,6 +93,7 @@ fun AxisNumberField(
                 .weight(1f)
                 .height(28.dp)
                 .onFocusChanged { state ->
+                    if (readOnly) return@onFocusChanged
                     focusedNow = state.isFocused
                     if (state.isFocused) {
                         wasFocused = true

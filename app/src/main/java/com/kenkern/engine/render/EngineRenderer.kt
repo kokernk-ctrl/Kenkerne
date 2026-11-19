@@ -17,15 +17,17 @@ import kotlin.math.sin
 /**
  * Renderer do viewport da KENKERN:
  *  - céu (gradiente zênite→horizonte + sol discreto na direção da luz);
- *  - grade com fade por distância, eixos X (vermelho) e Z (azul), 1 m / 10 m;
+ *  - GRADE INFINITA (1 draw call): raio contra o plano Y=0 no fragment shader,
+ *    anti-moiré por fwidth, fade por distância, dupla face (câmera abaixo do chão);
  *  - cubo por Nick ativo/visível (material #9A9A9A, Lambert + ambiente hemisférico);
  *  - contorno laranja #FFA940 (inverted hull) no Nick selecionado;
  *  - gizmo de eixos no canto superior direito, girando com a câmera;
+ *  - gizmo de transformação como MALHA (alça sob o dedo amarela, demais apagados);
  *  - malha de teste (torus) gerada, salva em .KERN e recarregada (roundtrip).
  *
  * PERF: a fila de geometria é RESETADA a cada frame (sem isso ela acumula
  * submissões até saturar e redesenha a cena centenas de vezes por frame).
- * Orçamento: céu 1 + grade 1 + malhas N + contorno 1 (se seleção) + gizmo 1.
+ * Orçamento: céu 1 + malhas N + contorno 1 + grade 1 + gizmo ≤ 2 + eixos 1.
  *
  * ANTI-CRASH: [initialize] e [renderFrame] nunca lançam exceção — falhas de GPU
  * degradam o viewport (modo seguro) em vez de derrubar o app.
@@ -36,19 +38,16 @@ class EngineRenderer {
     private val lighting: LightingPipeline = DefaultLightingPipeline()
 
     private var initialized = false
-    private var gridHandle = 0
-    private var gridVertexCount = 0
     private var cubeHandle = 0
     private var testMeshHandle = 0
     private var gizmoHandle = 0
     private var gizmoVertexCount = 0
     private var kernRoundtripOk = false
 
-    // Buffers GL do gizmo de transformação (dados estáticos do TransformGizmo)
-    private var tgMoveLines = 0
-    private var tgMoveTris = 0
-    private var tgRotateLines = 0
-    private var tgScaleLines = 0
+    // Buffers GL do gizmo de transformação (MALHA de triângulos, 1 VBO por modo)
+    private var tgTrisMove = 0
+    private var tgTrisRotate = 0
+    private var tgTrisScale = 0
     private var tGizmo: TransformGizmo? = null
 
     // Estatísticas para a barra de status (zero alocação por frame).
@@ -121,14 +120,13 @@ class EngineRenderer {
     private val outlineG = 0.6627f       // #FFA940
     private val outlineB = 0.2510f
 
-    /** Inicialização segura: céu/grade/cubo/gizmos/malha .KERN; falha = viewport limpo. */
+    /** Inicialização segura: céu/grade infinita/cubo/gizmos/malha .KERN; falha = viewport limpo. */
     fun initialize(backend: RenderBackend, transformGizmo: TransformGizmo? = null) {
         initialized = false
-        gridHandle = 0
         cubeHandle = 0
         testMeshHandle = 0
         gizmoHandle = 0
-        tgMoveLines = 0; tgMoveTris = 0; tgRotateLines = 0; tgScaleLines = 0
+        tgTrisMove = 0; tgTrisRotate = 0; tgTrisScale = 0
         tGizmo = transformGizmo
         kernRoundtripOk = false
         outlineInflation.setIdentity()
@@ -140,7 +138,6 @@ class EngineRenderer {
             return
         }
         // Cada construção é independente: se uma falhar, o resto ainda desenha.
-        runCatching { buildGrid(backend) }.onFailure { Log.w(TAG, "grid: ${it.message}") }
         runCatching { buildCube(backend) }.onFailure { Log.w(TAG, "cube: ${it.message}") }
         runCatching { buildGizmo(backend) }.onFailure { Log.w(TAG, "gizmo: ${it.message}") }
         runCatching { buildTransformGizmoBuffers(backend) }.onFailure { Log.w(TAG, "tGizmo: ${it.message}") }
@@ -148,40 +145,17 @@ class EngineRenderer {
         initialized = true
     }
 
-    /** Upload ÚNICO dos buffers estáticos do gizmo de transformação (1 VBO por modo). */
+    /** Upload ÚNICO dos buffers estáticos do gizmo de transformação (1 VBO de triângulos por modo). */
     private fun buildTransformGizmoBuffers(backend: RenderBackend) {
         val g = tGizmo ?: return
-        if (g.moveData.lines.isNotEmpty()) tgMoveLines = backend.createGizmoBuffer(g.moveData.lines)
-        if (g.moveData.tris.isNotEmpty()) tgMoveTris = backend.createGizmoBuffer(g.moveData.tris)
-        if (g.rotateData.lines.isNotEmpty()) tgRotateLines = backend.createGizmoBuffer(g.rotateData.lines)
-        if (g.scaleData.lines.isNotEmpty()) tgScaleLines = backend.createGizmoBuffer(g.scaleData.lines)
+        if (g.moveData.tris.isNotEmpty()) tgTrisMove = backend.createGizmoBuffer(g.moveData.tris)
+        if (g.rotateData.tris.isNotEmpty()) tgTrisRotate = backend.createGizmoBuffer(g.rotateData.tris)
+        if (g.scaleData.tris.isNotEmpty()) tgTrisScale = backend.createGizmoBuffer(g.scaleData.tris)
     }
 
     fun isInitialized(): Boolean = initialized
 
     // ---------- Construção (uma vez, fora do loop) ----------
-
-    /**
-     * Grade em UM VBO estático (1 draw call): linhas a cada 1 m, destaque a cada 10 m,
-     * eixos X/Z marcados por ênfase. Interleaved [x, y, z, ênfase].
-     */
-    private fun buildGrid(backend: RenderBackend) {
-        val half = 40
-        val linesPerDir = half * 2 + 1
-        val data = FloatArray(linesPerDir * 2 * 2 * 4)
-        var i = 0
-        for (g in -half..half) {
-            val eMajor = if (g % 10 == 0) 1f else 0f
-            val eX = if (g == 0) 2f else eMajor // linha ao longo do X em z=0 é o eixo X
-            val eZ = if (g == 0) 3f else eMajor // linha ao longo do Z em x=0 é o eixo Z
-            data[i++] = -half.toFloat(); data[i++] = 0f; data[i++] = g.toFloat(); data[i++] = eX
-            data[i++] = half.toFloat(); data[i++] = 0f; data[i++] = g.toFloat(); data[i++] = eX
-            data[i++] = g.toFloat(); data[i++] = 0f; data[i++] = -half.toFloat(); data[i++] = eZ
-            data[i++] = g.toFloat(); data[i++] = 0f; data[i++] = half.toFloat(); data[i++] = eZ
-        }
-        gridVertexCount = data.size / 4
-        gridHandle = backend.createGridBuffer(data)
-    }
 
     private fun buildCube(backend: RenderBackend) {
         val p = CUBE_POSITIONS
@@ -323,7 +297,8 @@ class EngineRenderer {
 
         // Base da câmera derivada da matriz de view (linhas = eixos da câmera em mundo).
         camFwd.set(-view.m[2], -view.m[6], -view.m[10])
-        camEye.set(camera.target).addScaled(camFwd, -camera.distance)
+        // Olho correto nos DOIS modos (orbital e voo).
+        camera.eyePoint(camEye)
 
         // Sol = direção PARA a luz (oposta ao sentido de viagem da luz direcional).
         lighting.fillDirectional(scratchDir)
@@ -349,12 +324,6 @@ class EngineRenderer {
             scratchLightColor[0], scratchLightColor[1], scratchLightColor[2],
             intensity
         )
-
-        // Grade (1 draw call): fade por distância; eixos e destaques no shader.
-        if (gridHandle != 0) {
-            backend.drawGrid(gridHandle, gridVertexCount, viewProj, camEye.x, camEye.y, camEye.z)
-            gridDrawn = 1
-        }
 
         // Malha de teste (torus .KERN), girando com o tempo da engine
         if (testMeshHandle != 0) {
@@ -398,7 +367,18 @@ class EngineRenderer {
 
         geometry.flush(backend, viewProj)
 
-        // Gizmo de transformação (até 3 dc): linhas + planos + alça destacada.
+        // GRADE INFINITA (1 draw call): depois das malhas (elas a ocluem via depth),
+        // raio contra o plano Y=0 no fragment; dupla face; fade por fwidth + distância.
+        backend.drawInfiniteGrid(
+            camFwd.x, camFwd.y, camFwd.z,
+            view.m[0], view.m[4], view.m[8],
+            view.m[1], view.m[5], view.m[9],
+            tanHalfFov(camera.fovDegrees), aspect,
+            camEye.x, camEye.y, camEye.z
+        )
+        gridDrawn = 1
+
+        // Gizmo de transformação como MALHA: ≤ 2 dc (completo / apagado + alça amarela).
         var tGizmoDc = 0
         val g = tGizmo
         if (g != null && gizmoState != null && selectedId != null && scene != null) {
@@ -419,28 +399,26 @@ class EngineRenderer {
                 tgMvp.multiply(viewProj, tgModel)
 
                 val data = g.dataFor(gizmoState.mode)
-                val linesHandle = when (gizmoState.mode) {
-                    GizmoMode.MOVE -> tgMoveLines
-                    GizmoMode.ROTATE -> tgRotateLines
-                    GizmoMode.SCALE -> tgScaleLines
+                val trisHandle = when (gizmoState.mode) {
+                    GizmoMode.MOVE -> tgTrisMove
+                    GizmoMode.ROTATE -> tgTrisRotate
+                    GizmoMode.SCALE -> tgTrisScale
                 }
-                if (linesHandle != 0 && data.lines.isNotEmpty()) {
-                    backend.drawGizmoLines(linesHandle, 0, data.lines.size / 7, tgMvp)
-                    tGizmoDc++
-                    if (gizmoState.mode == GizmoMode.MOVE && tgMoveTris != 0 && data.tris.isNotEmpty()) {
-                        backend.drawGizmoTris(tgMoveTris, 0, data.tris.size / 7, tgMvp)
-                        tGizmoDc++
-                    }
+                val total = data.tris.size / 7
+                if (trisHandle != 0 && total > 0) {
                     val hl = gizmoState.highlighted
-                    if (hl != GizmoHandle.NONE) {
-                        val range = data.lineRanges[hl]
-                        if (range != null && range[1] > 0) {
-                            // alça sob o dedo: amarelo
-                            backend.drawGizmoHandleOverride(
-                                linesHandle, range[0], range[1], tgMvp, 1f, 0.85f, 0.25f, 1f
-                            )
-                            tGizmoDc++
-                        }
+                    val range = if (hl != GizmoHandle.NONE) data.triRanges[hl] else null
+                    if (range != null && range[1] > 0) {
+                        // demais eixos APAGADOS + alça sob o dedo em AMARELO
+                        backend.drawGizmoTrisDimmed(trisHandle, 0, total, tgMvp, 0.35f)
+                        tGizmoDc++
+                        backend.drawGizmoTrisSolid(
+                            trisHandle, range[0], range[1], tgMvp, 1f, 0.85f, 0.10f, 1f
+                        )
+                        tGizmoDc++
+                    } else {
+                        backend.drawGizmoTris(trisHandle, 0, total, tgMvp)
+                        tGizmoDc++
                     }
                 }
             }

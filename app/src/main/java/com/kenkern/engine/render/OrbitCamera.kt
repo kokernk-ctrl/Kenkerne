@@ -4,28 +4,79 @@ import com.kenkern.engine.core.math.Mat4
 import com.kenkern.engine.core.math.Vec3
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.tan
+
+/** Modo de câmera do viewport. */
+enum class CameraMode { ORBITAL, FLIGHT }
 
 /**
- * Câmera orbital: um dedo gira, dois dedos movem (pan) e fazem pinça de zoom.
+ * Câmera do editor com DOIS modos:
+ *
+ *  ORBITAL — 1 dedo gira, 2 dedos movem (pan) e fazem pinça ZOOM EXPONENCIAL
+ *  (dist *= fator), limites 0,05 a 5000 m. Velocidade do pan proporcional à
+ *  distância ao pivô. Near DINÂMICO: cresce com a distância da câmera para
+ *  preservar precisão de depth com far = 10000 (depth 24 bits no EGL config).
+ *
+ *  VOO — joystick move (frente/trás/lados), arrasto gira o olhar, botões
+ *  sobem/descem. Velocidade 0,1 a 100 m/s em escala logarítmica. Pode voar
+ *  abaixo do chão (a grade infinita é de dupla face).
+ *
+ * FOCO (F): [focusOn] enquadra um centro/raio (AABB) com distância calculada.
+ *
  * Toda a matemática é in-place (ZERO alocações por frame).
  */
 class OrbitCamera {
+
+    var mode: CameraMode = CameraMode.ORBITAL
+
+    // ---------- Orbital ----------
     val target = Vec3(0f, 0.8f, 0f)
     var yawDegrees: Float = 35f
     var pitchDegrees: Float = 28f
     var distance: Float = 9f
     var fovDegrees: Float = 55f
-    var nearPlane: Float = 0.1f
-    var farPlane: Float = 500f
 
-    var minDistance: Float = 1.5f
-    var maxDistance: Float = 80f
+    var minDistance: Float = 0.05f
+    var maxDistance: Float = 5000f
 
+    // ---------- Voo ----------
+    val flightPosition = Vec3(6f, 2.5f, 9f)
+    var flightYawDegrees: Float = 35f
+    var flightPitchDegrees: Float = -10f
+    var flightSpeed: Float = 4f // m/s (0,1 a 100; slider logarítmico)
+
+    // Base da câmera (pré-alocada; zero alocação por frame)
     private val eye = Vec3()
     private val right = Vec3()
     private val up = Vec3()
     private val forward = Vec3()
     private val worldUp = Vec3(0f, 1f, 0f)
+
+    /** Alternância Orbital <-> Voo preservando posição do olho e direção de olhar. */
+    fun toggleMode() {
+        if (mode == CameraMode.ORBITAL) {
+            computeBasis()
+            flightPosition.set(target).addScaled(forward, distance)
+            flightYawDegrees = yawDegrees
+            flightPitchDegrees = -pitchDegrees
+            mode = CameraMode.FLIGHT
+        } else {
+            computeBasis()
+            target.set(flightPosition).addScaled(forward, distance)
+            yawDegrees = flightYawDegrees
+            pitchDegrees = -flightPitchDegrees
+            mode = CameraMode.ORBITAL
+        }
+    }
+
+    /** Near efetivo: escala com a distância da câmera (mínimo 0,05). */
+    fun effectiveNear(): Float = if (mode == CameraMode.ORBITAL) {
+        (distance * NEAR_DIST_FACTOR).coerceAtLeast(NEAR_MIN)
+    } else {
+        NEAR_MIN
+    }
+
+    // ---------- Orbital: gestos ----------
 
     fun orbit(dxPixels: Float, dyPixels: Float) {
         yawDegrees -= dxPixels * 0.35f
@@ -36,11 +87,12 @@ class OrbitCamera {
         if (yawDegrees < -360f) yawDegrees += 360f
     }
 
+    /** Pinça ZOOM EXPONENCIAL: distância multiplicada por fator (limites 0,05–5000). */
     fun zoom(scale: Float) {
         distance = (distance * scale).coerceIn(minDistance, maxDistance)
     }
 
-    /** Pan em pixels: move o target ao longo dos eixos da câmera. */
+    /** Pan em pixels: velocidade proporcional à distância ao pivô. */
     fun pan(dxPixels: Float, dyPixels: Float) {
         computeBasis()
         val s = distance * 0.0016f
@@ -48,29 +100,99 @@ class OrbitCamera {
         target.addScaled(up, dyPixels * s)
     }
 
+    // ---------- Voo: gestos/controles ----------
+
+    /** Arrasto gira o OLHAR (não a órbita). Mesma convenção de sinais do orbit. */
+    fun rotateFlight(dxPixels: Float, dyPixels: Float) {
+        flightYawDegrees -= dxPixels * 0.25f
+        flightPitchDegrees -= dyPixels * 0.25f
+        if (flightPitchDegrees > 89f) flightPitchDegrees = 89f
+        if (flightPitchDegrees < -89f) flightPitchDegrees = -89f
+        if (flightYawDegrees > 360f) flightYawDegrees -= 360f
+        if (flightYawDegrees < -360f) flightYawDegrees += 360f
+    }
+
+    /** Joystick: frente/trás (fwdAmt) e lados (strafeAmt), velocidade m/s. */
+    fun moveFlight(fwdAmt: Float, strafeAmt: Float, dtSeconds: Float) {
+        if (dtSeconds <= 0f) return
+        computeBasis()
+        flightPosition.addScaled(forward, fwdAmt * flightSpeed * dtSeconds)
+        flightPosition.addScaled(right, strafeAmt * flightSpeed * dtSeconds)
+    }
+
+    /** Botões subir/descer. */
+    fun elevateFlight(upAmt: Float, dtSeconds: Float) {
+        if (dtSeconds <= 0f) return
+        flightPosition.y += upAmt * flightSpeed * dtSeconds
+    }
+
+    /** Slider logarítmico: 0 -> 0,1 m/s, 1 -> 100 m/s. */
+    fun setFlightSpeedNormalized(t: Float) {
+        val clamped = t.coerceIn(0f, 1f)
+        flightSpeed = (0.1f * Math.pow(1000.0, clamped.toDouble()).toFloat()).coerceIn(0.1f, 100f)
+    }
+
+    /** Posição atual do slider (log) para a UI. */
+    fun flightSpeedNormalized(): Float =
+        (Math.log10((flightSpeed / 0.1f).toDouble()).toFloat() / 3f).coerceIn(0f, 1f)
+
+    /**
+     * FOCO (F / toque duplo): posiciona a câmera para enquadrar uma esfera
+     * (centro + raio da AABB). Distância pelo FOV com margem de enquadramento.
+     */
+    fun focusOn(centerX: Float, centerY: Float, centerZ: Float, radius: Float) {
+        val halfFovRad = Math.toRadians((fovDegrees * 0.5f).toDouble())
+        val fit = (radius * FOCUS_MARGIN / tan(halfFovRad).toFloat())
+            .coerceIn(1.5f, maxDistance)
+        if (mode == CameraMode.ORBITAL) {
+            target.set(centerX, centerY, centerZ)
+            distance = fit
+        } else {
+            computeBasis()
+            flightPosition.set(centerX, centerY, centerZ).addScaled(forward, -fit)
+        }
+    }
+
+    // ---------- Base e matrizes ----------
+
     private fun computeBasis() {
         val yawRad = Math.toRadians(yawDegrees.toDouble()).toFloat()
-        val pitchRad = Math.toRadians(pitchDegrees.toDouble()).toFloat()
-        val cp = cos(pitchRad)
-        forward.set(-sin(yawRad) * cp, -sin(pitchRad), -cos(yawRad) * cp)
+        if (mode == CameraMode.ORBITAL) {
+            val pitchRad = Math.toRadians(pitchDegrees.toDouble()).toFloat()
+            val cp = cos(pitchRad)
+            forward.set(-sin(yawRad) * cp, -sin(pitchRad), -cos(yawRad) * cp)
+        } else {
+            val pitchRad = Math.toRadians(flightPitchDegrees.toDouble()).toFloat()
+            val cp = cos(pitchRad)
+            forward.set(-sin(yawRad) * cp, sin(pitchRad), -cos(yawRad) * cp)
+        }
         right.cross(forward, worldUp).normalize()
         up.cross(right, forward).normalize()
     }
 
-    /** Preenche a matriz de visão. */
+    /** Preenche a matriz de visão (funciona nos dois modos). */
     fun view(out: Mat4) {
         computeBasis()
-        eye.set(target).addScaled(forward, distance)
-        out.setLookAt(eye, target, worldUp)
+        if (mode == CameraMode.ORBITAL) {
+            eye.set(target).addScaled(forward, distance)
+            out.setLookAt(eye, target, worldUp)
+        } else {
+            sLookTarget.set(flightPosition).addScaled(forward, 1f)
+            out.setLookAt(flightPosition, sLookTarget, worldUp)
+        }
     }
 
     /** Posição do olho (câmera) em mundo, sem alocar. */
     fun eyePoint(out: Vec3) {
         computeBasis()
-        out.set(target).addScaled(forward, distance)
+        if (mode == CameraMode.ORBITAL) {
+            out.set(target).addScaled(forward, distance)
+        } else {
+            out.set(flightPosition)
+        }
     }
 
-    /** Direção "para frente" da câmera (do olho para o alvo), sem alocar. */
+    /** Direção "para frente" da câmera, sem alocar. */
     fun forwardVector(out: Vec3) {
         computeBasis()
         out.set(forward)
@@ -78,12 +200,16 @@ class OrbitCamera {
 
     /**
      * Raio em mundo que passa pelo ponto de tela (NDC), mesma convenção do
-     * shader do céu: dir = fwd + right*(ndcX*tan*aspect) + up*(ndcY*tan).
+     * shader do céu/grade: dir = fwd + right*(ndcX*tan*aspect) + up*(ndcY*tan).
      * Usado pelo picking e pelo gizmo. Sem alocação.
      */
     fun screenRay(ndcX: Float, ndcY: Float, aspect: Float, outOrigin: Vec3, outDir: Vec3) {
         computeBasis()
-        outOrigin.set(target).addScaled(forward, distance)
+        if (mode == CameraMode.ORBITAL) {
+            outOrigin.set(target).addScaled(forward, distance)
+        } else {
+            outOrigin.set(flightPosition)
+        }
         val t = kotlin.math.tan(Math.toRadians(fovDegrees.toDouble()).toFloat() * 0.5f)
         outDir.set(forward)
             .addScaled(right, ndcX * t * aspect)
@@ -92,6 +218,16 @@ class OrbitCamera {
     }
 
     fun projection(out: Mat4, aspect: Float) {
-        out.setPerspective(fovDegrees, aspect.coerceAtLeast(0.1f), nearPlane, farPlane)
+        out.setPerspective(fovDegrees, aspect.coerceAtLeast(0.1f), effectiveNear(), FAR_PLANE)
+    }
+
+    companion object {
+        const val FAR_PLANE: Float = 10000f
+        const val NEAR_MIN: Float = 0.05f
+        /** near = distância * 0,002 (ex.: 500 m -> near 1,0; 5000 m -> near 10). */
+        const val NEAR_DIST_FACTOR: Float = 0.002f
+        const val FOCUS_MARGIN: Float = 2.2f
+
+        private val sLookTarget = Vec3()
     }
 }

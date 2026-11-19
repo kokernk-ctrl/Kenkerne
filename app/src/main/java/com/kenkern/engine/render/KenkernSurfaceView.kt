@@ -33,10 +33,13 @@ interface EngineControls {
  * Loop próprio com timestep fixo; câmera orbital por toque.
  *
  * SELEÇÃO E GIZMOS (Fase 1):
- *  - tap curto => picking (raio da câmera × AABB de cada Nick, no thread GL,
- *    com as matrizes de mundo recém-atualizadas); resultado via [onNickPicked].
- *  - toque sobre alça do gizmo => arrasto no thread de UI (conflito resolvido
- *    no DOWN: alça vence a câmera); ao soltar, [onGizmoDragEnd] entrega o
+ *  - tap curto (< 200 ms, < 10 px) => picking (raio da câmera × AABB de cada Nick,
+ *    no thread GL, com as matrizes de mundo recém-atualizadas); resultado via
+ *    [onNickPicked]. Arrasto SEM alça move só a câmera (nunca muda seleção/transform).
+ *  - duplo toque => foco: no vazio enquadra a CENA toda; sobre seleção, o Nick.
+ *  - botão FOCAR (F) => enquadra o Nick selecionado ([focusSelected]).
+ *  - toque sobre alça do gizmo => arrasto no thread de UI (posse decidida no DOWN,
+ *    requestDisallowInterceptTouchEvent); ao soltar, [onGizmoDragEnd] entrega o
  *    snapshot inicial para UM único Command de undo.
  *
  * ANTI-CRASH (GPU restrita):
@@ -67,6 +70,7 @@ class KenkernSurfaceView(
         camera,
         tapSlopPx = 10f * density,
         onTap = { x, y -> requestPick(x, y) },
+        onDoubleTap = { _, _ -> handleDoubleTap() },
         gizmoHandler = GizmoTouchHandler()
     )
     private val glRenderer = KenkernGLRenderer()
@@ -122,6 +126,30 @@ class KenkernSurfaceView(
         pickPending = true
     }
 
+    // ---------- FOCO (F / toque duplo): pedido da UI, resolvido no thread GL ----------
+
+    @Volatile
+    private var focusPending = false
+    @Volatile
+    private var focusAllNicks = false
+
+    private val focusStack = arrayOfNulls<Nick>(512)
+    private val focusMin = Vec3()
+    private val focusMax = Vec3()
+    private val focusCenter = Vec3()
+
+    /** Botão FOCAR: enquadra o Nick selecionado; sem seleção, a cena toda. */
+    fun focusSelected() {
+        focusAllNicks = selectionProvider() == null
+        focusPending = true
+    }
+
+    /** Duplo toque: vazio => cena toda; sobre um Nick selecionado => o Nick. */
+    private fun handleDoubleTap() {
+        focusAllNicks = selectionProvider() == null
+        focusPending = true
+    }
+
     init {
         val es3 = deviceSupportsGles3(context)
         // Fábrica e chooser próprios definem a versão do contexto (ES3 com fallback ES2).
@@ -144,7 +172,15 @@ class KenkernSurfaceView(
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             onFirstTouch()
         }
-        return runCatching { touch.onTouch(event) }.getOrDefault(false)
+        val handled = runCatching { touch.onTouch(event) }.getOrDefault(false)
+        // Posse do gesto decidida no DOWN: se o gizmo capturou a alça, nenhum pai
+        // intercepta o gesto até o ACTION_UP (o sistema limpa a flag no próximo DOWN).
+        if (event.actionMasked == MotionEvent.ACTION_DOWN &&
+            runCatching { touch.isGizmoCapturedNow() }.getOrDefault(false)
+        ) {
+            parent?.requestDisallowInterceptTouchEvent(true)
+        }
+        return handled
     }
 
     // ---------- Handler de arrasto do gizmo (thread de UI, zero alocação) ----------
@@ -194,7 +230,7 @@ class KenkernSurfaceView(
             dragWorldPos.set(nick.transform.worldMatrix.m[12], nick.transform.worldMatrix.m[13], nick.transform.worldMatrix.m[14])
             extractRotation(nick.transform.worldMatrix, dragWorldRot)
             val ss = gizmo.screenScaleFor(camera, dragWorldPos)
-            val radius = 24f * density // área de toque ~48dp por alça
+            val radius = 28f * density // tolerância de hit-test: 28dp
             val handle = gizmo.hitTest(
                 x, y, dragVp, w, h, dragWorldPos, dragWorldRot, ss,
                 gizmoState.space, gizmoState.mode, radius
@@ -314,6 +350,65 @@ class KenkernSurfaceView(
             if (tmin > tmax) return -1f
         }
         return tmin
+    }
+
+    /**
+     * FOCO no thread GL: calcula a AABB (do Nick selecionado ou da cena toda)
+     * e pede à câmera que enquadre com a distância calculada pelo raio da AABB.
+     * Sem alocação (pilha e vetores pré-alocados).
+     */
+    private fun applyFocus(scene: Scene) {
+        val selected = selectionProvider()
+        var hasBox = false
+        var top = 0
+        focusStack.fill(null)
+        for (r in scene.roots.indices) {
+            if (top >= focusStack.size) break
+            focusStack[top++] = scene.roots[r]
+        }
+        while (top > 0) {
+            val nick = focusStack[--top] ?: continue
+            if (nick.active && nick.visible && (focusAllNicks || nick.id == selected)) {
+                val m = nick.transform.worldMatrix.m
+                val cx = m[12]; val cy = m[13]; val cz = m[14]
+                // meia-extensão conservativa da AABB em mundo (box p/ rotação)
+                val ex = 0.5f * (abs(m[0]) + abs(m[4]) + abs(m[8]))
+                val ey = 0.5f * (abs(m[1]) + abs(m[5]) + abs(m[9]))
+                val ez = 0.5f * (abs(m[2]) + abs(m[6]) + abs(m[10]))
+                if (!hasBox) {
+                    focusMin.set(cx - ex, cy - ey, cz - ez)
+                    focusMax.set(cx + ex, cy + ey, cz + ez)
+                    hasBox = true
+                } else {
+                    focusMin.set(
+                        minOf(focusMin.x, cx - ex), minOf(focusMin.y, cy - ey), minOf(focusMin.z, cz - ez)
+                    )
+                    focusMax.set(
+                        maxOf(focusMax.x, cx + ex), maxOf(focusMax.y, cy + ey), maxOf(focusMax.z, cz + ez)
+                    )
+                }
+            }
+            val children = nick.children
+            for (ci in children.indices) {
+                if (top >= focusStack.size) break
+                focusStack[top++] = children[ci]
+            }
+        }
+        if (!hasBox) {
+            // cena vazia: enquadra o ponto padrão da cena
+            camera.focusOn(0f, 0.8f, 0f, 4f)
+            return
+        }
+        focusCenter.set(
+            (focusMin.x + focusMax.x) * 0.5f,
+            (focusMin.y + focusMax.y) * 0.5f,
+            (focusMin.z + focusMax.z) * 0.5f
+        )
+        val dx = (focusMax.x - focusMin.x) * 0.5f
+        val dy = (focusMax.y - focusMin.y) * 0.5f
+        val dz = (focusMax.z - focusMin.z) * 0.5f
+        val radius = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz).coerceAtLeast(0.5f)
+        camera.focusOn(focusCenter.x, focusCenter.y, focusCenter.z, radius)
     }
 
     /**
@@ -439,6 +534,12 @@ class KenkernSurfaceView(
                             val picked = runCatching { pickNickAt(s, aspect) }.getOrNull()
                             mainHandler.post { onNickPicked(picked) }
                         }
+                    }
+                    // FOCO pendente (botão F / duplo toque): AABB e ajuste da câmera.
+                    if (focusPending) {
+                        focusPending = false
+                        val s = scene
+                        if (s != null) runCatching { applyFocus(s) }
                     }
                     engineRenderer.renderFrame(
                         backend, scene, camera, loop.engineTime, selectionProvider(), gizmoState

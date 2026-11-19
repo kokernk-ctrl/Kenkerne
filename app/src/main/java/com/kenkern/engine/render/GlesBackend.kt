@@ -11,12 +11,14 @@ import java.nio.FloatBuffer
 /**
  * Implementação OpenGL ES 3.0 do RenderBackend (minSdk 26).
  * Programas: malha (Lambert + ambiente hemisférico), céu (gradiente + sol),
- * grade (fade por distância), flat (contorno) e linhas coloridas (gizmo).
+ * grade INFINITA (raio-plano Y=0 no fragment, fwidth anti-moiré),
+ * flat (contorno), linhas coloridas (gizmo de eixos) e malha do gizmo
+ * de transformação (cilindros/cones/toros, alpha por vértice).
  *
  * PERF: estado GL rastreado — glUseProgram só é chamado quando o programa muda;
  * VAOs permanecem vinculados (o próximo draw vincula o seu); nenhum glUniform
- * redundante; grade = 1 VBO estático + 1 draw call; céu = 1 triângulo de tela
- * cheia; gizmo = 1 VBO colorido + 1 draw call.
+ * redundante; grade = 1 triângulo de tela cheia (1 draw call, sem limite de
+ * tamanho); céu = 1 triângulo; gizmo = 1 VBO de triângulos + 1 draw call.
  *
  * ANTI-CRASH: [initialize] NUNCA lança exceção — se a compilação/linkagem de um
  * programa falhar, aquele recurso é desativado (feature flag) e o resto continua.
@@ -58,8 +60,12 @@ class GlesBackend : RenderBackend {
     private var uSkyAspect = 0
     private var uSkySun = 0
 
-    // Uniforms da grade
-    private var uGridVp = 0
+    // Uniforms da grade infinita (raio reconstruído por pixel)
+    private var uGridFwd = 0
+    private var uGridRight = 0
+    private var uGridUp = 0
+    private var uGridTanFov = 0
+    private var uGridAspect = 0
     private var uGridCam = 0
 
     // Uniforms do flat (contorno)
@@ -69,8 +75,9 @@ class GlesBackend : RenderBackend {
     // Uniforms do gizmo
     private var uLineMvp = 0
 
-    // Uniforms do gizmo de transformação (cor RGBA por vértice)
+    // Uniforms do gizmo de transformação (cor RGBA por vértice + alpha global)
     private var uTGizmoMvp = 0
+    private var uTGizmoAlphaMul = 0
 
     /** Programa atualmente vinculado (evita glUseProgram redundante). */
     private var boundProgram = -1
@@ -98,7 +105,6 @@ class GlesBackend : RenderBackend {
     private class GpuGizmo(val vao: Int, val vbo: Int, val vertexCount: Int)
 
     private val meshes = HashMap<Int, GpuMesh>()
-    private val gridBuffers = HashMap<Int, GpuLines>()
     private val coloredLineBuffers = HashMap<Int, GpuLines>()
     private val tGizmoBuffers = HashMap<Int, GpuGizmo>()
     private var nextHandle = 1
@@ -200,39 +206,79 @@ class GlesBackend : RenderBackend {
         }
     """.trimIndent()
 
-    // Grade: posição de mundo + ênfase por vértice (0=1m, 1=10m, 2=eixo X, 3=eixo Z).
+    // GRADE INFINITA: triângulo de tela cheia; raio por pixel contra o plano Y=0.
+    // z = 1,0 + depth func LEQUAL (desenho APÓS as malhas: elas sempre ocluem a grade).
     private val gridVertexShader = """
         #version 300 es
-        layout(location = 0) in vec3 aPos;
-        layout(location = 1) in float aEmphasis;
-        uniform mat4 uVP;
-        out vec3 vWorldPos;
-        out float vEmphasis;
+        layout(location = 0) in vec2 aPos;
+        out vec2 vNdc;
         void main() {
-            vWorldPos = aPos;
-            vEmphasis = aEmphasis;
-            gl_Position = uVP * vec4(aPos, 1.0);
+            vNdc = aPos;
+            gl_Position = vec4(aPos, 1.0, 1.0);
         }
     """.trimIndent()
 
-    // Cor neutra, eixos vermelho/azul, fade por distância (alpha).
+    /*
+     * Linhas 1 m / 10 m / 100 m + eixos X (vermelho) e Z (azul).
+     * ANTI-MOIRÉ: cada nível de grade desaparece quando a célula fica menor
+     * que ~2 px (fwidth); fade por distância até 2000+ m, sem corte brusco.
+     * Dupla face: interseção funciona com a câmera acima OU abaixo do plano.
+     */
     private val gridFragmentShader = """
         #version 300 es
-        precision mediump float;
-        in vec3 vWorldPos;
-        in float vEmphasis;
+        precision highp float;
+        in vec2 vNdc;
+        uniform vec3 uFwd;
+        uniform vec3 uRight;
+        uniform vec3 uUp;
+        uniform float uTanFov;
+        uniform float uAspect;
         uniform vec3 uCamPos;
         out vec4 fragColor;
+
+        float gridLevel(vec2 p, float scale) {
+            vec2 q = p / scale;
+            vec2 w = fwidth(q);
+            vec2 a = abs(fract(q - 0.5) - 0.5) / max(w, vec2(1e-5));
+            float line = 1.0 - min(min(a.x, a.y), 1.0);
+            float lod = 1.0 - smoothstep(0.5, 1.0, max(w.x, w.y));
+            return line * lod;
+        }
+
         void main() {
-            float dist = distance(vWorldPos.xz, uCamPos.xz);
-            float fade = 1.0 - smoothstep(22.0, 85.0, dist);
-            vec3 base;
-            float alpha;
-            if (vEmphasis > 2.5)      { base = vec3(0.36, 0.50, 0.88); alpha = 1.0;  }
-            else if (vEmphasis > 1.5) { base = vec3(0.86, 0.32, 0.30); alpha = 1.0;  }
-            else if (vEmphasis > 0.5) { base = vec3(0.58, 0.60, 0.64); alpha = 0.9;  }
-            else                      { base = vec3(0.46, 0.48, 0.52); alpha = 0.55; }
-            fragColor = vec4(base, alpha * fade);
+            vec3 dir = normalize(uFwd + uRight * (vNdc.x * uTanFov * uAspect) + uUp * (vNdc.y * uTanFov));
+            if (abs(dir.y) < 1e-5) discard;
+            float t = -uCamPos.y / dir.y;
+            if (t <= 0.0) discard;
+            vec3 hit = uCamPos + dir * t;
+            float distCam = distance(hit, uCamPos);
+            float fade = 1.0 - smoothstep(2200.0, 4200.0, distCam);
+            if (fade <= 0.004) discard;
+
+            vec2 p = hit.xz;
+            float g1 = gridLevel(p, 1.0);
+            float g10 = gridLevel(p, 10.0);
+            float g100 = gridLevel(p, 100.0);
+
+            float wX = fwidth(p.y) * 1.5;
+            float wZ = fwidth(p.x) * 1.5;
+            float axisX = 1.0 - min(abs(p.y) / max(wX, 1e-5), 1.0);
+            float axisZ = 1.0 - min(abs(p.x) / max(wZ, 1e-5), 1.0);
+
+            vec3 rgb = vec3(0.45, 0.47, 0.51);
+            float alpha = g1 * 0.50;
+            float w10 = g10 * 0.85;
+            rgb = mix(rgb, vec3(0.57, 0.59, 0.64), w10);
+            alpha = max(alpha, w10);
+            rgb = mix(rgb, vec3(0.67, 0.69, 0.74), g100);
+            alpha = max(alpha, g100);
+            float ax = axisX * 0.95;
+            float az = axisZ * (1.0 - ax) * 0.95;
+            rgb = mix(rgb, vec3(0.86, 0.32, 0.30), ax);
+            rgb = mix(rgb, vec3(0.36, 0.50, 0.88), az);
+            alpha = max(alpha, max(ax, az));
+
+            fragColor = vec4(rgb, alpha * fade);
         }
     """.trimIndent()
 
@@ -296,9 +342,10 @@ class GlesBackend : RenderBackend {
         #version 300 es
         precision mediump float;
         in vec4 vColor;
+        uniform float uAlphaMul;
         out vec4 fragColor;
         void main() {
-            fragColor = vColor;
+            fragColor = vec4(vColor.rgb, vColor.a * uAlphaMul);
         }
     """.trimIndent()
 
@@ -346,7 +393,11 @@ class GlesBackend : RenderBackend {
         runCatching {
             gridProgram = buildProgram(gridVertexShader, gridFragmentShader)
             if (gridProgram != 0) {
-                uGridVp = GLES30.glGetUniformLocation(gridProgram, "uVP")
+                uGridFwd = GLES30.glGetUniformLocation(gridProgram, "uFwd")
+                uGridRight = GLES30.glGetUniformLocation(gridProgram, "uRight")
+                uGridUp = GLES30.glGetUniformLocation(gridProgram, "uUp")
+                uGridTanFov = GLES30.glGetUniformLocation(gridProgram, "uTanFov")
+                uGridAspect = GLES30.glGetUniformLocation(gridProgram, "uAspect")
                 uGridCam = GLES30.glGetUniformLocation(gridProgram, "uCamPos")
                 gridOk = true
             }
@@ -373,6 +424,7 @@ class GlesBackend : RenderBackend {
             gizmoProgram = buildProgram(tGizmoVertexShader, tGizmoFragmentShader)
             if (gizmoProgram != 0) {
                 uTGizmoMvp = GLES30.glGetUniformLocation(gizmoProgram, "uMVP")
+                uTGizmoAlphaMul = GLES30.glGetUniformLocation(gizmoProgram, "uAlphaMul")
                 tGizmoOk = true
             }
         }.onFailure { Log.w(TAG, "tGizmo: ${it.message}") }
@@ -557,38 +609,6 @@ class GlesBackend : RenderBackend {
         return handle
     }
 
-    override fun createGridBuffer(data: FloatArray): Int {
-        if (data.isEmpty()) return 0
-        val vertexCount = data.size / 4
-        val vao = IntArray(1)
-        val vbo = IntArray(1)
-        GLES30.glGenVertexArrays(1, vao, 0)
-        GLES30.glGenBuffers(1, vbo, 0)
-        if (vao[0] == 0 || vbo[0] == 0) {
-            if (vao[0] != 0) GLES30.glDeleteVertexArrays(1, vao, 0)
-            if (vbo[0] != 0) GLES30.glDeleteBuffers(1, vbo, 0)
-            drainGlErrors()
-            return 0
-        }
-        val fb: FloatBuffer = ByteBuffer.allocateDirect(data.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
-        fb.put(data)
-        fb.position(0)
-        // Interleaved: x, y, z (offset 0) + ênfase (offset 12) — stride 16.
-        GLES30.glBindVertexArray(vao[0])
-        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[0])
-        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, data.size * 4, fb, GLES30.GL_STATIC_DRAW)
-        GLES30.glEnableVertexAttribArray(0)
-        GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 16, 0)
-        GLES30.glEnableVertexAttribArray(1)
-        GLES30.glVertexAttribPointer(1, 1, GLES30.GL_FLOAT, false, 16, 12)
-        GLES30.glBindVertexArray(0)
-        drainGlErrors()
-
-        val handle = nextHandle++
-        gridBuffers[handle] = GpuLines(vao[0], vbo[0], vertexCount)
-        return handle
-    }
-
     override fun createColoredLineBuffer(data: FloatArray): Int {
         if (data.isEmpty()) return 0
         val vertexCount = data.size / 6
@@ -681,18 +701,39 @@ class GlesBackend : RenderBackend {
         GLES30.glEnable(GLES30.GL_DEPTH_TEST)
     }
 
-    override fun drawGrid(handle: Int, vertexCount: Int, viewProj: Mat4, camX: Float, camY: Float, camZ: Float) {
-        if (gridProgram == 0 || !gridOk || vertexCount <= 0) return
-        val gpu = gridBuffers[handle] ?: return
+    /**
+     * GRADE INFINITA (1 draw call): triângulo de tela cheia; o fragment traça o
+     * raio contra Y=0. Depth test LEQUAL com depth mask OFF — desenhada APÓS as
+     * malhas, que sempre a ocluem; nunca escreve depth.
+     */
+    override fun drawInfiniteGrid(
+        fwdX: Float, fwdY: Float, fwdZ: Float,
+        rightX: Float, rightY: Float, rightZ: Float,
+        upX: Float, upY: Float, upZ: Float,
+        tanHalfFov: Float, aspect: Float,
+        camX: Float, camY: Float, camZ: Float
+    ) {
+        if (gridProgram == 0 || !gridOk || skyVao == 0) return
+        GLES30.glDepthMask(false)
+        GLES30.glDepthFunc(GLES30.GL_LEQUAL)
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
         useProgram(gridProgram)
-        GLES30.glBindVertexArray(gpu.vao)
-        GLES30.glUniformMatrix4fv(uGridVp, 1, false, viewProj.m, 0)
+        GLES30.glBindVertexArray(skyVao)
+        uniformScratch[0] = fwdX; uniformScratch[1] = fwdY; uniformScratch[2] = fwdZ
+        GLES30.glUniform3fv(uGridFwd, 1, uniformScratch, 0)
+        uniformScratch[0] = rightX; uniformScratch[1] = rightY; uniformScratch[2] = rightZ
+        GLES30.glUniform3fv(uGridRight, 1, uniformScratch, 0)
+        uniformScratch[0] = upX; uniformScratch[1] = upY; uniformScratch[2] = upZ
+        GLES30.glUniform3fv(uGridUp, 1, uniformScratch, 0)
+        GLES30.glUniform1f(uGridTanFov, tanHalfFov)
+        GLES30.glUniform1f(uGridAspect, aspect)
         uniformScratch[0] = camX; uniformScratch[1] = camY; uniformScratch[2] = camZ
         GLES30.glUniform3fv(uGridCam, 1, uniformScratch, 0)
-        GLES30.glDrawArrays(GLES30.GL_LINES, 0, vertexCount)
+        GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
         GLES30.glDisable(GLES30.GL_BLEND)
+        GLES30.glDepthFunc(GLES30.GL_LESS)
+        GLES30.glDepthMask(true)
     }
 
     override fun drawMesh(handle: Int, model: Mat4, viewProj: Mat4, r: Float, g: Float, b: Float, a: Float) {
@@ -737,16 +778,21 @@ class GlesBackend : RenderBackend {
         GLES30.glViewport(0, 0, viewportWidth, viewportHeight)
     }
 
-    /** Desenha um sub-range do buffer do gizmo de transformação (sem depth, com blend). */
+    /**
+     * Desenha um sub-range do buffer do gizmo de transformação (GL_TRIANGLES,
+     * sem depth, com blend; cull OFF — alças visíveis de todos os ângulos).
+     * [alphaMul] escurece os eixos não ativos; [overrideRgba] pinta a alça em AMARELO.
+     */
     private fun drawTGizmoRange(
         handle: Int, offset: Int, vertexCount: Int, mvp: Mat4,
-        primitive: Int, overrideRgba: FloatArray?
+        alphaMul: Float, overrideRgba: FloatArray?
     ) {
         if (!tGizmoOk || vertexCount <= 0) return
         val gpu = tGizmoBuffers[handle] ?: return
         val end = offset + vertexCount
         if (offset < 0 || end > gpu.vertexCount) return
         GLES30.glDisable(GLES30.GL_DEPTH_TEST)
+        GLES30.glDisable(GLES30.GL_CULL_FACE)
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
         if (overrideRgba != null) {
@@ -763,27 +809,29 @@ class GlesBackend : RenderBackend {
             useProgram(gizmoProgram)
             GLES30.glBindVertexArray(gpu.vao)
             GLES30.glUniformMatrix4fv(uTGizmoMvp, 1, false, mvp.m, 0)
+            GLES30.glUniform1f(uTGizmoAlphaMul, alphaMul)
         }
-        GLES30.glDrawArrays(primitive, offset, vertexCount)
+        GLES30.glDrawArrays(GLES30.GL_TRIANGLES, offset, vertexCount)
         GLES30.glDisable(GLES30.GL_BLEND)
+        GLES30.glEnable(GLES30.GL_CULL_FACE)
         GLES30.glEnable(GLES30.GL_DEPTH_TEST)
     }
 
-    override fun drawGizmoLines(handle: Int, offset: Int, vertexCount: Int, mvp: Mat4) {
-        drawTGizmoRange(handle, offset, vertexCount, mvp, GLES30.GL_LINES, null)
-    }
-
     override fun drawGizmoTris(handle: Int, offset: Int, vertexCount: Int, mvp: Mat4) {
-        drawTGizmoRange(handle, offset, vertexCount, mvp, GLES30.GL_TRIANGLES, null)
+        drawTGizmoRange(handle, offset, vertexCount, mvp, 1f, null)
     }
 
-    override fun drawGizmoHandleOverride(
+    override fun drawGizmoTrisDimmed(handle: Int, offset: Int, vertexCount: Int, mvp: Mat4, alphaMul: Float) {
+        drawTGizmoRange(handle, offset, vertexCount, mvp, alphaMul, null)
+    }
+
+    override fun drawGizmoTrisSolid(
         handle: Int, offset: Int, vertexCount: Int, mvp: Mat4,
         r: Float, g: Float, b: Float, a: Float
     ) {
         overrideRgbaScratch[0] = r; overrideRgbaScratch[1] = g
         overrideRgbaScratch[2] = b; overrideRgbaScratch[3] = a
-        drawTGizmoRange(handle, offset, vertexCount, mvp, GLES30.GL_LINES, overrideRgbaScratch)
+        drawTGizmoRange(handle, offset, vertexCount, mvp, 1f, overrideRgbaScratch)
     }
 
     override fun destroyMesh(handle: Int) {
@@ -795,7 +843,7 @@ class GlesBackend : RenderBackend {
     }
 
     override fun destroyLineBuffer(handle: Int) {
-        val gpu = gridBuffers.remove(handle) ?: coloredLineBuffers.remove(handle) ?: return
+        val gpu = coloredLineBuffers.remove(handle) ?: return
         val vao = IntArray(1); vao[0] = gpu.vao
         val bufs = IntArray(1); bufs[0] = gpu.vbo
         GLES30.glDeleteVertexArrays(1, vao, 0)
@@ -815,13 +863,6 @@ class GlesBackend : RenderBackend {
             GLES30.glDeleteBuffers(2, bufs, 0)
         }
         meshes.clear()
-        for (line in gridBuffers.values) {
-            val vao = IntArray(1); vao[0] = line.vao
-            val bufs = IntArray(1); bufs[0] = line.vbo
-            GLES30.glDeleteVertexArrays(1, vao, 0)
-            GLES30.glDeleteBuffers(1, bufs, 0)
-        }
-        gridBuffers.clear()
         for (line in coloredLineBuffers.values) {
             val vao = IntArray(1); vao[0] = line.vao
             val bufs = IntArray(1); bufs[0] = line.vbo
