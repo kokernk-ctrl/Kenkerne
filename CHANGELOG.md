@@ -1,6 +1,34 @@
 # KENKERN — CHANGELOG
 
-## fase-2-ok — Projeto & Diagnóstico (app v0.1.13)
+## Realinhamento ao ROADMAP (2026-11-21 — sem APK novo)
+
+- **Tag `fase-2-ok` REMOVIDA** (local, remote e referências): foi criada sem
+  cumprir a Fase 2 do roadmap. A Release v0.1.13 no GitHub foi re-titulada
+  "v0.1.13 — build da Fase 2 (fase ABERTA; itens de assets pendentes)" — o APK
+  fica (o build existe), só a alegação de fase fechada sai. A Fase 2 volta a
+  EM CURSO com os pendentes reais: importador glTF/GLB/FBX → .KERN (meta 100 MB
+  → ≤ 20 MB + teste de integridade), .KIMG (ASTC/ETC2), cache, streaming
+  progressivo anti-trave, navegador de arquivos, pré-visualização, prefabs e
+  registro de assets (ids estáveis + referência quebrada).
+- **Tag `fase-1-ok` mantida**, mas os itens que dependem do aparelho (seleção
+  por toque, Play real, paisagem automática, gizmos) ficam **COMPILADO**, não
+  VALIDADO, até o usuário executar o aceite em TESTES_PENDENTES.md.
+- **ROADMAP.md renumerado**: LUA = Fase 5 (não 3); Fase 3 = LENTE + LUME +
+  colisão + input; importador/.KIMG/cache/streaming/navegador/preview/prefabs/
+  registro de assets = Fase 2. BACKLOG.md renumerado 1:1 (F5.1 = LuaJ
+  antecipado, congelado; proibido crescer Lua antes da Fase 5).
+- **Regras novas de processo** (DECISIONS #16/#17): tag `fase-N-ok` só com
+  TODOS os itens de aceite implementados; nenhum `runCatching` engole erro em
+  silêncio (Log + Console `KenkernLog` + tela Diagnóstico).
+- **Auditoria runCatching**: 62 ocorrências mapeadas (docs/RUNCATCHING_AUDIT.md);
+  32 silenciosas nas classes críticas (save silencioso, cena ilegível → vazia,
+  OOM de VBO, picking/resize sem rastro…) corrigidas com Console.
+- **FIX docs**: KERN_SPEC.md tabela de LODs corrigida (20 → 32 bytes por
+  entrada, como no código desde o fix F2.2).
+- Testes JVM: KenkernLogTest novo (anel + sem dependência de android.util.Log);
+  suíte segue verde.
+
+## v0.1.13 — build da Fase 2 (fase ABERTA; tag `fase-2-ok` foi removida)
 
 - **v0.1.13 (F2.6)** — .KERNPACK: importar/exportar projeto completo via SAF
   (zip com a estrutura de pastas; proteção zip-slip; zero permissões).
@@ -38,5 +66,6 @@
   transformação, câmera orbital + voo, undo/redo, Play/Stop com timestep fixo,
   classes nativas Spin/Bob, LINKERF (modelo + serialização), autosave.
 
-Formato do changelog: entrada por versão entregue (APK no CI). Cada fase fecha
-com a tag `fase-N-ok` e Release pré-lançamento com este texto.
+Formato do changelog: entrada por versão entregue (APK no CI). A tag `fase-N-ok`
+só fecha a fase quando TODOS os itens de aceite estiverem implementados
+(DECISIONS #16); itens de aparelho só viram VALIDADO após confirmação do usuário.

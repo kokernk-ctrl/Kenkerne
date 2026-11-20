@@ -6,15 +6,25 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
-- **Fase**: 3 (LUA) — EM CURSO. Fase 2 FEITA (tag `fase-2-ok`, Release publicada).
-- **Tarefa atual**: F3.2 — ponte de API (nick/scene/engine) sobre
-  `LuaJScriptRuntime.instalarTabela()` (a infra já existe e está testada).
-- **App**: v0.1.13 (`versionCode 14`), suíte JVM verde (37 testes), CI verde.
+- **Fase**: 2 (Projeto & Assets) — **EM CURSO (ABERTA)**. A tag `fase-2-ok` foi
+  REMOVIDA em 2026-11-21 (foi criada sem cumprir a Fase 2 do roadmap; a Release
+  v0.1.13 foi re-titulada "fase ABERTA"). A tag `fase-1-ok` fica, mas os itens que
+  dependem do aparelho (seleção por toque, Play real, paisagem automática, gizmos)
+  estão **COMPILADO**, não VALIDADO, até o usuário confirmar (TESTES_PENDENTES.md).
+- **Tarefa atual**: F2.7 — importador glTF/GLB → .KERN (meta de compressão +
+  teste de integridade). Plano em 10 linhas commitado antes do código.
+- **Lua congelada**: o LuaJ existente é o F5.1 (antes F3.1), trabalho ANTECIPADO —
+  proibido crescer código Lua antes da Fase 5. Fase 3 = LENTE/LUME/colliders/input.
+- **Regras novas** (ROADMAP.md, Regras de fase): (1) tag `fase-N-ok` só com TODOS os
+  itens de aceite implementados; (2) nenhum `runCatching` engole erro em silêncio —
+  Log + Console (`KenkernLog`) + tela Diagnóstico; auditoria em
+  `docs/RUNCATCHING_AUDIT.md`.
+- **App**: v0.1.13 (`versionCode 14`) + trabalho do realinhamento; suíte JVM verde.
 
 ## O que existe (Fases 1–2, validado por CI)
 
 - Tudo da Fase 1 (ver CHANGELOG) MAIS:
-- Tela Diagnóstico no Hub (ícone do inseto): 7 checagens com APROVADO/FALHOU
+- Tela Diagnóstico no Hub (ícone do inseto): checagens APROVADO/FALHOU
   (.ck, .KERN, picking, shaders, buffers, glcaps, memória) — EglDiag cria
   contexto pbuffer offscreen na thread de fundo; toda fase adiciona checagens.
 - Duplicar projeto; Importar/Exportar .kernpack (SAF); pastas ui/ e worlds/
@@ -22,23 +32,21 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 - Fixes da Fase 1 achados pelos testes F2: escapes do .ck; LOD_ENTRY_SIZE
   20→32 + header desalinhado no KernReader (o torus .KERN nunca tinha
   renderizado — agora renderiza).
+- Console de erros `KenkernLog` (Log + anel em memória) exibido no Diagnóstico e
+  no overlay do editor — nenhum runCatching crítico engole erro em silêncio.
+- Importador glTF/GLB → .KERN (F2.7): parser GLB/.gltf + meta de compressão +
+  teste de integridade + checagem `gltf` no Diagnóstico. FBX fica para F2.8.
 
-## O que falta na Fase 3 (LUA)
+## O que falta na Fase 2 (ordem)
 
-1. ~~F3.1~~ FEITO: LuaJ 3.0.1 (luaj-jse) + `ScriptRuntime` + `LuaJScriptRuntime`
-   (compila sem rodar; iniciar roda top-level+on_start; atualizar chama
-   on_update; erro SEMPRE desativa com motivo; orçamento de tempo por tick;
-   sandbox sem os/io/require). 8 testes em LuaRuntimeTest. GOTCHA: LuaJ
-   3.0.1 precisa de `package.loaded` como mesa ao registrar MathLib —
-   plantar mesa vazia, NÃO instalar PackageLib.
-2. F3.2: ponte de API (nick.position/rotation/scale/name/active,
-   scene.find, engine.time/dt, nick.class) com orçamento por tick e erro
-   que DESATIVA o script (nunca derruba o app) + testes JVM.
-3. F3.3: componente de script no Nick (campo no .ck — CK1 cresce com
-   SCRIPT path=...) + execução no updateFunctions (Play).
-4. F3.4: editor simples de script no app (painel) + scripts de exemplo.
-5. F3.5: checagem Lua no Diagnóstico + LUA_API.md oficial congelado.
-6. FIM DE FASE: tag `fase-3-ok` + Release + TESTES_PENDENTES.
+1. F2.7: **importador glTF/GLB → .KERN** (meta compressão + integridade) —
+   EM CURSO. GOTCHAS: GLB = header 12B + chunks JSON/BIN; primitivas só
+   TRIANGLES; transform de nodes (TRS/matriz, column-major) aplicado aos
+   vértices e à normal; sem buffer externo (só data URI/BIN) nesta fase.
+2. F2.8–F2.15: FBX, .KIMG (ASTC/ETC2), cache, streaming anti-trave, navegador,
+   pré-visualização, prefabs, registro de assets (ids estáveis + ref quebrada).
+3. FIM DE FASE só quando F2.1–F2.15 estiverem implementados (regra nova) →
+   teste de aceite no aparelho → VALIDADO-NO-APARELHO → aí sim tag `fase-2-ok`.
 
 ## Armadilhas descobertas (não repetir)
 
@@ -52,6 +60,11 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 11. .KERN: toda malha tem ≥1 LOD (default no Builder.build()) — writer sem
     LOD não existe; testes de erro devem partir disso.
 12. Diagnóstico NÃO chama GlesBackend.initialize() (marcaria BootTrace).
+13. Tag `fase-N-ok` sem todos os itens de aceite = erro de processo (aconteceu
+    com `fase-2-ok` e foi revertida em 2026-11-21; regra nova no ROADMAP).
+14. `runCatching` silencioso em caminho de render/formato/carregamento é bug de
+    processo — usar `KenkernLog` (Log + Console + Diagnóstico), ver
+    docs/RUNCATCHING_AUDIT.md.
 
 ## Como compilar/testar (ambiente do agente)
 
@@ -61,5 +74,6 @@ cd /home/z/my-project/Kenkerne
 ```
 SDK em `/home/z/android-sdk` (`local.properties` aponta). Se o ambiente foi
 reciclado: reinstalar cmdline-tools (layout `cmdline-tools/latest`!) +
-platforms;android-35 + build-tools;35.0.0 + JDK Temurin 21 em /home/z/jdk.
-LuaJ (Fase 3): adicionar em gradle/libs.versions.toml (mirror se rate-limit).
+platforms;android-35 + build-tools;35.0.0 + JDK Temurin 21 em /home/z/jdk
+(script /home/z/my-project/scripts/setup_env.sh do agente faz isso).
+LuaJ (Fase 5): adicionar em gradle/libs.versions.toml (mirror se rate-limit).

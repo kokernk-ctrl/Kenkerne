@@ -2,6 +2,9 @@
 
 ## Sempre (todo commit)
 
+- [ ] Nenhum `runCatching` engole erro em silêncio em caminho de render/formato/
+      carregamento — registrar via `KenkernLog` (Log + Console + Diagnóstico);
+      nova ocorrência entra em `docs/RUNCATCHING_AUDIT.md`.
 - [ ] try/catch nos 3 callbacks GL (`KenkernSurfaceView` onSurfaceCreated/
       onSurfaceChanged/onDrawFrame) + runCatching do onTouch.
 - [ ] Shader de fallback da grade (grade infinita incondicional no frame).
@@ -18,6 +21,9 @@
 
 ## Ao fim de cada fase (antes da tag `fase-N-ok`)
 
+0. **GATE da tag**: TODOS os itens de aceite da fase implementados (BACKLOG.md
+   sem `TODO`/`DOING` na fase). Sem isso, NÃO criar tag — a fase segue ABERTA
+   (erro de processo cometido com `fase-2-ok` e revertido em 2026-11-21).
 1. CI verde (`testReleaseUnitTest` + `assembleRelease`).
 2. Checklist manual no aparelho (o usuário roda e manda print):
    - [ ] Abrir projeto NOVO e projeto ANTIGO (pré-fase).

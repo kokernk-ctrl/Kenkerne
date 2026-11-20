@@ -1,6 +1,10 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
-## Aceite da FASE 1 — app v0.1.12 (Release `fase-1-ok`)
+**Estado da validação (2026-11-21): COMPILADO ≠ VALIDADO.** Nenhum item abaixo é
+VALIDADO até o usuário executar no aparelho. Em especial: seleção por toque, Play
+real, paisagem automática e gizmos (Fase 1) ficam `COMPILADO` até este aceite.
+
+## Aceite da FASE 1 — app v0.1.12 (Release `fase-1-ok`; validação PENDENTE)
 
 1. Instalar o APK da Release e abrir: Hub lista projetos; criar projeto "Teste F1".
 2. No editor: o cubo aparece sobre a grade; girar a câmera com 1 dedo (Orbital).
@@ -14,7 +18,12 @@
 8. Ligar o overlay do inseto (TopBar): linhas cam:/voo: com valores ao vivo.
 9. Reportar resultado (e print do overlay se algo falhar).
 
-## Aceite da FASE 2 — app v0.1.13 (Release `fase-2-ok`)
+## Aceite da FASE 2 — app v0.1.13 (build da fase ABERTA — parte FEITA)
+
+> A tag `fase-2-ok` foi removida (2026-11-21). Este aceite valida SOMENTE os itens
+> já feitos da Fase 2 (Diagnóstico, pastas, duplicar, .KERNPACK). Os pendentes
+> (importador glTF/GLB → .KERN, .KIMG, cache, streaming, navegador, pré-
+> visualização, prefabs, registro de assets) ganham aceite quando implementados.
 
 1. Abrir o Hub: versão v0.1.13-fase2 no cabeçalho; projeto ANTIGO abre e ganha
    as pastas ui/ e worlds/ (verificar com gerenciador de arquivos, opcional).

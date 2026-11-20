@@ -42,13 +42,16 @@ campos já reservados para SKINNING/ESQUELETO e para o futuro bloco de CLUSTERS
 | 18..21| u8[4]    | boneWeights    | reservado p/ skinning: 4 pesos normalizados (soma = 255)      |
 | 22..23| —        | padding        | zeros (alinhamento de 24 bytes por vértice)                   |
 
-## Tabela de LODs (20 bytes por entrada, lodCount entradas)
+## Tabela de LODs (32 bytes por entrada, lodCount entradas)
 
 | Bytes | Tipo   | Campo        | Descrição                                    |
 |-------|--------|--------------|----------------------------------------------|
 | 0..3  | u32    | indexOffset  | início dos índices do LOD (em índices)       |
 | 4..7  | u32    | indexCount   | quantidade de índices do LOD                 |
-| 8..19 | f32[6] | bounds       | bounding box do LOD (min xyz, max xyz)       |
+| 8..31 | f32[6] | bounds       | bounding box do LOD (min xyz, max xyz)       |
+
+> Correção (2026-11-21): esta tabela dizia "20 bytes" desde a Fase 1; o código
+> real usa 32 (fix F2.2 — o buffer do escritor estourava com 20).
 
 ## Bloco de índices
 

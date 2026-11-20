@@ -51,6 +51,37 @@ Formato: decisão · motivo · alternativa descartada.
     jamais gravado (o escritor estourava sempre, LOD ≥1 obrigatório): não
     existem .KERN legados no mundo.
 
+## Realinhamento ao roadmap (2026-11-21 — decisão do usuário)
+
+15. **Ordenação das fases corrigida: LUA = Fase 5 (não 3); Fase 3 = LENTE, LUME,
+    colliders e input** — o importador glTF/GLB/FBX, .KIMG (ASTC/ETC2), cache,
+    streaming progressivo anti-trave, navegador de arquivos, pré-visualização,
+    prefabs e registro de assets são pendências da **Fase 2** (Projeto & Assets).
+    O LuaJ existente (antes F3.1) vira **F5.1, trabalho antecipado CONGELADO** —
+    proibido crescer código Lua antes da Fase 5. BACKLOG.md renumerado 1:1 com o
+    ROADMAP.md. Alternativa descartada: manter a ordenação antiga (contrariava o
+    roadmap do Prompt Mestre v3).
+16. **Tag `fase-N-ok` exige TODOS os itens de aceite da fase implementados**
+    (CI verde) — itens não feitos ficam pendentes e a fase continua ABERTA, sem
+    tag. Motivo: a tag `fase-2-ok` foi criada sem cumprir a Fase 2 e foi removida
+    (a Release v0.1.13 foi re-titulada "fase ABERTA"; o APK fica, pois o build
+    existe). Alternativa descartada: tag parcial + itens pendentes.
+17. **Nenhum `runCatching` engole erro em silêncio** — todo `runCatching` em
+    caminho de render, formato ou carregamento registra o erro em 3 destinos:
+    Log (logcat) + Console (`KenkernLog`, anel em memória) + tela Diagnóstico.
+    Motivo: a Fase 1 quase perdeu o torus .KERN para um `runCatching` silencioso
+    (LOD_ENTRY_SIZE) — erro invisível = bug invisível. Varredura inicial (62
+    ocorrências; 32 silenciosas nas classes críticas): docs/RUNCATCHING_AUDIT.md.
+18. **Console de erros = `KenkernLog` (objeto, anel de 200 entradas) exibido na
+    tela Diagnóstico e no overlay do editor** — sem dependência nova; JVM-safe
+    (log de Android pode ser desligado nos testes). Alternativas descartadas:
+    Timber (dependência externa), só logcat (não aparece no aparelho do usuário).
+19. **Importador glTF/GLB antes do FBX** (reafirma #11): GLB é o formato de
+    intercâmbio moderno, binário aberto e documentado; FBX é proprietário e fica
+    para F2.8. Parser JSON do glTF usa `org.json` (nativo no Android;
+    `testImplementation org.json:json` só nos testes JVM) — sem dependência nova
+    no APK. Alternativa descartada: parser JSON artesanal (risco de bug).
+
 ## Correções históricas (resumo; detalhes no CHANGELOG)
 
 - v0.1.12: yaw do voo lia `yawDegrees` do orbital em `computeBasis` (causa (b)).
