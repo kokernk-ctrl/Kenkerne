@@ -39,13 +39,13 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## O que falta na Fase 2 (ordem)
 
-1. F2.7: **importador glTF/GLB → .KERN** (meta compressão + integridade) —
-   EM CURSO. GOTCHAS: GLB = header 12B + chunks JSON/BIN; primitivas só
-   TRIANGLES; transform de nodes (TRS/matriz, column-major) aplicado aos
-   vértices e à normal; sem buffer externo (só data URI/BIN) nesta fase.
-2. F2.8–F2.15: FBX, .KIMG (ASTC/ETC2), cache, streaming anti-trave, navegador,
+1. F2.7: importador glTF/GLB → .KERN — **FEITO** (COMPILADO+CI ✓, 11 testes
+   JVM, checagem `gltf` no Diagnóstico; gotchas do GLB documentados no
+   cabeçalho do GltfImporter.kt).
+2. F2.8: **importador FBX → .KERN** — TAREFA ATUAL (EM CURSO).
+3. F2.9–F2.15: .KIMG (ASTC/ETC2), cache, streaming anti-trave, navegador,
    pré-visualização, prefabs, registro de assets (ids estáveis + ref quebrada).
-3. FIM DE FASE só quando F2.1–F2.15 estiverem implementados (regra nova) →
+4. FIM DE FASE só quando F2.1–F2.15 estiverem implementados (regra nova) →
    teste de aceite no aparelho → VALIDADO-NO-APARELHO → aí sim tag `fase-2-ok`.
 
 ## Armadilhas descobertas (não repetir)
