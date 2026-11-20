@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import com.kenkern.engine.diag.KenkernLog
 import kotlin.math.roundToInt
 
 /**
@@ -40,6 +41,10 @@ class PanelStateStore(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val states = HashMap<String, PanelUiState>()
 
+    private companion object {
+        const val TAG = "Kenkern/PanelStateStore"
+    }
+
     fun get(
         key: String,
         title: String,
@@ -60,7 +65,9 @@ class PanelStateStore(context: Context) {
         var fw = defaultFloatWidthDp
         var fh = defaultFloatHeightDp
 
-        val raw = runCatching { prefs.getString(key, null) }.getOrNull()
+        val raw = runCatching { prefs.getString(key, null) }
+            .onFailure { KenkernLog.w(TAG, "prefs do painel '$key' ilegíveis — usando padrão", it) }
+            .getOrNull()
         if (raw != null) {
             val p = raw.split(',')
             if (p.size >= 7) {
@@ -99,7 +106,7 @@ class PanelStateStore(context: Context) {
                     state.floatH.roundToInt().toString()
                 ).joinToString(",")
             ).apply()
-        }
+        }.onFailure { KenkernLog.w(TAG, "prefs do painel '${state.key}' não gravados", it) }
     }
 
     companion object {

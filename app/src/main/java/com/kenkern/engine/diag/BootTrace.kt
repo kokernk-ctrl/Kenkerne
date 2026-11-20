@@ -28,6 +28,7 @@ import java.util.Locale
  */
 object BootTrace {
 
+    private const val TAG = "Kenkern/BootTrace"
     private const val FILE_NAME = "boot_trace.txt"
 
     /** Contexto de app capturado no Application.onCreate (gravação de qualquer thread). */
@@ -50,6 +51,7 @@ object BootTrace {
         val ctx = appContext ?: return
         synchronized(lock) {
             runCatching { file(ctx).delete() }
+                .onFailure { KenkernLog.w(TAG, "reset do boot_trace falhou — rastro antigo pode sobreviver", it) }
         }
     }
 
@@ -69,6 +71,9 @@ object BootTrace {
                     writer.write(line)
                     writer.flush()
                 }
+            }.onFailure {
+                // Etapa perdida = rastro de crash incompleto — registrar (regra nova).
+                KenkernLog.w(TAG, "etapa '$step' não gravada no boot_trace", it)
             }
         }
     }

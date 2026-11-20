@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.kenkern.engine.projects.Kernpack
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
+import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.ui.theme.KenkernAmber
 import com.kenkern.engine.ui.theme.KenkernBackground
 import com.kenkern.engine.ui.theme.KenkernError
@@ -332,7 +333,8 @@ fun HomeScreen(
 private fun relativeDate(created: String): String {
     val parsed = runCatching {
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).parse(created)?.time
-    }.getOrNull() ?: return created
+    }.onFailure { KenkernLog.w("Kenkern/HomeScreen", "data de criação do projeto ilegível — mostrando texto cru", it) }
+        .getOrNull() ?: return created
     val diffMinutes = (System.currentTimeMillis() - parsed) / 60000L
     return when {
         diffMinutes < 1L -> "agora"

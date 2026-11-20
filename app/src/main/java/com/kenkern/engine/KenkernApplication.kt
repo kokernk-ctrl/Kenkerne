@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import com.kenkern.engine.core.KenkernBuiltInClasses
 import com.kenkern.engine.diag.BootTrace
+import com.kenkern.engine.diag.KenkernLog
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -45,6 +46,10 @@ class KenkernApplication : Application() {
                 )
                 // Mantém apenas o crash mais recente (economiza espaço em disco).
                 dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(1)?.forEach { it.delete() }
+            }.onFailure {
+                // A gravação do crash report falhou — registrar (a repropagação
+                // ao handler do sistema acontece abaixo, incondicionalmente).
+                KenkernLog.e("Kenkern/Application", "crash report não gravado no disco", it)
             }
             Log.e("Kenkern/Application", "Crash capturado", throwable)
             platform?.uncaughtException(thread, throwable)

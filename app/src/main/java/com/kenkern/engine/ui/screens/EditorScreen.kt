@@ -92,6 +92,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kenkern.engine.editor.EditorViewModel
 import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.diag.BootTrace
+import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.engine.PlayState
 import com.kenkern.engine.render.CameraMode
 import com.kenkern.engine.render.GizmoHandle
@@ -115,6 +116,8 @@ import com.kenkern.engine.ui.theme.KenkernSurfaceOverlay
 import com.kenkern.engine.ui.theme.KenkernTextHigh
 import com.kenkern.engine.ui.theme.KenkernTextLow
 import com.kenkern.engine.ui.theme.KenkernTextMid
+
+private const val TAG_UI = "Kenkern/EditorScreen"
 
 /**
  * Estado por sessão do app (processo): a dica de gestos aparece uma única vez
@@ -432,6 +435,8 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             (sv.height * resolutionScale).toInt().coerceAtLeast(64)
                         )
                     }
+                }.onFailure {
+                    KenkernLog.w(TAG_UI, "setFixedSize da resolução falhou — render segue em 1:1", it)
                 }
             }
         }
@@ -540,6 +545,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             runCatching { currentVm.value.saveNow() }
+                .onFailure { KenkernLog.e(TAG_UI, "saveNow do dispose falhou — cena pode não ter sido salva", it) }
         }
     }
 }
@@ -954,6 +960,19 @@ private fun buildDebugLines(sv: KenkernSurfaceView, viewPx: android.util.Size): 
                 dbg.flightLookDxDp, dbg.flightLookDyDp, dbg.flightGesture
             )
         )
+    }
+
+    // CONSOLE (regra do realinhamento): erros registrados via KenkernLog aparecem
+    // também aqui, no overlay — o Console da engine tem 3 destinos (logcat,
+    // Diagnóstico e este overlay).
+    val erros = KenkernLog.totalErros()
+    if (erros > 0) {
+        val ultimas = KenkernLog.registros().asReversed().take(3)
+        lines.add("console: $erros erro(s) — últimos:")
+        for (r in ultimas) {
+            lines.add("  ${if (r.nivel == KenkernLog.Nivel.E) "E" else "W"} [${r.tag}] ${r.mensagem}" +
+                (r.detalhe?.let { " — $it" } ?: ""))
+        }
     }
     return lines
 }

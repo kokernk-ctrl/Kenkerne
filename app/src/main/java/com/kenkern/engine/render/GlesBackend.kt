@@ -5,6 +5,7 @@ import android.util.Log
 import com.kenkern.engine.assets.mesh.MeshData
 import com.kenkern.engine.core.math.Mat4
 import com.kenkern.engine.diag.BootTrace
+import com.kenkern.engine.diag.KenkernLog
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -419,7 +420,7 @@ class GlesBackend : RenderBackend {
                 buildSkyTriangle()
                 skyOk = skyVao != 0
             }
-        }.onFailure { Log.w(TAG, "sky: ${it.message}") }
+        }.onFailure { KenkernLog.w(TAG, "céu (sky) não construído — viewport segue sem céu", it) }
 
         runCatching {
             gridProgram = buildProgram(gridVertexShader, gridFragmentShader)
@@ -436,7 +437,7 @@ class GlesBackend : RenderBackend {
                 uGridCam = GLES30.glGetUniformLocation(gridProgram, "uCamPos")
                 gridOk = true
             }
-        }.onFailure { Log.w(TAG, "grid: ${it.message}") }
+        }.onFailure { KenkernLog.w(TAG, "grade infinita não construída — viewport segue sem grade", it) }
 
         runCatching {
             flatProgram = buildProgram(flatVertexShader, flatFragmentShader)
@@ -445,7 +446,7 @@ class GlesBackend : RenderBackend {
                 uFlatColor = GLES30.glGetUniformLocation(flatProgram, "uColor")
                 flatOk = true
             }
-        }.onFailure { Log.w(TAG, "flat: ${it.message}") }
+        }.onFailure { KenkernLog.w(TAG, "programa flat (contorno) não construído", it) }
 
         runCatching {
             lineProgram = buildProgram(lineVertexShader, lineFragmentShader)
@@ -453,7 +454,7 @@ class GlesBackend : RenderBackend {
                 uLineMvp = GLES30.glGetUniformLocation(lineProgram, "uMVP")
                 lineOk = true
             }
-        }.onFailure { Log.w(TAG, "line: ${it.message}") }
+        }.onFailure { KenkernLog.w(TAG, "programa de linhas não construído", it) }
 
         runCatching {
             gizmoProgram = buildProgram(tGizmoVertexShader, tGizmoFragmentShader)
@@ -462,7 +463,7 @@ class GlesBackend : RenderBackend {
                 uTGizmoAlphaMul = GLES30.glGetUniformLocation(gizmoProgram, "uAlphaMul")
                 tGizmoOk = true
             }
-        }.onFailure { Log.w(TAG, "tGizmo: ${it.message}") }
+        }.onFailure { KenkernLog.w(TAG, "programa do gizmo de transformação não construído", it) }
 
         GLES30.glClearColor(0.075f, 0.075f, 0.105f, 1f)
         drainGlErrors()
@@ -591,6 +592,9 @@ class GlesBackend : RenderBackend {
 
         val interleaved = runCatching {
             ByteBuffer.allocateDirect(vertexCount * STRIDE).order(ByteOrder.nativeOrder())
+        }.onFailure {
+            // OOM na alocação de VBO não pode virar "malha invisível" sem rastro (regra nova).
+            KenkernLog.e(TAG, "sem memória para VBO de $vertexCount vértices — malha não sobe para a GPU", it)
         }.getOrNull() ?: return 0
         val fb = interleaved.asFloatBuffer()
         for (v in 0 until vertexCount) {
@@ -603,6 +607,8 @@ class GlesBackend : RenderBackend {
         val bytesPerIndex = if (useShort) 2 else 4
         val indexBuffer = runCatching {
             ByteBuffer.allocateDirect(mesh.indices.size * bytesPerIndex).order(ByteOrder.nativeOrder())
+        }.onFailure {
+            KenkernLog.e(TAG, "sem memória para buffer de índices (${mesh.indices.size}) — malha não sobe para a GPU", it)
         }.getOrNull() ?: return 0
         if (useShort) {
             val sb = indexBuffer.asShortBuffer()

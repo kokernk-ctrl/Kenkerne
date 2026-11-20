@@ -6,6 +6,7 @@ import com.kenkern.engine.BuildConfig
 import com.kenkern.engine.core.NickClassRegistry
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.serialization.CkFormat
+import com.kenkern.engine.diag.KenkernLog
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -51,6 +52,9 @@ object ProjectManager {
     private fun reportError(where: String, e: Throwable) {
         lastError = "$where: ${e.message ?: e.javaClass.simpleName}"
         Log.e(TAG, lastError, e)
+        // Console da engine (regra: runCatching não engole em silêncio —
+        // lastError sozinho nem sempre chega à UI).
+        KenkernLog.e(TAG, where, e)
     }
 
     private fun clearError() {
@@ -160,6 +164,7 @@ object ProjectManager {
         if (!handle.root.copyRecursively(candidate, overwrite = false)) {
             lastError = "Falha ao copiar os arquivos do projeto"
             runCatching { candidate.deleteRecursively() } // não deixa cópia pela metade
+                .onFailure { KenkernLog.w(TAG, "limpeza da cópia parcial falhou", it) }
             return null
         }
         // Novo nome no project.kenkern da CÓPIA (o original fica intocado).
@@ -171,6 +176,7 @@ object ProjectManager {
         if (!writeFileAtomic(metaFile, atualizado.joinToString("\n") + "\n")) {
             lastError = "Falha ao gravar $PROJECT_FILE da cópia"
             runCatching { candidate.deleteRecursively() }
+                .onFailure { KenkernLog.w(TAG, "limpeza da cópia sem meta falhou", it) }
             return null
         }
         ProjectHandle(candidate, novoNome, handle.createdAt)
@@ -218,7 +224,7 @@ object ProjectManager {
             val dir = File(handle.root, folder)
             if (!dir.isDirectory) {
                 runCatching { dir.mkdirs() }
-                    .onFailure { Log.w("Kenkern/ProjectManager", "pasta '$folder' não criada: ${it.message}") }
+                    .onFailure { KenkernLog.w(TAG, "pasta '$folder' não criada — projeto segue sem ela", it) }
             }
         }
     }
@@ -230,11 +236,21 @@ object ProjectManager {
         val useAutosave = autosave.isFile && (!main.isFile || autosave.lastModified() > main.lastModified())
         val source = if (useAutosave) autosave else main
         if (source.isFile) {
-            val text = runCatching { source.readText() }.getOrNull()
+            val text = runCatching { source.readText() }
+                .onFailure {
+                    // Cena ILEGÍVEL não pode virar cena vazia em silêncio (regra nova).
+                    KenkernLog.e(TAG, "arquivo de cena ilegível (${source.name}) — abrindo cena vazia", it)
+                }
+                .getOrNull()
             if (!text.isNullOrBlank()) {
                 val scene = CkFormat.parseToNewScene(text, handle.name)
                 if (scene != null) return scene
+                KenkernLog.w(TAG, "cena .ck não parseou (${source.name}) — abrindo cena vazia")
+            } else if (text != null) {
+                KenkernLog.w(TAG, "arquivo de cena em branco (${source.name}) — abrindo cena vazia")
             }
+        } else {
+            KenkernLog.w(TAG, "arquivo de cena ausente (${source.name}) — cena nova")
         }
         Scene(handle.name)
     }.onFailure { reportError("loadScene", it) }.getOrDefault(Scene(handle.name))
@@ -242,7 +258,8 @@ object ProjectManager {
     fun hasAutosave(handle: ProjectHandle): Boolean = runCatching {
         handle.autosaveFile.isFile &&
             (!handle.mainSceneFile.isFile || handle.autosaveFile.lastModified() > handle.mainSceneFile.lastModified())
-    }.getOrDefault(false)
+    }.onFailure { KenkernLog.w(TAG, "hasAutosave falhou — recuperação pode não ocorrer", it) }
+        .getOrDefault(false)
 
     /** Gravação atômica: escreve em .tmp e renomeia (nunca corrompe o arquivo final). */
     fun writeFileAtomic(target: File, content: String): Boolean {
@@ -258,7 +275,10 @@ object ProjectManager {
                 tmp.delete()
             }
             true
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Perda de gravação NUNCA é silenciosa (regra nova: runCatching/catch
+            // em caminho de carregamento registra Log + Console + Diagnóstico).
+            KenkernLog.e(TAG, "writeFileAtomic(${target.name}) falhou — dado não gravado", e)
             false
         }
     }
@@ -284,7 +304,7 @@ object ProjectManager {
                 }
                 map[key] = value
             }
-        }
+        }.onFailure { KenkernLog.w(TAG, "project.kenkern ilegível — nome vira o da pasta", it) }
         return map
     }
 

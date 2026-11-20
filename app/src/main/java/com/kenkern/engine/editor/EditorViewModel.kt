@@ -27,6 +27,7 @@ import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.TransformSnapshot
 import com.kenkern.engine.diag.BootTrace
+import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.engine.PlayState
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
@@ -152,6 +153,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 bump()
             }.onFailure {
                 Log.e(TAG, "Falha ao abrir projeto", it)
+                KenkernLog.e(TAG, "Falha ao abrir projeto", it)
                 statusMessage.value = "Falha ao abrir projeto: ${it.message ?: "erro desconhecido"}"
             }
             isLoading.value = false
@@ -219,6 +221,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                     app.contentResolver.openOutputStream(uri, "w")?.use { saida ->
                         Kernpack.empacotar(handle.root, saida) > 0
                     } ?: error("não foi possível abrir o destino")
+                }.onFailure {
+                    Log.e(TAG, "Falha ao exportar .kernpack", it)
+                    KenkernLog.e(TAG, "Falha ao exportar .kernpack", it)
                 }
             }
             statusMessage.value = ok.fold(
@@ -253,6 +258,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                         pasta.deleteRecursively() // não deixa migalha de pacote ruim
                         throw e
                     }
+                }.onFailure {
+                    Log.e(TAG, "Falha ao importar .kernpack", it)
+                    KenkernLog.e(TAG, "Falha ao importar .kernpack", it)
                 }
             }
             statusMessage.value = resultado.fold(
@@ -301,7 +309,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun saveNow() {
         val handle = project.value ?: activeHandleAtEnter ?: return
         val currentScene = sceneRef ?: return
-        runCatching { autosave.saveNow(currentScene, handle) }
+        runCatching { autosave.saveNow(currentScene, handle) }.onFailure {
+            // SAVE silencioso era a pior perda possível (regra nova: registrar sempre).
+            Log.e(TAG, "saveNow falhou — cena pode não ter sido salva", it)
+            KenkernLog.e(TAG, "Falha ao salvar o projeto (saveNow)", it)
+            statusMessage.value = "Falha ao salvar: ${it.message ?: it.javaClass.simpleName}"
+        }
     }
 
     fun select(id: ReferenceId?) {

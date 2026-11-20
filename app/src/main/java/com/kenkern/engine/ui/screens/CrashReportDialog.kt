@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import com.kenkern.engine.diag.BootTrace
+import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.ui.theme.KenkernAmber
 import com.kenkern.engine.ui.theme.KenkernBackground
 import com.kenkern.engine.ui.theme.KenkernError
@@ -50,6 +51,7 @@ import java.io.File
  */
 object CrashReportStore {
 
+    private const val TAG = "Kenkern/CrashReport"
     private const val CRASH_DIR = "crash_logs"
     private const val CRASH_FILE = "last_crash.txt"
 
@@ -59,12 +61,19 @@ object CrashReportStore {
 
     /** True se existe relatório de crash pendente (chamado 1x na composição raiz). */
     fun hasPendingReport(context: Context): Boolean =
-        runCatching { crashFile(context).isFile }.getOrDefault(false)
+        runCatching { crashFile(context).isFile }
+            .onFailure {
+                // Falso negativo = diálogo de crash nunca aparece — registrar (regra nova).
+                KenkernLog.w(TAG, "verificação de crash pendente falhou — diálogo pode não aparecer", it)
+            }
+            .getOrDefault(false)
 
     /** Apaga o relatório de crash e o marcador de boot (botão "Apagar"). */
     fun clearReports(context: Context) {
         runCatching { crashFile(context).delete() }
+            .onFailure { KenkernLog.w(TAG, "apagar last_crash.txt falhou — relatório volta no próximo início", it) }
         runCatching { BootTrace.file(context).delete() }
+            .onFailure { KenkernLog.w(TAG, "apagar boot_trace.txt falhou", it) }
     }
 
     /** Relatório completo: crash (versão/thread/stack) + etapas do boot_trace. */

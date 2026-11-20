@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kenkern.engine.diag.Diagnostico
+import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.ui.theme.KenkernAmber
 import com.kenkern.engine.ui.theme.KenkernBackground
 import com.kenkern.engine.ui.theme.KenkernError
@@ -66,6 +67,7 @@ import kotlinx.coroutines.withContext
 fun DiagnosticoScreen(onVoltar: () -> Unit) {
     val context = LocalContext.current
     val diag = remember { Diagnostico(context.applicationContext) }
+    val horaFmt = remember { java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US) }
     val resultados = remember {
         mutableStateListOf<Diagnostico.Checagem>().apply { addAll(diag.novaLista()) }
     }
@@ -201,6 +203,35 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                         )
                     }
                 }
+            }
+
+            // ---------- CONSOLE (regra do realinhamento) ----------
+            // Todo runCatching de render/formato/carregamento registra aqui via
+            // KenkernLog (além do logcat e do overlay do editor).
+            val consoleRegs = KenkernLog.registros().asReversed()
+            item {
+                Text(
+                    if (consoleRegs.isEmpty()) "CONSOLE: sem registros de erro/aviso nesta sessão"
+                    else "CONSOLE — ${consoleRegs.size} registro(s) desta sessão:",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (consoleRegs.any { it.nivel == KenkernLog.Nivel.E }) KenkernError else KenkernTextMid,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            items(consoleRegs.size) { i ->
+                val r = consoleRegs[i]
+                Text(
+                    r.linha(horaFmt),
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (r.nivel == KenkernLog.Nivel.E) KenkernError else KenkernTextMid,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(KenkernSurface, RoundedCornerShape(6.dp))
+                        .padding(8.dp)
+                )
             }
         }
     }

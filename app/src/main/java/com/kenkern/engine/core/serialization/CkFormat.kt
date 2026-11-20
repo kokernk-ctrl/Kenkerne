@@ -4,6 +4,7 @@ import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
+import com.kenkern.engine.diag.KenkernLog
 import java.io.StringReader
 import java.io.StringWriter
 
@@ -29,6 +30,7 @@ object CkFormat {
 
     const val MAGIC = "CK1"
     private const val PARENT_NONE = "NONE"
+    private const val TAG = "Kenkern/CkFormat"
 
     // ---------- Escrita ----------
 
@@ -157,8 +159,11 @@ object CkFormat {
         text.lineSequence().forEach { rawLine ->
             val line = rawLine.trim()
             if (line.isEmpty() || line.startsWith("#")) return@forEach
-            // Linhas corruptas são ignoradas individualmente (arquivo parcial recuperável).
-            val tokens = runCatching { tokenize(line) }.getOrNull() ?: return@forEach
+            // Linhas corruptas são ignoradas individualmente (arquivo parcial recuperável) —
+            // mas o descarte É REGISTRADO (regra: runCatching não engole em silêncio).
+            val tokens = runCatching { tokenize(line) }
+                .onFailure { KenkernLog.w(TAG, "linha .ck corrupta descartada (parse segue parcial)", it) }
+                .getOrNull() ?: return@forEach
             when (tokens.firstOrNull()?.first) {
                 MAGIC -> sawMagic = true
                 "SCENE" -> {
@@ -211,10 +216,18 @@ object CkFormat {
                     val owner = tokenValue(tokens, "owner") ?: return@forEach
                     val name = tokenValue(tokens, "name")?.let { unescape(it) } ?: "porta"
                     val kind = tokenValue(tokens, "kind")?.let {
-                        runCatching { com.kenkern.engine.core.linkerf.LinkerfPortKind.valueOf(it) }.getOrNull()
+                        runCatching { com.kenkern.engine.core.linkerf.LinkerfPortKind.valueOf(it) }
+                            .onFailure { e ->
+                                KenkernLog.w(TAG, "PORT com kind desconhecido '$it' — usando DATA_IN", e)
+                            }
+                            .getOrNull()
                     } ?: com.kenkern.engine.core.linkerf.LinkerfPortKind.DATA_IN
                     val type = tokenValue(tokens, "type")?.let {
-                        runCatching { com.kenkern.engine.core.linkerf.LinkerfPortType.valueOf(it) }.getOrNull()
+                        runCatching { com.kenkern.engine.core.linkerf.LinkerfPortType.valueOf(it) }
+                            .onFailure { e ->
+                                KenkernLog.w(TAG, "PORT com type desconhecido '$it' — usando TRIGGER", e)
+                            }
+                            .getOrNull()
                     } ?: com.kenkern.engine.core.linkerf.LinkerfPortType.TRIGGER
                     scene.linkerf.addPort(
                         com.kenkern.engine.core.linkerf.LinkerfPort(
@@ -238,7 +251,11 @@ object CkFormat {
             }
         }
 
-        if (!sawMagic) return@runCatching false
+        if (!sawMagic) {
+            // Sem magic = não é um .ck (ou está truncado no início): recusar COM registro.
+            KenkernLog.e(TAG, "arquivo .ck sem magic CK1 — parse recusado (cena fica vazia)")
+            return@runCatching false
+        }
 
         // Segunda passada: liga pais por id (pais ausentes viram raízes — nunca crasha).
         for ((id, parentId) in parents) {
@@ -254,7 +271,8 @@ object CkFormat {
         }
         true
     }.onFailure {
-        android.util.Log.e("Kenkern/CkFormat", "parse falhou", it)
+        android.util.Log.e(TAG, "parse falhou", it)
+        com.kenkern.engine.diag.KenkernLog.e(TAG, "parse do .ck falhou (cena fica vazia)", it)
     }.getOrDefault(false)
 
     fun parseToNewScene(text: String, fallbackName: String = "Cena"): Scene? {

@@ -32,7 +32,7 @@ class EglDiag private constructor(
             EGL14.eglDestroySurface(display, surface)
             EGL14.eglDestroyContext(display, context)
             EGL14.eglTerminate(display)
-        }
+        }.onFailure { KenkernLog.w("Kenkern/EglDiag", "liberar() do contexto pbuffer falhou — recurso pode vazar", it) }
     }
 
     companion object {

@@ -41,6 +41,10 @@ import kotlin.math.max
  */
 class Diagnostico(private val appContext: Context) {
 
+    private companion object {
+        const val TAG = "Kenkern/Diagnostico"
+    }
+
     enum class Status { PENDENTE, RODANDO, APROVADO, FALHOU }
 
     class Checagem(val id: String, val nome: String) {
@@ -122,6 +126,7 @@ class Diagnostico(private val appContext: Context) {
             }
         }.onFailure {
             c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
+            KenkernLog.e(TAG, "checagem '$id' lançou exceção", it)
         }
         onAtualiza(c)
     }

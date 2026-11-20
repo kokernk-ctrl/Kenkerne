@@ -11,6 +11,7 @@ import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.math.Mat4
 import com.kenkern.engine.core.math.Quaternion
 import com.kenkern.engine.core.math.Vec3
+import com.kenkern.engine.diag.KenkernLog
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -137,11 +138,12 @@ class EngineRenderer {
             Log.e(TAG, "Backend não inicializou; viewport em modo seguro")
             return
         }
-        // Cada construção é independente: se uma falhar, o resto ainda desenha.
-        runCatching { buildCube(backend) }.onFailure { Log.w(TAG, "cube: ${it.message}") }
-        runCatching { buildGizmo(backend) }.onFailure { Log.w(TAG, "gizmo: ${it.message}") }
-        runCatching { buildTransformGizmoBuffers(backend) }.onFailure { Log.w(TAG, "tGizmo: ${it.message}") }
-        runCatching { buildTestMeshViaKern(backend) }.onFailure { Log.w(TAG, "kern: ${it.message}") }
+        // Cada construção é independente: se uma falhar, o resto ainda desenha —
+        // mas a falha É REGISTRADA no Console (regra: runCatching não engole).
+        runCatching { buildCube(backend) }.onFailure { KenkernLog.w(TAG, "cube não construído (viewport segue sem cubo)", it) }
+        runCatching { buildGizmo(backend) }.onFailure { KenkernLog.w(TAG, "gizmo de eixos não construído", it) }
+        runCatching { buildTransformGizmoBuffers(backend) }.onFailure { KenkernLog.w(TAG, "buffers do gizmo de transformação não construídos", it) }
+        runCatching { buildTestMeshViaKern(backend) }.onFailure { KenkernLog.w(TAG, "malha de teste .KERN não construída", it) }
         initialized = true
     }
 
@@ -267,7 +269,9 @@ class EngineRenderer {
         } catch (e: Throwable) {
             // Última linha de defesa: nenhum erro de GL/frame derruba o processo.
             Log.e(TAG, "Frame descartado", e)
+            KenkernLog.e(TAG, "Frame descartado", e)
             runCatching { backend.beginFrame(0.075f, 0.075f, 0.105f, 1f) }
+                .onFailure { KenkernLog.e(TAG, "clear emergencial do frame também falhou", it) }
         }
         val drawElapsedMs = (System.nanoTime() - drawStart) * 1e-6f
         drawMs = if (drawMs == 0f) drawElapsedMs else drawMs * 0.9f + drawElapsedMs * 0.1f

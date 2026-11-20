@@ -14,6 +14,7 @@ import com.kenkern.engine.core.RotationFromMatrix
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.TransformSnapshot
 import com.kenkern.engine.diag.BootTrace
+import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.core.math.Mat4
 import com.kenkern.engine.core.math.Quaternion
 import com.kenkern.engine.core.math.Vec3
@@ -409,7 +410,8 @@ class KenkernSurfaceView(
         val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val info = am?.deviceConfigurationInfo
         info == null || info.reqGlEsVersion >= 0x30000 // null = assume que suporta
-    }.getOrDefault(true)
+    }.onFailure { KenkernLog.w(TAG, "detecção de GLES3 falhou — assumindo que o aparelho suporta", it) }
+        .getOrDefault(true)
 
     override fun onTouchEvent(event: MotionEvent?): Boolean {
         if (event == null) return false
@@ -423,12 +425,15 @@ class KenkernSurfaceView(
         val handled = runCatching { touch.onTouch(event) }
             .onFailure {
                 Log.e(TAG, "onTouch descartado: ${it.javaClass.simpleName}: ${it.message}", it)
+                KenkernLog.e(TAG, "evento de toque descartado", it)
             }
             .getOrDefault(false)
         // Posse do gesto decidida no DOWN: se o gizmo capturou a alça, nenhum pai
         // intercepta o gesto até o ACTION_UP (o sistema limpa a flag no próximo DOWN).
         if (event.actionMasked == MotionEvent.ACTION_DOWN &&
-            runCatching { touch.isGizmoCapturedNow() }.getOrDefault(false)
+            runCatching { touch.isGizmoCapturedNow() }
+                .onFailure { KenkernLog.w(TAG, "isGizmoCapturedNow falhou — gesto pode ser interceptado", it) }
+                .getOrDefault(false)
         ) {
             parent?.requestDisallowInterceptTouchEvent(true)
         }
@@ -861,7 +866,7 @@ class KenkernSurfaceView(
                 if (context !== EGL10.EGL_NO_CONTEXT) {
                     egl.eglDestroyContext(display, context)
                 }
-            }
+            }.onFailure { KenkernLog.w(TAG, "eglDestroyContext falhou — contexto EGL pode vazar", it) }
         }
     }
 
@@ -889,11 +894,14 @@ class KenkernSurfaceView(
                 intArrayOf(EGL10.EGL_DEPTH_SIZE, 8, EGL10.EGL_NONE),
                 intArrayOf(EGL10.EGL_NONE)
             )
-            for (attr in candidates) {
+            for ((idx, attr) in candidates.withIndex()) {
                 val num = IntArray(1)
                 val configs = arrayOfNulls<EGLConfig>(1)
                 val ok = runCatching {
                     egl.eglChooseConfig(display, attr, configs, 1, num) && num[0] > 0 && configs[0] != null
+                }.onFailure {
+                    // Cada candidato recusado é registrado; o final lança mensagem clara.
+                    KenkernLog.w(TAG, "candidato EGL $idx recusado pelo driver", it)
                 }.getOrDefault(false)
                 if (ok) return configs[0]!!
             }
@@ -935,7 +943,7 @@ class KenkernSurfaceView(
             isEngineHealthy = false
             runCatching {
                 backend.destroy() // libera restos de contexto anterior
-            }
+            }.onFailure { KenkernLog.w(TAG, "destroy() do backend anterior falhou", it) }
             runCatching {
                 engineRenderer.initialize(backend, gizmo)
                 surfaceReady = true
@@ -943,11 +951,13 @@ class KenkernSurfaceView(
                 Log.i(TAG, "Viewport GL inicializado (${backend.name})")
             }.onFailure {
                 Log.e(TAG, "Falha na inicialização GL (modo seguro)", it)
+                KenkernLog.e(TAG, "Inicialização GL falhou — viewport em modo seguro", it)
             }
         }
 
         override fun onSurfaceChanged(gl: javax.microedition.khronos.opengles.GL10?, width: Int, height: Int) {
             runCatching { backend.resize(width, height) }
+                .onFailure { KenkernLog.e(TAG, "resize($width, $height) falhou — viewport pode ficar com tamanho errado", it) }
         }
 
         override fun onDrawFrame(gl: javax.microedition.khronos.opengles.GL10?) {
@@ -977,6 +987,10 @@ class KenkernSurfaceView(
                             pickVp.multiply(pickProj, pickView)
                             val picked = runCatching {
                                 pickNickAt(s, aspect, pickVp, rw, rh)
+                            }.onFailure {
+                                // Tap "morrendo" sem rastro era o pior bug de UX possível
+                                // de diagnosticar (regra nova: registra sempre).
+                                KenkernLog.e(TAG, "picking falhou — tap não seleciona", it)
                             }.getOrNull()
                             mainHandler.post { onNickPicked(picked) }
                         }
@@ -986,6 +1000,7 @@ class KenkernSurfaceView(
                         focusPending = false
                         val s = scene
                         if (s != null) runCatching { applyFocus(s) }
+                            .onFailure { KenkernLog.w(TAG, "foco de câmera falhou", it) }
                     }
                     engineRenderer.renderFrame(
                         backend, scene, camera, loop.engineTime, selectionProvider(), gizmoState
@@ -994,6 +1009,7 @@ class KenkernSurfaceView(
                     // framebuffer + tamanho do render. Só quando o overlay está ON.
                     if (debugState.enabled) {
                         runCatching { publishDebugFrameGL(scene) }
+                            .onFailure { KenkernLog.w(TAG, "publicação do overlay de debug falhou", it) }
                     }
                     // Marcador de progresso: primeiro frame COMPLETO no thread GL.
                     // Gravado DEPOIS do renderFrame: crash nativo dentro do draw
@@ -1005,10 +1021,11 @@ class KenkernSurfaceView(
                 }
             } catch (e: Throwable) {
                 Log.e(TAG, "Frame descartado", e)
+                KenkernLog.e(TAG, "Frame descartado", e)
                 runCatching {
                     backend.beginFrame(0.075f, 0.075f, 0.105f, 1f)
                     backend.endFrame()
-                }
+                }.onFailure { KenkernLog.e(TAG, "clear emergencial do frame também falhou", it) }
             }
         }
     }

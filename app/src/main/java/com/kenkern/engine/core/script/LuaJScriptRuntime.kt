@@ -13,6 +13,7 @@ import org.luaj.vm2.lib.MathLib
 import org.luaj.vm2.lib.StringLib
 import org.luaj.vm2.lib.TableLib
 import org.luaj.vm2.lib.jse.JseBaseLib
+import com.kenkern.engine.diag.KenkernLog
 
 /**
  * Implementação LUA com LuaJ (Fase 3, F3.1) — JVM puro, sem NDK.
@@ -52,6 +53,7 @@ class LuaJScriptRuntime(
         } catch (e: LuaError) {
             estado = ScriptRuntime.Estado.ERRO
             erro = e.message ?: "erro de sintaxe"
+            KenkernLog.e("Kenkern/Script", "script Lua '$nomeScript' não compilou", e)
             erro
         } catch (e: Exception) {
             estado = ScriptRuntime.Estado.ERRO
@@ -148,6 +150,8 @@ class LuaJScriptRuntime(
         estado = ScriptRuntime.Estado.DESATIVADO
         erro = motivo
         funcaoUpdate = null
+        // F5.1 congelado: só o REGISTRO do erro foi acrescido (regra do runCatching).
+        KenkernLog.e("Kenkern/Script", "script Lua '$nomeScript' desativado", Exception(motivo))
         return false
     }
 }
