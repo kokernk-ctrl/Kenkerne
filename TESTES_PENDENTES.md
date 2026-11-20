@@ -1,5 +1,34 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## Aceite da FASE 2 (fechamento testável) — app v0.1.14 (Release `v0.1.14-fase2-teste`)
+
+> Valida o fechamento testável da Fase 2: botão Importar modelo (A), importadores
+> corrigidos (B) e .KIMG/texturas (C). A tag `fase-2-ok` CONTINUA não criada —
+> só sai quando TODOS os itens da Fase 2 estiverem implementados e o usuário
+> escrever "aprovado" (restam: navegador de arquivos, pré-visualização, prefabs,
+> registro de assets, streaming anti-trave). Todos os itens abaixo ficam
+> `COMPILADO` até este aceite.
+
+1. Instalar a v0.1.14 pela Release, abrir o Hub → ícone do INSETO → Diagnóstico →
+   "Rodar tudo": 12 checagens; enviar o PRINT (todas APROVADO; `astc` pode ser
+   "NÃO SUPORTADO" sem problema).
+2. Abrir um projeto, tocar no cubo, arrastar a seta X do gizmo, girar com o anel
+   e desfazer.
+3. Apertar Play e Stop e conferir que a cena volta igual.
+4. IMPORTAR um .glb pelo botão da TopBar (menu "Arquivo"): aparece o relatório
+   com tamanho antes/depois e razão; o modelo aparece na cena, dá para selecionar
+   e mover; desfazer REMOVE o modelo e o asset; refazer devolve os dois.
+5. IMPORTAR um glTF com .bin e texturas (pasta OU .zip) e um .fbx: conferir a
+   textura VISÍVEL no modelo (se o driver recusar ETC2, a textura continua
+   visível via fallback).
+6. Desfazer a importação e refazê-la com Refazer.
+7. Fechar e reabrir o projeto: o modelo continua e a textura NÃO reconvertre
+   (segunda abertura mais rápida — cache por hash).
+8. IMPORTAR um arquivo grande (≥ 50 MB): a UI não trava, há progresso por
+   etapas e é possível CANCELAR; acima de 200 MB aparece a confirmação.
+9. Reportar resultado com o print do Diagnóstico.
+
+
 **Estado da validação (2026-11-21): COMPILADO ≠ VALIDADO.** Nenhum item abaixo é
 VALIDADO até o usuário executar no aparelho. Em especial: seleção por toque, Play
 real, paisagem automática e gizmos (Fase 1) ficam `COMPILADO` até este aceite.
