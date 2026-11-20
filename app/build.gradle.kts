@@ -66,6 +66,9 @@ android {
     }
     buildFeatures {
         compose = true
+        // BuildConfig.VERSION_NAME como FONTE ÚNICA da versão da engine
+        // (ProjectManager.ENGINE_VERSION lê daqui — nunca mais hardcoded).
+        buildConfig = true
     }
     lint {
         // Lint roda separadamente no CI; evita OOM em máquinas com pouca RAM.

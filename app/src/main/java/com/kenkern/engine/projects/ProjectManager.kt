@@ -2,6 +2,7 @@ package com.kenkern.engine.projects
 
 import android.content.Context
 import android.util.Log
+import com.kenkern.engine.BuildConfig
 import com.kenkern.engine.core.NickClassRegistry
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.serialization.CkFormat
@@ -33,11 +34,13 @@ object ProjectManager {
     private const val TAG = "Kenkern/ProjectManager"
 
     const val PROJECT_FILE = "project.kenkern"
-    const val ENGINE_VERSION = "0.1.2-fase1"
+    /** FONTE ÚNICA: a versão da engine é a versão do app (BuildConfig). */
+    const val ENGINE_VERSION: String = BuildConfig.VERSION_NAME
     const val FORMAT_VERSION = 1
 
     val FOLDERS = listOf(
-        "assets", "scenes", "nicks", "scripts", "audio", "animations", "build", "shaders"
+        "assets", "scenes", "nicks", "scripts", "audio", "animations", "build", "shaders",
+        "ui", "worlds"
     )
 
     /** Último erro ocorrido (para a UI mostrar ao usuário; thread-safe via volatile). */
@@ -161,8 +164,23 @@ object ProjectManager {
         if (!root.isDirectory) return null
         if (!File(root, PROJECT_FILE).isFile) return null
         val meta = readMetadata(File(root, PROJECT_FILE))
-        ProjectHandle(root, meta["name"] ?: root.name, meta["created"] ?: "-")
+        val handle = ProjectHandle(root, meta["name"] ?: root.name, meta["created"] ?: "-")
+        // MIGRAÇÃO de estrutura (F2.4): projeto antigo ganha as pastas novas
+        // (ui/, worlds/) na abertura — idempotente e nunca impede o projeto de abrir.
+        ensureStructure(handle)
+        handle
     }.onFailure { reportError("openProject", it) }.getOrNull()
+
+    /** Cria as pastas padrão que faltarem (projetos antigos; tolera repetição). */
+    fun ensureStructure(handle: ProjectHandle) {
+        for (folder in FOLDERS) {
+            val dir = File(handle.root, folder)
+            if (!dir.isDirectory) {
+                runCatching { dir.mkdirs() }
+                    .onFailure { Log.w("Kenkern/ProjectManager", "pasta '$folder' não criada: ${it.message}") }
+            }
+        }
+    }
 
     /** Carrega a cena principal; se existir auto-save mais recente, usa-o (recuperação pós-crash). */
     fun loadScene(handle: ProjectHandle): Scene = runCatching {
