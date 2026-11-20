@@ -38,6 +38,7 @@ import com.kenkern.engine.engine.PlayState
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
 import com.kenkern.engine.render.AssetMeshLibrary
+import com.kenkern.engine.render.TextureLibrary
 import com.kenkern.engine.render.EngineControls
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -174,6 +175,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 // é limpa junto — caminhos relativos resolvem só contra a raiz certa).
                 AssetMeshLibrary.limpar()
                 AssetMeshLibrary.baseDir = handle.root
+                TextureLibrary.limpar()
+                TextureLibrary.baseDir = handle.root
                 recoveryNotice.value = recovered
                 history.clear()
                 selection.value = null
@@ -337,6 +340,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         history.clear()
         AssetMeshLibrary.limpar()
         AssetMeshLibrary.baseDir = null
+        TextureLibrary.limpar()
+        TextureLibrary.baseDir = null
     }
 
     fun saveNow() {
@@ -608,6 +613,31 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 summary.caminhoKernRelativo = kernRel!!
                 summary.caminhoOrigemRelativo = origemRel ?: ""
 
+                // Texturas → .KIMG (ETAPA C): hash = nome do arquivo (cache por conteúdo);
+                // falha de UMA textura não derruba a importação — vira AVISO no relatório.
+                if (summary.texturasExtraidas.isNotEmpty()) {
+                    importEtapa.value = "convertendo texturas"
+                    val limite = maxTexturaDoAparelho()
+                    for (textura in summary.texturasExtraidas) {
+                        if (importCancelado.get()) throw ImportException("importação cancelada pelo usuário")
+                        try {
+                            val sha1 = com.kenkern.engine.assets.import.AssetLayout.sha1Hex(textura.bytes)
+                            val resultado = withContext(Dispatchers.IO) {
+                                com.kenkern.engine.assets.image.KimgConversor.converter(
+                                    raiz, sha1, textura.bytes, limite,
+                                    cancelado = { importCancelado.get() }
+                                )
+                            }
+                            summary.texturasRelatorio.add(resultado.relatorio)
+                        } catch (e: Exception) {
+                            KenkernLog.e(TAG, "conversão de textura falhou (${textura.nomeOrigem})", e)
+                            summary.texturasRelatorio.add(
+                                "textura '${textura.nomeOrigem}' NÃO convertida: ${e.message ?: e.javaClass.simpleName} — material vira cor sólida"
+                            )
+                        }
+                    }
+                }
+
                 if (importCancelado.get()) throw ImportException("importação cancelada pelo usuário")
 
                 // ---------------- UM Command: Nick + assets (undo remove os dois)
@@ -653,6 +683,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
     }
+
+    /**
+     * GL_MAX_TEXTURE_SIZE real do aparelho (lido pelo backend no initialize do
+     * GL). Antes do primeiro frame é 0 → sem limite no pipeline (o upload aplica
+     * o limite real e cai para RGBA8 se exceder).
+     */
+    private fun maxTexturaDoAparelho(): Int = engineControls?.maxTextureSize ?: 0
 
     /** Caminho relativo da origem copiada (arquivo simples ou pasta inteira). */
     private fun caminhoOrigemRelativo(pasta: Boolean, nomeFonte: String): String {

@@ -27,10 +27,13 @@ import javax.microedition.khronos.egl.EGLDisplay
 import kotlin.math.abs
 import kotlin.math.sqrt
 
-/** Controles do motor expostos ao editor (Play/Pause/Stop). */
+/** Controles do motor expostos ao editor (Play/Pause/Stop + limites do aparelho). */
 interface EngineControls {
     fun setPlayState(state: PlayState)
     fun currentPlayState(): PlayState
+
+    /** GL_MAX_TEXTURE_SIZE real (0 = GL ainda não inicializou). */
+    val maxTextureSize: Int
 }
 
 /**
@@ -295,6 +298,9 @@ class KenkernSurfaceView(
         }
 
         override fun currentPlayState(): PlayState = loop.playState
+
+        override val maxTextureSize: Int
+            get() = glRenderer.currentMaxTextureSize()
     }
 
     /** True se o contexto GLES 3.0 foi aceito; false = modo de compatibilidade. */
@@ -958,6 +964,8 @@ class KenkernSurfaceView(
         private var firstFrameMarked = false
 
         fun currentFps(): Int = engineRenderer.fps
+
+        fun currentMaxTextureSize(): Int = backend.maxTextureSize
 
         fun currentUpdateMs(): Float = engineRenderer.updateMs
 

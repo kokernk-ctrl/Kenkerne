@@ -33,6 +33,10 @@ class GlesBackend : RenderBackend {
     override var viewportWidth: Int = 1
     override var viewportHeight: Int = 1
 
+    /** GL_MAX_TEXTURE_SIZE real do aparelho (lido no initialize). */
+    override var maxTextureSize: Int = 0
+        private set
+
     /** False se nem o shader de fallback compilou: backend só limpa a tela. */
     @Volatile
     var isDegraded: Boolean = false
@@ -53,6 +57,8 @@ class GlesBackend : RenderBackend {
     private var uLightDir = 0
     private var uLightColor = 0
     private var uLightIntensity = 0
+    private var uHasTex = 0
+    private var uTex = 0
 
     // Uniforms do céu
     private var uSkyFwd = 0
@@ -106,6 +112,12 @@ class GlesBackend : RenderBackend {
 
     private class GpuGizmo(val vao: Int, val vbo: Int, val vertexCount: Int)
 
+    private class GpuTexture(
+        val id: Int,
+        val formato: com.kenkern.engine.assets.image.KimgFormato
+    )
+
+    private val texturas = HashMap<Int, GpuTexture>()
     private val meshes = HashMap<Int, GpuMesh>()
     private val coloredLineBuffers = HashMap<Int, GpuLines>()
     private val tGizmoBuffers = HashMap<Int, GpuGizmo>()
@@ -123,11 +135,14 @@ class GlesBackend : RenderBackend {
         #version 300 es
         layout(location = 0) in vec3 aPos;
         layout(location = 1) in vec3 aNormal;
+        layout(location = 2) in vec2 aUV;
         uniform mat4 uMVP;
         uniform mat4 uModel;
         out vec3 vNormal;
+        out vec2 vUV;
         void main() {
             vNormal = mat3(uModel) * aNormal;
+            vUV = aUV;
             gl_Position = uMVP * vec4(aPos, 1.0);
         }
     """.trimIndent()
@@ -137,16 +152,22 @@ class GlesBackend : RenderBackend {
         #version 300 es
         precision mediump float;
         in vec3 vNormal;
+        in vec2 vUV;
         uniform vec4 uColor;
         uniform vec3 uLightDir;
         uniform vec3 uLightColor;
         uniform float uLightIntensity;
+        uniform sampler2D uTex;
+        uniform int uHasTex;
         out vec4 fragColor;
         void main() {
             vec3 n = normalize(vNormal);
             float diff = max(dot(n, normalize(-uLightDir)), 0.0);
             vec3 hemi = mix(vec3(0.30, 0.28, 0.25), vec3(0.46, 0.54, 0.66), n.y * 0.5 + 0.5);
-            vec3 rgb = uColor.rgb * (hemi + uLightColor * diff * uLightIntensity);
+            vec3 albedo = (uHasTex == 1)
+                ? texture(uTex, vUV).rgb * uColor.rgb
+                : uColor.rgb;
+            vec3 rgb = albedo * (hemi + uLightColor * diff * uLightIntensity);
             fragColor = vec4(min(rgb, vec3(1.0)), uColor.a);
         }
     """.trimIndent()
@@ -406,6 +427,8 @@ class GlesBackend : RenderBackend {
         uLightDir = GLES30.glGetUniformLocation(program, "uLightDir")
         uLightColor = GLES30.glGetUniformLocation(program, "uLightColor")
         uLightIntensity = GLES30.glGetUniformLocation(program, "uLightIntensity")
+        uHasTex = GLES30.glGetUniformLocation(program, "uHasTex")
+        uTex = GLES30.glGetUniformLocation(program, "uTex")
 
         // Programas visuais: cada um é independente; se falhar, o recurso é desativado.
         runCatching {
@@ -465,6 +488,11 @@ class GlesBackend : RenderBackend {
             }
         }.onFailure { KenkernLog.w(TAG, "programa do gizmo de transformação não construído", it) }
 
+        maxTextureSize = runCatching {
+            val v = IntArray(1)
+            GLES30.glGetIntegerv(GLES30.GL_MAX_TEXTURE_SIZE, v, 0)
+            v[0].coerceAtLeast(0)
+        }.getOrDefault(0)
         GLES30.glClearColor(0.075f, 0.075f, 0.105f, 1f)
         drainGlErrors()
         return true
@@ -600,6 +628,7 @@ class GlesBackend : RenderBackend {
         for (v in 0 until vertexCount) {
             fb.put(mesh.positions[v * 3]); fb.put(mesh.positions[v * 3 + 1]); fb.put(mesh.positions[v * 3 + 2])
             fb.put(mesh.normals[v * 3]); fb.put(mesh.normals[v * 3 + 1]); fb.put(mesh.normals[v * 3 + 2])
+            fb.put(mesh.uvs[v * 2]); fb.put(mesh.uvs[v * 2 + 1])
         }
         fb.position(0)
 
@@ -641,6 +670,8 @@ class GlesBackend : RenderBackend {
         GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, STRIDE, 0)
         GLES30.glEnableVertexAttribArray(1)
         GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, STRIDE, 12)
+        GLES30.glEnableVertexAttribArray(2)
+        GLES30.glVertexAttribPointer(2, 2, GLES30.GL_FLOAT, false, STRIDE, 24)
         GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, ebo[0])
         GLES30.glBufferData(
             GLES30.GL_ELEMENT_ARRAY_BUFFER, mesh.indices.size * bytesPerIndex, indexBuffer, GLES30.GL_STATIC_DRAW
@@ -793,7 +824,145 @@ class GlesBackend : RenderBackend {
         GLES30.glUniformMatrix4fv(uModel, 1, false, model.m, 0)
         uniformScratch[0] = r; uniformScratch[1] = g; uniformScratch[2] = b; uniformScratch[3] = a
         GLES30.glUniform4fv(uColor, 1, uniformScratch, 0)
+        GLES30.glUniform1i(uHasTex, 0)
         GLES30.glDrawElements(GLES30.GL_TRIANGLES, gpu.indexCount, gpu.indexType, 0)
+    }
+
+    /**
+     * Sub-range do buffer de índices com textura opcional (ETAPA B.3/C.4):
+     * grupos de material do .KERN v2. textureHandle = 0 → cor sólida.
+     */
+    override fun drawMeshRange(
+        handle: Int, indexOffset: Int, indexCount: Int, textureHandle: Int,
+        model: Mat4, viewProj: Mat4, r: Float, g: Float, b: Float, a: Float
+    ) {
+        if (program == 0) return
+        val gpu = meshes[handle] ?: return
+        val end = indexOffset + indexCount
+        if (indexOffset < 0 || indexCount <= 0 || end > gpu.indexCount) return
+        mvpScratch.multiply(viewProj, model)
+        useProgram(program)
+        GLES30.glBindVertexArray(gpu.vao)
+        GLES30.glUniformMatrix4fv(uMvp, 1, false, mvpScratch.m, 0)
+        GLES30.glUniformMatrix4fv(uModel, 1, false, model.m, 0)
+        uniformScratch[0] = r; uniformScratch[1] = g; uniformScratch[2] = b; uniformScratch[3] = a
+        GLES30.glUniform4fv(uColor, 1, uniformScratch, 0)
+        val tex = texturas[textureHandle]
+        if (tex != null) {
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex.id)
+            GLES30.glUniform1i(uTex, 0)
+            GLES30.glUniform1i(uHasTex, 1)
+        } else {
+            GLES30.glUniform1i(uHasTex, 0)
+        }
+        GLES30.glDrawElements(GLES30.GL_TRIANGLES, indexCount, gpu.indexType, indexOffset * if (gpu.indexType == GLES30.GL_UNSIGNED_SHORT) 2 else 4)
+        if (tex != null) GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, 0)
+    }
+
+    /**
+     * Cria textura de GPU a partir de um .KIMG (F2.9/ETAPA C): ETC2 sobe via
+     * glCompressedTexImage2D (com mipmaps da própria tabela); ASTC é RECUSADO
+     * com erro claro aqui (encoder ASTC fora do escopo desta etapa — a checagem
+     * "astc" do Diagnóstico só reporta a extensão); RGBA8_RAW sobe como GL_RGBA.
+     * FALHA do ETC2 no driver = fallback automático RGBA8 decodificado na CPU
+     * (o .KIMG nunca "some": a textura aparece, sem compressão).
+     */
+    override fun createTextureFromKimg(kimg: ByteArray): Int {
+        val imagem = try {
+            com.kenkern.engine.assets.image.KimgReader.read(kimg)
+        } catch (e: Exception) {
+            KenkernLog.e(TAG, ".KIMG inválido para upload de GPU", e)
+            return 0
+        }
+        val id = IntArray(1)
+        GLES30.glGenTextures(1, id, 0)
+        if (id[0] == 0) {
+            KenkernLog.e(TAG, "GPU não gerou id de textura (createTextureFromKimg)")
+            drainGlErrors()
+            return 0
+        }
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, id[0])
+        var falha = false
+        val usouEtc2 = when (imagem.formato) {
+            com.kenkern.engine.assets.image.KimgFormato.ETC2_RGB -> true
+            com.kenkern.engine.assets.image.KimgFormato.ETC2_RGBA -> true
+            else -> false
+        }
+        val internaEtc2Rgb = 0x9274 // GL_COMPRESSED_RGB8_ETC2
+        val internaEtc2Rgba = 0x9278 // GL_COMPRESSED_RGBA8_ETC2_EAC
+        for ((i, mip) in imagem.mips.withIndex()) {
+            val ok = if (usouEtc2) {
+                val interna = if (imagem.formato == com.kenkern.engine.assets.image.KimgFormato.ETC2_RGBA) internaEtc2Rgba else internaEtc2Rgb
+                GLES30.glCompressedTexImage2D(
+                    GLES30.GL_TEXTURE_2D, i, interna,
+                    mip.largura, mip.altura, 0, mip.dados.size,
+                    java.nio.ByteBuffer.wrap(mip.dados)
+                )
+                GLES30.glGetError() == GLES30.GL_NO_ERROR
+            } else if (imagem.formato == com.kenkern.engine.assets.image.KimgFormato.RGBA8_RAW) {
+                GLES30.glTexImage2D(
+                    GLES30.GL_TEXTURE_2D, i, GLES30.GL_RGBA8,
+                    mip.largura, mip.altura, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE,
+                    java.nio.ByteBuffer.wrap(mip.dados)
+                )
+                GLES30.glGetError() == GLES30.GL_NO_ERROR
+            } else {
+                // ASTC: fora do escopo nesta etapa (formato reservado no cabeçalho)
+                KenkernLog.w(TAG, "formato .KIMG ${imagem.formato.rotulo} não sobe nesta fase (ASTC)")
+                false
+            }
+            if (!ok) falha = true
+        }
+        if (falha && usouEtc2) {
+            // FALLBACK automático: decodifica ETC2 na CPU e sobe como RGBA8.
+            KenkernLog.w(TAG, "driver recusou ETC2 — fallback RGBA8 decodificado na CPU")
+            drainGlErrors()
+            val rgba = try {
+                if (imagem.formato == com.kenkern.engine.assets.image.KimgFormato.ETC2_RGBA) {
+                    com.kenkern.engine.assets.image.Etc2.decodificarRgba(imagem.mips[0].dados, imagem.largura, imagem.altura)
+                } else {
+                    com.kenkern.engine.assets.image.Etc2.decodificarRgb(imagem.mips[0].dados, imagem.largura, imagem.altura)
+                }
+            } catch (e: Exception) {
+                KenkernLog.e(TAG, "fallback RGBA8 falhou na decodificação ETC2", e)
+                GLES30.glDeleteTextures(1, id, 0)
+                drainGlErrors()
+                return 0
+            }
+            GLES30.glTexImage2D(
+                GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA8,
+                imagem.largura, imagem.altura, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE,
+                java.nio.ByteBuffer.wrap(rgba)
+            )
+        }
+        if (GLES30.glGetError() != GLES30.GL_NO_ERROR) {
+            KenkernLog.e(TAG, "erro de GL ao subir a textura .KIMG (${imagem.formato.rotulo})")
+            drainGlErrors()
+            GLES30.glDeleteTextures(1, id, 0)
+            return 0
+        }
+        // filtragem trilinear + wrap + anisotropia quando disponível
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR_MIPMAP_LINEAR)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_REPEAT)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_REPEAT)
+        val ext = GLES30.glGetString(GLES30.GL_EXTENSIONS) ?: ""
+        if (ext.contains("GL_EXT_texture_filter_anisotropic")) {
+            val maxAniso = FloatArray(1)
+            GLES30.glGetFloatv(0x84FF /* GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT */, maxAniso, 0)
+            GLES30.glTexParameterf(GLES30.GL_TEXTURE_2D, 0x84FE /* GL_TEXTURE_MAX_ANISOTROPY_EXT */, minOf(4f, maxAniso[0]))
+        }
+        drainGlErrors()
+        val handle = nextHandle++
+        texturas[handle] = GpuTexture(id[0], imagem.formato)
+        return handle
+    }
+
+    override fun destroyTexture(handle: Int) {
+        val tex = texturas.remove(handle) ?: return
+        val ids = IntArray(1); ids[0] = tex.id
+        GLES30.glDeleteTextures(1, ids, 0)
     }
 
     override fun drawMeshOutline(handle: Int, model: Mat4, viewProj: Mat4, r: Float, g: Float, b: Float, a: Float) {
@@ -924,6 +1093,11 @@ class GlesBackend : RenderBackend {
             GLES30.glDeleteBuffers(1, bufs, 0)
         }
         tGizmoBuffers.clear()
+        for (tex in texturas.values) {
+            val ids = IntArray(1); ids[0] = tex.id
+            GLES30.glDeleteTextures(1, ids, 0)
+        }
+        texturas.clear()
         if (skyVao != 0) {
             val vao = IntArray(1); vao[0] = skyVao
             val vbo = IntArray(1); vbo[0] = skyVbo
@@ -944,6 +1118,6 @@ class GlesBackend : RenderBackend {
 
     companion object {
         private const val TAG = "Kenkern/GlesBackend"
-        private const val STRIDE = 24 // 3 pos + 3 normal (floats)
+        private const val STRIDE = 32 // 3 pos + 3 normal + 2 uv (floats)
     }
 }

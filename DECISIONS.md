@@ -92,6 +92,8 @@ Formato: decisão · motivo · alternativa descartada.
     descartada: manter a convenção nativa de cada formato (misturaria convenções
     no mesmo formato .KERN).
 
+21. **ETC2 em Kotlin puro é o encoder do .KIMG (F2.9); ASTC reservado no formato; encoder ASTC fora do escopo** — (a) ETC2 é OBRIGATÓRIO no OpenGL ES 3.0, então roda em TODO aparelho-alvo; ASTC fica no cabeçalho (ETC2_ASTC_4x4/6x6/8x8 reservados) e a checagem `astc` do Diagnóstico só informa a extensão GL_KHR_texture_compression_astc_ldr (nunca reprova); (b) o encoder implementa os 5 modos da spec (individual, diferencial, T, H, planar) com os stuffs EXATOS do ETCPACK (Ericsson) — incluindo o padding de overflow que força o hardware a escolher o modo certo; (c) qualidade MEDIDA (PSNR, ida e volta encoder→decoder, mip 0): cor sólida 52.9 dB · gradiente 64×64 38.5 dB · senoides 128×128 (canais independentes) 33.5 dB · alfa EAC 52.9 dB — razão de compressão 5.8× (RGB) e 2.9× (RGBA); (d) fallback AUTOMÁTICO: driver recusou ETC2 → decodifica na CPU (Etc2 decoder) e sobe RGBA8 — a textura nunca some; (e) bugs achados e corrigidos no caminho: ordem dos blocos é LINHA-MAJOR (hardware), quantização com arredondamento (truncar colapsava médias baixas), planar quantiza o código 6/7/6 (clampar quebrava gradientes). Alternativa descartada: ASTC encoder em Kotlin (fora do escopo desta etapa; segue para fase futura com a extensão detectada).
+
 ## Correções históricas (resumo; detalhes no CHANGELOG)
 
 - v0.1.12: yaw do voo lia `yawDegrees` do orbital em `computeBasis` (causa (b)).

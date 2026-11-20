@@ -37,6 +37,7 @@ object AssetMeshLibrary {
 
     private val trava = Any()
     private val handles = HashMap<String, Int>()          // path → handle GPU
+    private val malhas = HashMap<String, com.kenkern.engine.assets.mesh.KernMesh>() // path → malha (materiais/grupos)
     private val pendentes = ArrayDeque<String>()          // descobertos, a carregar
     private val falhados = HashMap<String, String>()      // path → motivo (erro 1×)
 
@@ -44,6 +45,7 @@ object AssetMeshLibrary {
     fun limpar() {
         synchronized(trava) {
             handles.clear()
+            malhas.clear()
             pendentes.clear()
             falhados.clear()
         }
@@ -51,6 +53,10 @@ object AssetMeshLibrary {
 
     /** Handle atual do caminho (0 = ainda não carregado / falhou). */
     fun handleDe(path: String): Int = synchronized(trava) { handles[path] ?: 0 }
+
+    /** Malha .KERN carregada (grupos de material/materiais do v2), ou null. */
+    fun malhaDe(path: String): com.kenkern.engine.assets.mesh.KernMesh? =
+        synchronized(trava) { malhas[path] }
 
     /** Motivo da falha de carga (para a StatusBar/Diagnóstico), ou null. */
     fun motivoFalha(path: String): String? = synchronized(trava) { falhados[path] }
@@ -98,7 +104,14 @@ object AssetMeshLibrary {
                     falhar(path, "GPU recusou a malha $path (${mesh.vertexCount} vértices — createMesh devolveu 0)")
                     continue
                 }
-                synchronized(trava) { handles[path] = handle }
+                synchronized(trava) {
+                    handles[path] = handle
+                    // guarda a malha quando há materiais (o render usa grupos de material);
+                    // malha sem material não precisa ficar em memória além do VBO
+                    if (mesh.materiais.isNotEmpty() || mesh.gruposMaterial.isNotEmpty()) {
+                        malhas[path] = mesh
+                    }
+                }
                 subidas++
             } catch (e: Exception) {
                 falhar(path, "falha ao carregar $path: ${e.message ?: e.javaClass.simpleName}")

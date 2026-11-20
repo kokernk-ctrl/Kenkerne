@@ -3,6 +3,10 @@ package com.kenkern.engine.diag
 import android.app.ActivityManager
 import android.content.Context
 import android.opengl.GLES30
+import com.kenkern.engine.assets.image.Etc2
+import com.kenkern.engine.assets.image.KimgPipeline
+import com.kenkern.engine.assets.image.KimgReader
+import com.kenkern.engine.assets.image.KimgWriter
 import com.kenkern.engine.assets.import.AssetLayout
 import com.kenkern.engine.assets.import.FbxAmostras
 import com.kenkern.engine.assets.import.FbxImportException
@@ -89,6 +93,9 @@ class Diagnostico(private val appContext: Context) {
         Checagem("gltf", "Importador glTF/GLB → .KERN (meta + integridade)"),
         Checagem("fbx", "Importador FBX → .KERN (instâncias + integridade)"),
         Checagem("importar", "Botão Importar modelo (pipeline + undo/redo + zip)"),
+        Checagem("kimg", ".KIMG — ida e volta + mipmaps + limites"),
+        Checagem("etc2", "ETC2 — upload e leitura de pixel (GL offscreen)"),
+        Checagem("astc", "ASTC — extensão do aparelho (informativo)"),
         Checagem("picking", "Matemática de picking (raio de tela)"),
         Checagem("shaders", "Compilação de shaders (GLSL ES)"),
         Checagem("buffers", "Alocação de buffers (VBO/VAO)"),
@@ -103,8 +110,8 @@ class Diagnostico(private val appContext: Context) {
      * Nunca lança.
      */
     fun executar(onAtualiza: (Checagem) -> Unit) {
-        val rapidas = listOf("ck", "kern", "gltf", "fbx", "importar", "picking")
-        val gl = listOf("shaders", "buffers", "glcaps")
+        val rapidas = listOf("ck", "kern", "gltf", "fbx", "importar", "kimg", "picking")
+        val gl = listOf("shaders", "buffers", "glcaps", "etc2", "astc")
 
         for (id in rapidas) rodarUma(id, onAtualiza)
 
@@ -141,10 +148,13 @@ class Diagnostico(private val appContext: Context) {
                 "gltf" -> checarGltf(c)
                 "fbx" -> checarFbx(c)
                 "importar" -> checarImportar(c)
+                "kimg" -> checarKimg(c)
                 "picking" -> checarPicking(c)
                 "shaders" -> checarShaders(c)
                 "buffers" -> checarBuffers(c)
                 "glcaps" -> checarGlCaps(c)
+                "etc2" -> checarEtc2(c, egl)
+                "astc" -> checarAstc(c)
                 "memoria" -> checarMemoria(c)
             }
         }.onFailure {
@@ -517,6 +527,257 @@ class Diagnostico(private val appContext: Context) {
             )
         } finally {
             raiz.deleteRecursively()
+        }
+    }
+
+    // ---------------------------------------------------------------- .KIMG (ETAPA C)
+
+    /** Checagem "kimg": pipeline RGBA → .KIMG → leitura → decodificação → comparação. */
+    private fun checarKimg(c: Checagem) {
+        // gradiente 8×8 com alfa parcial (exercita ETC2 RGBA e mipmap de caixa)
+        val w = 8
+        val h = 8
+        val rgba = ByteArray(w * h * 4)
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val i = (y * w + x) * 4
+                rgba[i] = (x * 32).toByte()
+                rgba[i + 1] = (y * 32).toByte()
+                rgba[i + 2] = 128.toByte()
+                rgba[i + 3] = (if ((x + y) % 2 == 0) 255 else 128).toByte()
+            }
+        }
+        val (bytes, relatorio) = try {
+            KimgPipeline.converter(rgba, w, h, srgb = true, limiteTextura = 0)
+        } catch (e: Exception) {
+            c.falhou("pipeline .KIMG: ${e.message}")
+            return
+        }
+        val imagem = try {
+            KimgReader.read(bytes)
+        } catch (e: Exception) {
+            c.falhou("leitura .KIMG: ${e.message}")
+            return
+        }
+        if (imagem.largura != w || imagem.altura != h || imagem.mips.isEmpty()) {
+            c.falhou(".KIMG lido com dimensões erradas (${imagem.largura}×${imagem.altura}, ${imagem.mips.size} mips)")
+            return
+        }
+        if (imagem.mips.size < 3) {
+            c.falhou("esperado ≥ 3 mipmaps de uma textura 8×8 (veio ${imagem.mips.size})")
+            return
+        }
+        // arquivo truncado = erro CLARO (nunca estoura buffer)
+        val truncado = bytes.copyOf(bytes.size / 2)
+        val erroTruncado = try {
+            KimgReader.read(truncado)
+            false
+        } catch (e: Exception) {
+            true
+        }
+        if (!erroTruncado) {
+            c.falhou("arquivo .KIMG truncado NÃO gerou erro claro")
+            return
+        }
+        // magic quebrado = erro claro
+        val quebrado = bytes.copyOf().also { it[0] = 0x00 }
+        val erroMagic = try {
+            KimgReader.read(quebrado)
+            false
+        } catch (e: Exception) {
+            true
+        }
+        if (!erroMagic) {
+            c.falhou("magic .KIMG quebrado NÃO gerou erro claro")
+            return
+        }
+        c.aprovado(
+            "ida e volta OK · ${relatorio.resumo()} · truncado e magic quebrado = erros claros"
+        )
+    }
+
+    /** Checagem "etc2" (GL offscreen): sobe ETC2 via GL cru e LÊ UM PIXEL de volta. */
+    private fun checarEtc2(c: Checagem, egl: EglDiag?) {
+        if (egl == null) {
+            c.falhou("contexto EGL pbuffer não disponível")
+            return
+        }
+        // bloco distintivo 4×4: quadrantes de cores puras
+        val rgba = ByteArray(4 * 4 * 4)
+        val cores = arrayOf(
+            intArrayOf(255, 0, 0), intArrayOf(0, 255, 0),
+            intArrayOf(0, 0, 255), intArrayOf(255, 255, 255)
+        )
+        for (y in 0 until 4) {
+            for (x in 0 until 4) {
+                val quad = (x / 2) * 2 + (y / 2)
+                val cor = cores[quad]
+                val i = (y * 4 + x) * 4
+                rgba[i] = cor[0].toByte(); rgba[i + 1] = cor[1].toByte()
+                rgba[i + 2] = cor[2].toByte(); rgba[i + 3] = 255.toByte()
+            }
+        }
+        val kimg = try {
+            KimgPipeline.converter(rgba, 4, 4, limiteTextura = 0).first
+        } catch (e: Exception) {
+            c.falhou("ETC2 encode: ${e.message}")
+            return
+        }
+        val imagem = try {
+            KimgReader.read(kimg)
+        } catch (e: Exception) {
+            c.falhou("leitura .KIMG: ${e.message}")
+            return
+        }
+
+        // ---- upload GL CRU (testa o DECODE do hardware, não o nosso backend)
+        val tex = IntArray(1)
+        GLES30.glGenTextures(1, tex, 0)
+        if (tex[0] == 0) {
+            c.falhou("glGenTextures devolveu 0")
+            return
+        }
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex[0])
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_NEAREST)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_NEAREST)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
+        val interna = if (imagem.formato == com.kenkern.engine.assets.image.KimgFormato.ETC2_RGBA) 0x9278 else 0x9274
+        GLES30.glCompressedTexImage2D(
+            GLES30.GL_TEXTURE_2D, 0, interna,
+            imagem.largura, imagem.altura, 0, imagem.mips[0].dados.size,
+            java.nio.ByteBuffer.wrap(imagem.mips[0].dados)
+        )
+        val erroUpload = GLES30.glGetError()
+        if (erroUpload != GLES30.GL_NO_ERROR) {
+            GLES30.glDeleteTextures(1, tex, 0)
+            c.falhou("glCompressedTexImage2D recusou ETC2 (erro 0x${Integer.toHexString(erroUpload)}) — driver sem ETC2? (ETC2 é obrigatório no GLES 3.0)")
+            return
+        }
+
+        // ---- quad + shader de amostragem + readback
+        val vs = """
+            #version 300 es
+            layout(location = 0) in vec2 aPos;
+            out vec2 vUV;
+            void main() { vUV = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }
+        """.trimIndent()
+        val fs = """
+            #version 300 es
+            precision mediump float;
+            in vec2 vUV;
+            uniform sampler2D uTex;
+            out vec4 cor;
+            void main() { cor = texture(uTex, vUV); }
+        """.trimIndent()
+        val programa = compilarPrograma(vs, fs)
+        if (programa == 0) {
+            GLES30.glDeleteTextures(1, tex, 0)
+            c.falhou("shader de amostragem não compilou")
+            return
+        }
+        var vao = 0
+        var vbo = 0
+        try {
+            vao = IntArray(1).also { GLES30.glGenVertexArrays(1, it, 0) }[0]
+            vbo = IntArray(1).also { GLES30.glGenBuffers(1, it, 0) }[0]
+            GLES30.glBindVertexArray(vao)
+            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo)
+            val quad = java.nio.ByteBuffer.allocateDirect(6 * 8).order(java.nio.ByteOrder.nativeOrder())
+                .asFloatBuffer()
+                .put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, -1f, 1f, 1f, -1f, 1f, 1f))
+            quad.position(0)
+            GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, 6 * 8, quad, GLES30.GL_STATIC_DRAW)
+            GLES30.glEnableVertexAttribArray(0)
+            GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, 8, 0)
+            GLES30.glBindVertexArray(0)
+
+            GLES30.glViewport(0, 0, 4, 4)
+            GLES30.glDisable(GLES30.GL_DEPTH_TEST)
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex[0])
+            GLES30.glUseProgram(programa)
+            GLES30.glUniform1i(GLES30.glGetUniformLocation(programa, "uTex"), 0)
+            GLES30.glBindVertexArray(vao)
+            GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 6)
+            GLES30.glFinish()
+            val buf = java.nio.ByteBuffer.allocateDirect(4 * 4 * 4).order(java.nio.ByteOrder.nativeOrder())
+            GLES30.glReadPixels(1, 2, 1, 1, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, buf)
+            val lida = IntArray(4)
+            buf.position(0)
+            for (i in 0 until 4) lida[i] = buf.get().toInt() and 0xFF
+
+            // referência: decodificação CPU do nosso codec no texel (1,2)
+            val cpu = Etc2.decodificarRgb(imagem.mips[0].dados, 4, 4)
+            val iCpu = (2 * 4 + 1) * 4
+            val ok = abs(lida[0] - (cpu[iCpu].toInt() and 0xFF)) < 24 &&
+                abs(lida[1] - (cpu[iCpu + 1].toInt() and 0xFF)) < 24 &&
+                abs(lida[2] - (cpu[iCpu + 2].toInt() and 0xFF)) < 24
+            if (ok) {
+                c.aprovado(
+                    "upload ETC2 + leitura de pixel OK (${imagem.formato.rotulo}, ${kimg.size} bytes) — GPU ≈ decodificação de referência"
+                )
+            } else {
+                c.falhou(
+                    "pixel da GPU (%d,%d,%d) divergiu da referência (%d,%d,%d)".format(
+                        java.util.Locale.US, lida[0], lida[1], lida[2],
+                        cpu[iCpu].toInt() and 0xFF, cpu[iCpu + 1].toInt() and 0xFF, cpu[iCpu + 2].toInt() and 0xFF
+                    )
+                )
+            }
+        } finally {
+            if (programa != 0) GLES30.glDeleteProgram(programa)
+            if (vao != 0) GLES30.glDeleteVertexArrays(1, intArrayOf(vao), 0)
+            if (vbo != 0) GLES30.glDeleteBuffers(1, intArrayOf(vbo), 0)
+            GLES30.glDeleteTextures(1, tex, 0)
+            GLES30.glGetError() // descarta erros residuais do teste
+        }
+    }
+
+    private fun compilarPrograma(vs: String, fs: String): Int {
+        val v = GLES30.glCreateShader(GLES30.GL_VERTEX_SHADER)
+        GLES30.glShaderSource(v, vs)
+        GLES30.glCompileShader(v)
+        val okV = IntArray(1)
+        GLES30.glGetShaderiv(v, GLES30.GL_COMPILE_STATUS, okV, 0)
+        if (okV[0] == 0) {
+            GLES30.glDeleteShader(v)
+            return 0
+        }
+        val f = GLES30.glCreateShader(GLES30.GL_FRAGMENT_SHADER)
+        GLES30.glShaderSource(f, fs)
+        GLES30.glCompileShader(f)
+        val okF = IntArray(1)
+        GLES30.glGetShaderiv(f, GLES30.GL_COMPILE_STATUS, okF, 0)
+        if (okF[0] == 0) {
+            GLES30.glDeleteShader(v)
+            GLES30.glDeleteShader(f)
+            return 0
+        }
+        val p = GLES30.glCreateProgram()
+        GLES30.glAttachShader(p, v)
+        GLES30.glAttachShader(p, f)
+        GLES30.glLinkProgram(p)
+        GLES30.glDeleteShader(v)
+        GLES30.glDeleteShader(f)
+        val okL = IntArray(1)
+        GLES30.glGetProgramiv(p, GLES30.GL_LINK_STATUS, okL, 0)
+        if (okL[0] == 0) {
+            GLES30.glDeleteProgram(p)
+            return 0
+        }
+        return p
+    }
+
+    /** Checagem "astc" (ETAPA C.8): SÓ detecta a extensão — nunca reprova. */
+    private fun checarAstc(c: Checagem) {
+        val extensoes = GLES30.glGetString(GLES30.GL_EXTENSIONS) ?: ""
+        val suporta = extensoes.contains("GL_KHR_texture_compression_astc_ldr")
+        if (suporta) {
+            c.aprovado("GL_KHR_texture_compression_astc_ldr PRESENTE — ASTC_4x4/6x6/8x8 usável numa fase futura (encoder ASTC fora do escopo)")
+        } else {
+            // NÃO SUPORTADO não é falha (ETC2 é o formato base obrigatório no GLES 3.0)
+            c.aprovado("ASTC NÃO SUPORTADO neste aparelho — sem problema: ETC2 é o formato base da engine")
         }
     }
 

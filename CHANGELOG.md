@@ -1,5 +1,44 @@
 # KENKERN — CHANGELOG
 
+## ETAPA C — F2.9 formato .KIMG (imagem leve com compressão de GPU)
+
+- **.KIMG** (`assets/image/KimgFormat.kt`): magic "KIMG", versão, formato
+  (ETC2_RGB, ETC2_RGBA, ASTC_4x4/6x6/8x8 reservado, RGBA8_RAW), largura/altura,
+  contagem de mipmaps, flags (sRGB, alfa, normal map) e TABELA de mipmaps
+  (offset+tamanho) — sem metadados desnecessários. Leitor valida TODOS os
+  limites (truncado/magic/versão/dimensões/mip fora do arquivo = ERRO CLARO,
+  nunca estoura buffer).
+- **ETC2 em Kotlin puro** (`assets/image/Etc2.kt`): encoder com os 5 modos da
+  spec (individual, diferencial, T, H, planar — stuffs exatos do ETCPACK) e
+  DECODER completo (usado no fallback RGBA8, nos testes e na checagem `etc2`).
+  Qualidade medida: 52.9 dB (cor sólida) · 38.5 dB (gradiente) · 33.5 dB
+  (senoides) · 52.9 dB (EAC alfa) — razão 5.8× (RGB) / 2.9× (RGBA).
+  Encoder SEMPRE em background com cancelamento e progresso por mipmap.
+- **Pipeline** (`KimgPipeline.kt`): RGBA8888 → (redimensiona para POT ≤
+  GL_MAX_TEXTURE_SIZE quando excede) → mipmaps por CAIXA → ETC2 por mip →
+  .KIMG + relatório (tamanho origem, tamanho .KIMG, razão, PSNR, tempo).
+  Fallback RGBA8_RAW sem compressão quando a GPU recusa ETC2.
+- **GPU** (`GlesBackend`): vertex format ganhou UV (stride 24→32, location 2);
+  shader principal amostra a textura de cor base (fallback = cor sólida);
+  `glCompressedTexImage2D` (GL_COMPRESSED_RGB8_ETC2 / RGBA8_EAC) por mip com
+  filtragem TRILINEAR, wrap REPEAT e anisotropia (GL_EXT quando disponível);
+  driver recusou ETC2 → decodifica na CPU e sobe RGBA8 (textura nunca some).
+- **Render por grupos de material**: Nicks com classe "Malha" cujo .KERN v2 tem
+  grupos desenham UM sub-range por grupo com a textura do material
+  (`TextureLibrary` — carga .KIMG fora do flush, orçamento 6 ms/frame, erro
+  claro 1× por caminho); geometria sem material continua cor sólida.
+- **Importação**: texturas de glTF (embutidas no GLB, data URI, pasta SAF,
+  .zip) e FBX (Video com Content embutido) são coletadas com hash SHA-1 e
+  convertidas para `assets/textures/<sha1>.kimg` durante a importação
+  (android.graphics decodifica PNG/JPEG em background). CACHE por hash +
+  versão do formato: reabrir o projeto NÃO reconverte (C.5).
+- **Diagnóstico**: 3 checagens novas — `kimg` (ida e volta + mipmaps + erros
+  claros), `etc2` (upload GL cru + LEITURA DE PIXEL e comparação com o decoder
+  de referência), `astc` (detecta a extensão, SUPORTADO/NÃO SUPORTADO, nunca
+  reprova) — 12 checagens no total.
+- **DECISIONS #21** registra as decisões e a qualidade medida.
+- Testes JVM: 13 novos (KimgTest) — total 123, verde.
+
 ## ETAPA B — Correção dos importadores (fechamento da Fase 2)
 
 - **FBX ASCII (B.2)**: parser de TEXTO com a mesma saída do binário — mesma

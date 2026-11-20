@@ -17,6 +17,9 @@ interface RenderBackend {
     var viewportWidth: Int
     var viewportHeight: Int
 
+    /** GL_MAX_TEXTURE_SIZE do backend (0 = desconhecido antes do initialize). */
+    val maxTextureSize: Int get() = 0
+
     /** Inicializa recursos da API gráfica. NUNCA lança: false = sem recursos de render. */
     fun initialize(): Boolean
     fun resize(width: Int, height: Int)
@@ -88,6 +91,22 @@ interface RenderBackend {
     fun destroyMesh(handle: Int)
 
     fun destroyLineBuffer(handle: Int)
+
+    /**
+     * Cria textura de GPU a partir de um arquivo .KIMG (ETC2/ASTC/RGBA8 —
+     * F2.9). Retorna handle opaco (0 = falhou, com erro registrado pelo
+     * chamador). Implementado pelo GlesBackend; outros backends retornam 0.
+     */
+    fun createTextureFromKimg(kimg: ByteArray): Int = 0
+
+    /** Libera textura criada por [createTextureFromKimg]. */
+    fun destroyTexture(handle: Int) = Unit
+
+    /** Desenha um SUB-RANGE do buffer de índices com textura opcional (0 = cor sólida). */
+    fun drawMeshRange(
+        handle: Int, indexOffset: Int, indexCount: Int, textureHandle: Int,
+        model: Mat4, viewProj: Mat4, r: Float, g: Float, b: Float, a: Float
+    ) = Unit
 
     fun endFrame()
 

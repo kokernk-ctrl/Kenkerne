@@ -290,10 +290,12 @@ class EngineRenderer {
         // até saturar a capacidade e redesenhar a cena centenas de vezes.
         geometry.reset()
 
-        // Malhas importadas pendentes: carrega FORA do flush (orçamento de 6 ms)
-        // — nunca trava o frame que está desenhando (anti-trave; streaming completo = F2.11).
+        // Malhas e texturas importadas pendentes: carrega FORA do flush (orçamento de 6 ms
+        // cada) — nunca trava o frame que está desenhando (anti-trave; streaming completo = F2.11).
         runCatching { AssetMeshLibrary.processarPendentes(backend) }
             .onFailure { KenkernLog.e(TAG, "carga de malhas importadas falhou", it) }
+        runCatching { TextureLibrary.processarPendentes(backend) }
+            .onFailure { KenkernLog.e(TAG, "carga de texturas .KIMG falhou", it) }
 
         backend.beginFrame(0.075f, 0.075f, 0.105f, 1f)
         var skyDrawn = 0
@@ -359,11 +361,38 @@ class EngineRenderer {
                         // Nick importado (ETAPA A): desenha a MALHA do .KERN em vez do cubo.
                         val h = AssetMeshLibrary.handleDe(caminhoMalha)
                         if (h != 0) {
-                            geometry.submit(
-                                h,
-                                nick.transform.worldMatrix,
-                                materialGray, materialGray, materialGray, 1f
-                            )
+                            val malha = AssetMeshLibrary.malhaDe(caminhoMalha)
+                            if (malha != null && malha.gruposMaterial.isNotEmpty()) {
+                                // GRUPOS DE MATERIAL (B.3/C.4): um sub-range por grupo,
+                                // com textura .KIMG do material (fallback = cor do material).
+                                for (g in malha.gruposMaterial) {
+                                    val material = malha.materiais.getOrNull(g.materialIndex)
+                                    var texHandle = 0
+                                    var mr = materialGray; var mg = materialGray; var mb = materialGray; var ma = 1f
+                                    if (material != null) {
+                                        mr = material.baseColorR; mg = material.baseColorG
+                                        mb = material.baseColorB; ma = material.baseColorA
+                                        if (material.temTexturaBase && material.texturaBasePath.isNotEmpty()) {
+                                            texHandle = TextureLibrary.handleDe(material.texturaBasePath)
+                                            if (texHandle == 0) {
+                                                TextureLibrary.marcarNecessario(material.texturaBasePath)
+                                                // textura ainda não pronta: desenha cor do material
+                                                texHandle = 0
+                                            }
+                                        }
+                                    }
+                                    geometry.submitGroup(
+                                        h, g.indexOffset, g.indexCount, texHandle,
+                                        nick.transform.worldMatrix, mr, mg, mb, ma
+                                    )
+                                }
+                            } else {
+                                geometry.submit(
+                                    h,
+                                    nick.transform.worldMatrix,
+                                    materialGray, materialGray, materialGray, 1f
+                                )
+                            }
                             if (nick.id == selectedId) {
                                 outlineScratch.multiply(nick.transform.worldMatrix, outlineInflation)
                                 geometry.submitOutline(

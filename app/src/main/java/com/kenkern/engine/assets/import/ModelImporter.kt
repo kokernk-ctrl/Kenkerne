@@ -107,7 +107,9 @@ class ImportSummary(
     /** Escala do Nick sugerida pela opção "Ajustar ao tamanho" (1f = sem ajuste). */
     val escalaSugerida: Float = 1f,
     /** Texturas de origem coletadas (ETAPA C converte para .KIMG com esses bytes). */
-    val texturasExtraidas: List<TexturaImportada> = emptyList()
+    val texturasExtraidas: List<TexturaImportada> = emptyList(),
+    /** Relatórios de conversão de texturas preenchidos pelo chamador (ETAPA C). */
+    val texturasRelatorio: MutableList<String> = mutableListOf()
 ) {
     /** Razão origem/.KERN (ex.: 5.0 = 100 MB viraram 20 MB — meta do ROADMAP). */
     val razao: Float get() = if (bytesKern > 0) bytesOrigem / bytesKern.toFloat() else 0f
@@ -128,6 +130,7 @@ class ImportSummary(
         appendLine("Tempo: %d ms · pico de memória ≈ %.0f MB".format(java.util.Locale.US, tempoMs, picoMemoriaMb))
         if (contemEsqueleto) appendLine("AVISO: contém esqueleto: ignorado nesta fase (Fase 8 OSSATURA)")
         for (a in avisos) appendLine("AVISO: $a")
+        for (r in texturasRelatorio) appendLine("TEXTURA: $r")
         appendLine("Gravado: $caminhoKernRelativo · origem copiada: $caminhoOrigemRelativo")
     }
 }

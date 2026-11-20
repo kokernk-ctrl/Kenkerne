@@ -12,11 +12,11 @@ de tarefas do BACKLOG sem refazer o que está pronto.
   dependem do aparelho (seleção por toque, Play real, paisagem automática, gizmos)
   estão **COMPILADO**, não VALIDADO, até o usuário confirmar (TESTES_PENDENTES.md).
 - **Tarefa atual**: fechamento testável da Fase 2 por ETAPAS (A → B → C → D,
-  cada uma com CI verde + commit): **ETAPA A (botão Importar modelo, F2.16) e
-  ETAPA B (correção dos importadores: FBX ASCII + materiais .KERN v2 + dedup +
-  LODs + regressão gizmo/Spin/Bob, F2.17) FEITAS (COMPILADO+CI ✓)**; a seguir
-  **ETAPA C (F2.9 .KIMG ETC2/ASTC)** e **ETAPA D (Release v0.1.14-fase2-teste)**.
-  Suíte JVM: 111 testes, verde.
+  cada uma com CI verde + commit): **ETAPAS A (F2.16 botão Importar modelo),
+  B (F2.17 importadores: FBX ASCII + materiais .KERN v2 + dedup + LODs) e
+  C (F2.9 .KIMG ETC2 com mipmaps + cache por hash + GPU) FEITAS
+  (COMPILADO+CI ✓)**; a seguir **ETAPA D (Release v0.1.14-fase2-teste)**.
+  Suíte JVM: 123 testes, verde. Diagnóstico: 12 checagens.
 - **Lua congelada**: o LuaJ existente é o F5.1 (antes F3.1), trabalho ANTECIPADO —
   proibido crescer código Lua antes da Fase 5. Fase 3 = LENTE/LUME/colliders/input.
 - **Regras novas** (ROADMAP.md, Regras de fase): (1) tag `fase-N-ok` só com TODOS os
