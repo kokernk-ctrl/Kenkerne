@@ -170,14 +170,51 @@ class FbxImporterTest {
     // ------------------------------------------------------------ erros claros
 
     @Test
-    fun fbx_ascii_da_erro_claro_pedindo_binario() {
+    fun fbx_ascii_sem_objects_da_erro_claro() {
         try {
             FbxImporter.importar(FbxAmostras.asciiFbx())
-            fail("FBX ASCII deveria dar erro claro")
+            fail("FBX ASCII sem Objects deveria dar erro claro")
         } catch (e: FbxImportException) {
-            assertTrue("mensagem deve citar ASCII/binário: ${e.message}",
-                e.message!!.contains("ASCII") && e.message!!.contains("binário"))
+            assertTrue("mensagem deve citar Objects: ${e.message}", e.message!!.contains("Objects"))
         }
+    }
+
+    @Test
+    fun fbx_ascii_completo_importa_igual_ao_binario() {
+        val r = FbxImporter.importar(FbxAmostras.quadAsciiFbx())
+        // mesmas expectativas do quadFbx (quad expandido = 6 vértices, 6 índices)
+        assertEquals(6, r.mesh.vertexCount)
+        assertEquals(6, r.mesh.indices.size)
+        assertEquals(1, r.mesh.lods.size)
+        // TRS do Model aplicado: Lcl Translation = (2,0,0)
+        var maxX = Float.NEGATIVE_INFINITY
+        for (v in 0 until r.mesh.vertexCount) maxX = maxOf(maxX, r.mesh.positions[v * 3])
+        assertEquals(3.0f, maxX, 0.001f) // quad vai de x=1 → x=3 com translação 2
+        // UV IndexToDirect corretamente amostrada
+        val u0 = r.mesh.uvs[0]
+        assertEquals(0.0f, u0, 0.001f)
+    }
+
+    @Test
+    fun fbx_ascii_com_material_cria_tabela_e_grupo() {
+        val r = FbxImporter.importar(FbxAmostras.quadAsciiComMaterialFbx())
+        assertEquals(1, r.mesh.materiais.size)
+        val mat = r.mesh.materiais[0]
+        assertEquals("vermelho", mat.nome)
+        assertEquals(0.9f, mat.baseColorR, 0.01f)
+        assertEquals(0.1f, mat.baseColorG, 0.01f)
+        assertEquals(0.95f, mat.baseColorA, 0.01f)
+        assertEquals(1, r.mesh.gruposMaterial.size)
+        assertEquals(0, r.mesh.gruposMaterial[0].materialIndex)
+        assertEquals(6, r.mesh.gruposMaterial[0].indexCount)
+        assertEquals(1, r.report.materialCount)
+        // ida e volta no .KERN v2 preserva materiais e grupos
+        val lida = com.kenkern.engine.assets.mesh.KernReader.read(
+            com.kenkern.engine.assets.mesh.KernWriter.write(r.mesh)
+        )
+        assertEquals(1, lida.materiais.size)
+        assertEquals(0.9f, lida.materiais[0].baseColorR, 0.02f)
+        assertEquals(1, lida.gruposMaterial.size)
     }
 
     @Test

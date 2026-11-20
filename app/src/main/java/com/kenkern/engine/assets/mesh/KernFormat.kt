@@ -7,7 +7,10 @@ import kotlin.math.abs
  */
 object KernFormat {
     const val MAGIC = "KERN"
-    const val VERSION: Short = 1
+    // FIX ETAPA B: versão 2 acrescenta a TABELA DE MATERIAIS e os GRUPOS por
+    // submalha (offset/count/índice de material) DEPOIS dos blocos v1, marcados
+    // no flag HAS_MATERIALS do header. O leitor aceita v1 (sem materiais) e v2.
+    const val VERSION: Short = 2
 
     const val HEADER_SIZE = 80
     const val VERTEX_SIZE = 24
@@ -18,6 +21,7 @@ object KernFormat {
     const val LOD_ENTRY_SIZE = 32
 
     const val FLAG_HAS_CLUSTERS: Short = 1
+    const val FLAG_HAS_MATERIALS: Short = 2
 
     const val INDEX_TYPE_U16: Byte = 0
     const val INDEX_TYPE_U32: Byte = 1

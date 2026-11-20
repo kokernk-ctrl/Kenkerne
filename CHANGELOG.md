@@ -1,5 +1,31 @@
 # KENKERN — CHANGELOG
 
+## ETAPA B — Correção dos importadores (fechamento da Fase 2)
+
+- **FBX ASCII (B.2)**: parser de TEXTO com a mesma saída do binário — mesma
+  árvore de nodes, mesmos arrays (contagem `*N` + bloco `a:`), mappings
+  Direct/IndexToDirect, TRS em graus, hierarquia por Connections. Nomes
+  "Tipo::Nome" viram o nome amigável. Erro de versão com a versão ENCONTRADA.
+- **Materiais no .KERN v2 (B.3)**: formato .KERN passa a 2 (leitor aceita 1 e 2;
+  flag HAS_MATERIALS) com tabela de materiais (nome, baseColor RGBA, metallic,
+  roughness, flags, caminhos de textura base/normal) e GRUPOS por submalha
+  (offset/count/índice de material) — glTF por primitiva, FBX por Model.
+  Reserva de skinning intacta; esqueleto = aviso no relatório.
+- **Dedup (B.4)**: vértices com posição+normal+UV idênticos fundidos (chave
+  exata por bits, 2 passadas SEM mutação — correção de bug de aliasing que
+  corrompia as chaves); materiais iguais dedupados; erro pós-quantização ≤ 1 passo.
+- **LODs (B.5)**: 3 níveis por agrupamento de vértices em grade (células
+  maiores por nível, triângulos degenerados descartados), anexados ao mesmo
+  buffer de índices com offset/count e AABB própria por LOD; KernIntegrity valida.
+- **B.6**: tangentes só são lidas quando há normal map (ou opção "manter");
+  sem uso = zeradas. UV2/cores de vértice nunca entram (não são lidas).
+- **B.7**: regressão de rotação do gizmo/Spin/Bob — quaternion e Mat4.setTRS
+  preservam o comprimento dos vetores em 0/30/90/180/270°, composição
+  pai×filho correta, euler ida e volta nos ângulos-chave.
+- Diagnóstico: checagem `fbx` agora valida FBX ASCII completo + material.
+- Testes JVM: 18 novos (FbxImporterTest +3, PosProcessamentoTest 8,
+  GizmoSpinBobRegressionTest 7) — total 111, verde.
+
 ## ETAPA A — Botão "Importar modelo" na TopBar (fechamento da Fase 2)
 
 - **Importar modelo (SAF)**: botão novo na TopBar (ícone Importar, 40dp,

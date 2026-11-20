@@ -176,13 +176,123 @@ object FbxAmostras {
         return arquivo(7500, quadNo(vertices, pvi, null, null, null))
     }
 
-    /** FBX ASCII (texto) — o importador DEVE dar erro claro pedindo binário. */
+    /** FBX ASCII (texto) mínimo SÓ com header — ainda dá erro claro (sem Objects). */
     fun asciiFbx(): ByteArray = """
 FBXHeaderExtension:  {
     FBXHeaderVersion: 1003
     FBXVersion: 7400
 }
 """.trimIndent().toByteArray(Charsets.US_ASCII)
+
+    /**
+     * FBX ASCII COMPLETO (ETAPA B.2): o MESMO quad do [quadFbx] escrito em
+     * texto (Vertices/PolygonVertexIndex/Normais/UV + Model + Connections) —
+     * o parser ASCII deve produzir a MESMA saída do binário.
+     */
+    fun quadAsciiFbx(): ByteArray = """
+FBXHeaderExtension:  {
+    FBXHeaderVersion: 1003
+    FBXVersion: 7400
+    Creator: "KenkernTeste"
+}
+GlobalSettings:  {
+    Version: 1000
+    Properties70:  {
+        P: "UnitScaleFactor", "double", "Number", "",1
+    }
+}
+Objects:  {
+    Geometry: 1000, "Geometry::quad", "Mesh" {
+        GeometryVersion: 124
+        Vertices: *12 {
+            a: 0,0,0,1,0,0,1,1,0,0,1,0
+        }
+        PolygonVertexIndex: *6 {
+            a: 0,1,-3,0,2,-4
+        }
+        LayerElementNormal: 0 {
+            Version: 101
+            Name: ""
+            MappingInformationType: "ByPolygonVertex"
+            ReferenceInformationType: "Direct"
+            Normals: *18 {
+                a: 0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1
+            }
+        }
+        LayerElementUV: 0 {
+            Version: 101
+            Name: ""
+            MappingInformationType: "ByPolygonVertex"
+            ReferenceInformationType: "IndexToDirect"
+            UV: *8 {
+                a: 0,0,1,0,1,1,0,1
+            }
+            UVIndex: *6 {
+                a: 0,1,2,0,2,3
+            }
+        }
+        Layer: 0 {
+            Version: 100
+            LayerElement:  {
+                Type: "LayerElementNormal"
+                TypedIndex: 0
+            }
+        }
+    }
+    Model: 2000, "Model::quad", "Mesh" {
+        Version: 232
+        Properties70:  {
+            P: "Lcl Translation", "Lcl Translation", "", "A",2,0,0
+        }
+        Shading: T
+        Culling: "CullingOff"
+    }
+}
+Connections:  {
+    ;Model::quad, Model::RootNode
+    C: "OO",2000,0
+
+    ;Geometry::quad, Model::quad
+    C: "OO",1000,2000
+}
+""".trimIndent().toByteArray(Charsets.UTF_8)
+
+    /**
+     * FBX ASCII com MATERIAL (ETAPA B.3): quad + Material com DiffuseColor
+     * conectado ao Model — o importador deve criar o material e o grupo.
+     */
+    fun quadAsciiComMaterialFbx(): ByteArray = """
+FBXHeaderExtension:  {
+    FBXHeaderVersion: 1003
+    FBXVersion: 7400
+}
+Objects:  {
+    Geometry: 1000, "Geometry::quad", "Mesh" {
+        Vertices: *12 {
+            a: 0,0,0,1,0,0,1,1,0,0,1,0
+        }
+        PolygonVertexIndex: *6 {
+            a: 0,1,-3,0,2,-4
+        }
+    }
+    Model: 2000, "Model::quad", "Mesh" {
+        Version: 232
+    }
+    Material: 3000, "Material::vermelho", "" {
+        Version: 102
+        ShadingModel: "phong"
+        Properties70:  {
+            P: "DiffuseColor", "Color", "", "A",0.9,0.1,0.1
+            P: "Opacity", "double", "Number", "",0.95
+        }
+    }
+}
+Connections:  {
+    C: "OO",1000,2000
+    C: "OO",2000,0
+    C: "OO",3000,2000
+}
+""".trimIndent().toByteArray(Charsets.UTF_8)
 
     /** Arquivo que NÃO é FBX (magic quebrado) — erro claro. */
     fun magicQuebrado(): ByteArray = "XXXXarquivo-não-FBX".toByteArray(Charsets.US_ASCII)

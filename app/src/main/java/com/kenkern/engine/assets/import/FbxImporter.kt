@@ -1,5 +1,6 @@
 package com.kenkern.engine.assets.import
 
+import com.kenkern.engine.assets.mesh.KernMaterial
 import com.kenkern.engine.assets.mesh.KernWriter
 import com.kenkern.engine.core.math.Mat4
 import com.kenkern.engine.core.math.Quaternion
@@ -70,14 +71,13 @@ object FbxImporter {
 
     /** Importa um arquivo FBX binário completo e devolve a malha .KERN + meta. */
     fun importar(bytes: ByteArray): ImportResult {
+        texturasEmbutidas.clear() // por importação: sem estado de uma chamada anterior
         if (bytes.isEmpty()) throw FbxImportException("arquivo vazio")
         if (!magicValido(bytes)) {
             // Erro CLARO e distinto para FBX ASCII (texto).
             val inicio = String(bytes, 0, minOf(bytes.size, 64), Charsets.US_ASCII)
             if (inicio.startsWith("FBXHeaderExtension") || inicio.contains("FBXHeaderExtension")) {
-                throw FbxImportException(
-                    "FBX ASCII (texto) não suportado nesta fase — exporte como FBX binário 7.x"
-                )
+                return importarAscii(bytes) // ETAPA B.2: ASCII agora é PARSEADO (mesma saída do binário)
             }
             throw FbxImportException("magic do FBX binário inválido (não é FBX ou está corrompido)")
         }
@@ -91,6 +91,270 @@ object FbxImporter {
         }
         val raizes = lerLista(buf, bytes.size.toLong(), versao, PROFUNDIDADE_MAXIMA)
         return montarMalha(raizes, bytes.size)
+    }
+
+    // ---------------------------------------------------------------- FBX ASCII (ETAPA B.2)
+
+    /**
+     * PARSER DE FBX ASCII (texto) com a MESMA saída do binário: produz a mesma
+     * árvore de [FbxNode] e chama [montarMalha]. Formato suportado: 7.x
+     * (FBXHeaderVersion 1000+). Versão não suportada = erro CLARO com a versão
+     * encontrada (regra B.2). Estrutura aceita:
+     *
+     *     Nome: prop, prop {         ← node com filhos
+     *         Filho: valor
+     *         Array: *N { a: 1,2,3 } ← array com contagem + bloco 'a:'
+     *     }
+     *     Nome: "string", 123, 1.5, T  ← node sem filhos
+     *
+     * Valores: "string", inteiro (Long), decimal (Double), T/F/Y/N (Boolean).
+     * Comentários ';' até o fim da linha são ignorados.
+     */
+    private fun importarAscii(bytes: ByteArray): ImportResult {
+        val texto = String(bytes, Charsets.UTF_8)
+        val p = AsciiCursor(texto, bytes.size)
+        val raizes = p.lerListaTopo()
+        if (raizes.isEmpty()) {
+            throw FbxImportException("FBX ASCII vazio ou sem nodes — nada para importar")
+        }
+        val header = raizes.firstOrNull { it.nome == "FBXHeaderExtension" }
+        val fbxVersao = header?.filho("FBXVersion")?.props?.firstOrNull()
+        val headerVersao = header?.filho("FBXHeaderVersion")?.props?.firstOrNull()
+        val versaoNum = (fbxVersao as? Long) ?: (headerVersao as? Long) ?: -1L
+        if (versaoNum > 0 && versaoNum < VERSAO_MINIMA) {
+            throw FbxImportException(
+                "FBX ASCII versão $versaoNum (6.x/5.x) não suportada — converter para FBX 7.x (ASCII ou binário)"
+            )
+        }
+        return try {
+            montarMalha(raizes, bytes.size)
+        } catch (e: FbxImportException) {
+            throw e
+        } catch (e: Exception) {
+            throw FbxImportException(
+                "FBX ASCII (versão encontrada: ${if (versaoNum > 0) versaoNum else "não informada"}) " +
+                    "falhou no parse: ${e.message ?: e.javaClass.simpleName}"
+            )
+        }
+    }
+
+    /**
+     * Cursor de leitura do ASCII: um nível de estado (posição) + helpers de
+     * pular whitespace/comentários e ler valores. NÃO usa regex — arquivo pode
+     * ter centenas de MB de arrays.
+     */
+    private class AsciiCursor(val s: String, val tamanhoBytes: Int) {
+        var i = 0
+
+        fun fim(): Boolean = i >= s.length
+
+        fun pularEspacoEComentarios() {
+            while (i < s.length) {
+                val c = s[i]
+                when {
+                    c == ';' -> { while (i < s.length && s[i] != '\n') i++ }
+                    c.isWhitespace() -> i++
+                    else -> return
+                }
+            }
+        }
+
+        /** Nome do node: lê até ':' (sem espaços finais). */
+        fun lerNome(): String {
+            val inicio = i
+            while (i < s.length && s[i] != ':' && s[i] != '\n') i++
+            if (i >= s.length || s[i] != ':') {
+                throw FbxImportException(
+                    "FBX ASCII: node sem ':' após '${s.substring(inicio, minOf(inicio + 40, s.length))}'"
+                )
+            }
+            val nome = s.substring(inicio, i).trim()
+            i++ // ':'
+            return nome
+        }
+
+        /** Um valor: string "...", número (Long/Double) ou booleano T/F/Y/N. */
+        fun lerValor(): Any {
+            pularEspacoEComentarios()
+            if (i >= s.length) throw FbxImportException("FBX ASCII: fim inesperado procurando valor")
+            val c = s[i]
+            return when {
+                c == '"' -> {
+                    i++
+                    val sb = StringBuilder()
+                    while (i < s.length && s[i] != '"') {
+                        if (s[i] == '\\' && i + 1 < s.length) {
+                            // escape simples: \" e \\ e \n (o resto mantém a barra)
+                            when (s[i + 1]) {
+                                '"' -> { sb.append('"'); i += 2 }
+                                '\\' -> { sb.append('\\'); i += 2 }
+                                'n' -> { sb.append('\n'); i += 2 }
+                                else -> { sb.append(s[i]); i++ }
+                            }
+                        } else {
+                            sb.append(s[i]); i++
+                        }
+                    }
+                    if (i >= s.length) throw FbxImportException("FBX ASCII: string sem fechar")
+                    i++
+                    // nome amigável: "Material::vermelho" → "vermelho" (mesma regra
+                    // do binário, onde o separador é \u0000\u0001)
+                    val str = sb.toString()
+                    val sep = str.indexOf("::")
+                    return if (sep > 0) str.substring(sep + 2) else str
+                }
+                else -> {
+                    val inicio = i
+                    while (i < s.length && s[i] != ',' && s[i] != '\n' && s[i] != '}' && s[i] != '{') i++
+                    val bruto = s.substring(inicio, i).trim()
+                    when {
+                        bruto.isEmpty() -> throw FbxImportException("FBX ASCII: valor vazio")
+                        bruto == "T" || bruto == "Y" -> true
+                        bruto == "F" || bruto == "N" -> false
+                        bruto.any { it == '.' || it == 'e' || it == 'E' } ->
+                            bruto.toDoubleOrNull() ?: throw FbxImportException("FBX ASCII: número inválido '$bruto'")
+                        else -> bruto.toLongOrNull()
+                            ?: throw FbxImportException("FBX ASCII: inteiro inválido '$bruto'")
+                    }
+                }
+            }
+        }
+
+        /** Pula vírgulas/espaços antes do próximo valor ou marcador de fim. */
+        fun pularSeparador() {
+            while (i < s.length && (s[i].isWhitespace() || s[i] == ',' || s[i] == ';')) {
+                if (s[i] == ';') while (i < s.length && s[i] != '\n') i++ else i++
+            }
+        }
+
+        /**
+         * Lê a lista de nodes de um nível (topo ou dentro de '{'). Para em '}'
+         * (sem consumir) ou no fim do arquivo.
+         */
+        fun lerListaTopo(): MutableList<FbxNode> {
+            val lista = ArrayList<FbxNode>(16)
+            while (true) {
+                pularEspacoEComentarios()
+                if (i >= s.length || s[i] == '}') return lista
+                lista.add(lerNode(64))
+            }
+        }
+
+        /** Lê UM node: nome, props (vírgulas) e filhos opcionais entre '{ }'. */
+        fun lerNode(profundidade: Int): FbxNode {
+            if (profundidade <= 0) {
+                throw FbxImportException("FBX ASCII: aninhamento excessivo de nodes")
+            }
+            val nome = lerNome()
+            val node = FbxNode(nome)
+
+            // Contagem de array: `Nome: *N { a: ... }` — o '*' marca o tamanho.
+            pularEspacoEComentarios()
+            var contagemArray = -1L
+            if (i < s.length && s[i] == '*') {
+                i++
+                val inicio = i
+                while (i < s.length && s[i].isDigit()) i++
+                contagemArray = s.substring(inicio, i).toLongOrNull()
+                    ?: throw FbxImportException("FBX ASCII: contagem de array inválida em '$nome'")
+            }
+
+            // Props: valores separados por vírgula NA MESMA LINHA; a lista acaba no
+            // fim da linha, a menos que depois venha '{' (filhos) na linha seguinte.
+            while (true) {
+                pularEspacoEComentarios()
+                if (i >= s.length) break
+                val c = s[i]
+                if (c == '{' || c == '}') break
+                if (c == ',') { i++; continue }
+                node.props.add(lerValor())
+                // fim da linha? (resto da linha é branco ou comentário)
+                var j = i
+                while (j < s.length && s[j] != '\n') j++
+                val restoLinha = s.substring(i, j).trimStart()
+                if (restoLinha.isEmpty() || restoLinha.startsWith(";")) {
+                    var k = j
+                    while (k < s.length && (s[k] == '\n' || s[k].isWhitespace() || s[k] == ';')) {
+                        if (s[k] == ';') { while (k < s.length && s[k] != '\n') k++ } else k++
+                    }
+                    if (k >= s.length || s[k] != '{') break // próximo node ou fim do arquivo
+                    i = j // '{' vem depois: deixa o bloco de filhos pegar
+                }
+            }
+
+            // Formato de ARRAY: `*N { a: v1,v2,... }` → 1 prop = FbxArray com os 'a'
+            if (contagemArray >= 0) {
+                pularEspacoEComentarios()
+                if (i >= s.length || s[i] != '{') {
+                    throw FbxImportException("FBX ASCII: array '$nome' sem '{' após a contagem")
+                }
+                i++
+                pularEspacoEComentarios()
+                // bloco interno: 'a: valores' (nome pode ser 'a' com espaço 'a: ')
+                while (i < s.length && s[i] != '}') {
+                    pularEspacoEComentarios()
+                    if (i < s.length && s[i] == '}') break
+                    if (s[i] == 'a' || s[i] == 'A') {
+                        // pula até ':'
+                        while (i < s.length && s[i] != ':') i++
+                        if (i >= s.length) throw FbxImportException("FBX ASCII: bloco 'a:' sem ':'")
+                        i++
+                    }
+                    // lê valores separados por vírgula até '}'
+                    val longos = ArrayList<Long>(256)
+                    val decimais = ArrayList<Double>(256)
+                    var teveDecimal = false
+                    while (true) {
+                        pularSeparador()
+                        if (i >= s.length || s[i] == '}') break
+                        val v = lerValor()
+                        when (v) {
+                            is Long -> longos.add(v)
+                            is Double -> { teveDecimal = true; decimais.add(v) }
+                            else -> throw FbxImportException("FBX ASCII: array '$nome' com valor não numérico")
+                        }
+                    }
+                    if (i >= s.length || s[i] != '}') {
+                        throw FbxImportException("FBX ASCII: array '$nome' sem '}' (truncado)")
+                    }
+                    i++ // fecha '}' do bloco de valores
+                    val fbx = if (teveDecimal) {
+                        FbxArray(
+                            null,
+                            DoubleArray(decimais.size) { decimais[it] },
+                            if (longos.isEmpty()) null else IntArray(longos.size) { longos[it].toInt() },
+                            null
+                        )
+                    } else {
+                        // índices: IntArray; se não couber em Int (raro), mantém Long
+                        FbxArray(
+                            null, null,
+                            if (longos.all { it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() })
+                                IntArray(longos.size) { longos[it].toInt() } else null,
+                            if (longos.all { it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() }) null
+                            else LongArray(longos.size) { it -> longos[it] }
+                        )
+                    }
+                    node.props.add(fbx)
+                    pularEspacoEComentarios()
+                    break // só um bloco 'a' por array
+                }
+                return node
+            }
+
+            // Filhos: após os props, um '{' começa a lista de filhos
+            pularEspacoEComentarios()
+            if (i < s.length && s[i] == '{') {
+                i++
+                for (f in lerListaTopo()) node.filhos.add(f)
+                pularEspacoEComentarios()
+                if (i >= s.length || s[i] != '}') {
+                    throw FbxImportException("FBX ASCII: node '$nome' sem '}' de fechamento")
+                }
+                i++
+            }
+            return node
+        }
     }
 
     // ---------------------------------------------------------------- parser binário
@@ -393,6 +657,44 @@ object FbxImporter {
             )
         }
 
+        // 1b) MATERIAIS (B.3): Material/Video + conexões para Models
+        val materiaisPorId = LinkedHashMap<Long, FbxNode>()
+        val videosPorId = LinkedHashMap<Long, FbxNode>()
+        for (obj in objetos.filhos) {
+            if (obj.props.size < 1) continue
+            when (obj.nome) {
+                "Material" -> materiaisPorId[obj.propLong(0)] = obj
+                "Video" -> videosPorId[obj.propLong(0)] = obj
+            }
+        }
+        val materiaisDoModelo = HashMap<Long, MutableList<Long>>()
+        val videoDoMaterial = HashMap<Long, Long>()
+        for (c in conexoes.filhos) {
+            if (c.nome != "C" || c.props.size < 3) continue
+            val tipo = c.props.getOrNull(0) as? String ?: continue
+            if (tipo != "OO" && tipo != "OP") continue
+            val filho = (c.props.getOrNull(1) as? Long) ?: continue
+            val pai = (c.props.getOrNull(2) as? Long) ?: continue
+            if (filho in materiaisPorId && pai in modelos) {
+                materiaisDoModelo.getOrPut(pai) { ArrayList() }.add(filho)
+            }
+            if (filho in videosPorId && pai in materiaisPorId) {
+                videoDoMaterial.putIfAbsent(pai, filho)
+            }
+        }
+        // tabela DEDUPADA (B.4) por conteúdo + mapa id-FBX → índice
+        val tabelaMateriais = ArrayList<KernMaterial>()
+        val indiceMaterialPorId = HashMap<Long, Int>()
+        for ((id, mat) in materiaisPorId) {
+            val kern = kernMaterialDeFbx(mat, videosPorId[videoDoMaterial[id]])
+            if (kern != null) {
+                val existente = tabelaMateriais.indexOfFirst { it == kern }
+                indiceMaterialPorId[id] = if (existente >= 0) existente else {
+                    tabelaMateriais.add(kern); tabelaMateriais.size - 1
+                }
+            }
+        }
+
         // 2) Connections OO: pai de cada Model; geometrias conectadas a cada Model
         val paiDoModelo = HashMap<Long, Long>()
         val geometriasDoModelo = HashMap<Long, MutableList<Long>>()
@@ -408,7 +710,8 @@ object FbxImporter {
             if (filho in modelos) paiDoModelo[filho] = pai
         }
 
-        // 3) percorre os Models (ordem do arquivo) e funde as instâncias
+        // 3) percorre os Models (ordem do arquivo) e funde as instâncias;
+        //    cada Model com material gera UM GRUPO de material (B.3)
         val builder = KernWriter.Builder()
         val cacheMundo = HashMap<Long, Mat4>()
         val emProgresso = HashSet<Long>()
@@ -419,10 +722,15 @@ object FbxImporter {
         for ((modelId, modelo) in modelos) {
             val lista = geometriasDoModelo[modelId] ?: continue
             val mundo = mundoDoModelo(modelId, modelos, paiDoModelo, cacheMundo, emProgresso)
+            val grupoOffset = builder.indices.size
             for (geoId in lista) {
                 val geo = geometrias[geoId] ?: continue // ligado a objeto não-suportado
                 normaisCalculadas = importarGeometria(geo, mundo, builder) || normaisCalculadas
                 geometriasImportadas++
+            }
+            val matIdx = materiaisDoModelo[modelId]?.firstOrNull()?.let { indiceMaterialPorId[it] }
+            if (matIdx != null && builder.indices.size > grupoOffset) {
+                builder.materialGroup(grupoOffset, builder.indices.size - grupoOffset, matIdx)
             }
             modelosComMesh++
         }
@@ -430,6 +738,8 @@ object FbxImporter {
         if (geometriasImportadas == 0 || builder.positions.isEmpty()) {
             throw FbxImportException("nenhuma Geometry conectada a um Model 'Mesh' — nada para importar")
         }
+
+        for (m in tabelaMateriais) builder.material(m)
 
         val malha = builder.build()
         val bytesKern = KernWriter.write(malha)
@@ -441,10 +751,66 @@ object FbxImporter {
             lods = malha.lods.size,
             primitivas = geometriasImportadas,
             nodesComMesh = modelosComMesh,
-            normaisCalculadas = normaisCalculadas
+            normaisCalculadas = normaisCalculadas,
+            materialCount = tabelaMateriais.size,
+            textureCount = texturasEmbutidas.size
         )
-        return ImportResult(malha, bytesKern, report)
+        return ImportResult(malha, bytesKern, report, emptyList(), texturasEmbutidas.values.toList())
     }
+
+    /**
+     * MATERIAL FBX (B.3): lê DiffuseColor (cor base) + Opacity de Properties70;
+     * textura só se o Video tiver Content EMBUTIDO (bytes) — arquivo externo
+     * é AVISO (não dá para converter sem os bytes nesta fase).
+     */
+    private fun kernMaterialDeFbx(mat: FbxNode, video: FbxNode?): KernMaterial? {
+        // nome amigável: prop 1 já vem limpa ("Material::vermelho" → "vermelho")
+        val nomeAmigavel = (mat.props.getOrNull(1) as? String) ?: mat.nome
+        var r = 1f; var g = 1f; var b = 1f; var a = 1f
+        val p70 = mat.filho("Properties70")
+        if (p70 != null) {
+            for (p in p70.filhos) {
+                if (p.nome != "P" || p.props.isEmpty()) continue
+                when (p.propString(0)) {
+                    "DiffuseColor" -> {
+                        if (p.props.size >= 7) {
+                            r = valor(p, 4); g = valor(p, 5); b = valor(p, 6)
+                        }
+                    }
+                    "Opacity" -> {
+                        if (p.props.size >= 5) a = valor(p, 4)
+                    }
+                }
+            }
+        }
+        var temTexBase = false
+        var texPath = ""
+        if (video != null) {
+            val nome = video.propString(1)
+            val content = video.props.filterIsInstance<ByteArray>().firstOrNull()
+            if (content != null && content.isNotEmpty()) {
+                // bytes embutidos: hash vira o asset (conversão .KIMG na ETAPA C)
+                val sha1 = AssetLayout.sha1Hex(content)
+                temTexBase = true
+                texPath = "${AssetLayout.DIR_TEXTURAS}/$sha1.kimg"
+                // guarda os bytes para o ModelImporter coletar (acesso via nome)
+                texturasEmbutidas[sha1] = TexturaImportada("image/png", content, nome)
+            } else {
+                KenkernLog.w(
+                    TAG,
+                    "material '${mat.nome}': textura externa '$nome' sem Content embutido — " +
+                        "cor sólida nesta fase (a ETAPA C resolve texturas externas)"
+                )
+            }
+        }
+        return KernMaterial(
+            nomeAmigavel, r.coerceIn(0f, 1f), g.coerceIn(0f, 1f), b.coerceIn(0f, 1f), a.coerceIn(0f, 1f),
+            0f, 1f, temTexBase, false, false, texPath, ""
+        )
+    }
+
+    /** Texturas embutidas em Videos (sha1 → bytes), coletadas pelo ModelImporter. */
+    val texturasEmbutidas = LinkedHashMap<String, TexturaImportada>()
 
     /** Mundo do Model = mundo(pai) × TRS local × TRS geométrico (com memo + ciclo). */
     private fun mundoDoModelo(

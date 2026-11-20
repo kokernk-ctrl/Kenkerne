@@ -362,13 +362,44 @@ class Diagnostico(private val appContext: Context) {
             true
         }
         if (!asciiOk) {
-            c.falhou("FBX ASCII NÃO gerou erro claro")
+            c.falhou("FBX ASCII sem Objects NÃO gerou erro claro")
+            return
+        }
+
+        // 4) FBX ASCII COMPLETO (ETAPA B.2): mesmo quad do binário, escrito em texto
+        val asciiQuad = try {
+            FbxImporter.importar(FbxAmostras.quadAsciiFbx())
+        } catch (e: Exception) {
+            c.falhou("FBX ASCII completo: ${e.message}")
+            return
+        }
+        if (asciiQuad.mesh.vertexCount != 6 || asciiQuad.mesh.indices.size != 6) {
+            c.falhou(
+                "FBX ASCII completo: ${asciiQuad.mesh.vertexCount} vértices / " +
+                    "${asciiQuad.mesh.indices.size} índices (esperado 6/6)"
+            )
+            return
+        }
+
+        // 5) FBX ASCII com MATERIAL (ETAPA B.3): tabela + grupo + cor do DiffuseColor
+        val asciiMat = try {
+            FbxImporter.importar(FbxAmostras.quadAsciiComMaterialFbx())
+        } catch (e: Exception) {
+            c.falhou("FBX ASCII com material: ${e.message}")
+            return
+        }
+        if (asciiMat.mesh.materiais.size != 1 || asciiMat.mesh.gruposMaterial.size != 1) {
+            c.falhou(
+                "FBX ASCII material: ${asciiMat.mesh.materiais.size} materiais / " +
+                    "${asciiMat.mesh.gruposMaterial.size} grupos (esperado 1/1)"
+            )
             return
         }
 
         c.aprovado(
             "FBX quad + cubo compartilhado (merge 2 instâncias, TRS em graus) importados, " +
-                "integridade OK · " + r2.report.resumo() + " · erros claros OK"
+                "integridade OK · " + r2.report.resumo() + " · erros claros OK · " +
+                "FBX ASCII (B.2) quad 6/6 + material (B.3) OK"
         )
     }
 

@@ -19,7 +19,11 @@ object KernReader {
         buffer.get(magic)
         require(String(magic, Charsets.US_ASCII) == KernFormat.MAGIC) { "Arquivo KERN inválido: magic incorreto" }
         val version = buffer.short
-        require(version == KernFormat.VERSION) { "Versão KERN não suportada: $version" }
+        // FIX ETAPA B: v1 (sem materiais) e v2 (com materiais opcionais) são lidos;
+        // versão 3+ = erro claro (não silêncio).
+        require(version == KernFormat.VERSION || version == 1.toShort()) {
+            "Versão KERN não suportada: $version (suportadas: 1, ${KernFormat.VERSION})"
+        }
         val flags = buffer.short
 
         val boundsMin = Vec3(buffer.float, buffer.float, buffer.float)
@@ -113,10 +117,52 @@ object KernReader {
             buffer.get(clusters)
         }
 
+        // v2 (ETAPA B.3): grupos de material + tabela de materiais (opcionais)
+        var gruposMaterial = emptyList<KernGrupoMaterial>()
+        var materiais = emptyList<KernMaterial>()
+        val hasMaterials = version >= 2 &&
+            (flags.toInt() and KernFormat.FLAG_HAS_MATERIALS.toInt()) != 0
+        if (hasMaterials && buffer.remaining() >= 4) {
+            val gCount = buffer.short.toInt() and 0xFFFF
+            require(gCount <= 65535) { "tabela de grupos de material implausível ($gCount)" }
+            val gs = ArrayList<KernGrupoMaterial>(gCount)
+            for (g in 0 until gCount) {
+                gs.add(KernGrupoMaterial(buffer.int, buffer.int, buffer.int))
+            }
+            val mCount = buffer.short.toInt() and 0xFFFF
+            val ms = ArrayList<KernMaterial>(mCount)
+            for (m in 0 until mCount) {
+                val nomeLen = buffer.get().toInt() and 0xFF
+                val nomeBytes = ByteArray(nomeLen)
+                buffer.get(nomeBytes)
+                val r = (buffer.get().toInt() and 0xFF) / 255f
+                val gg = (buffer.get().toInt() and 0xFF) / 255f
+                val b = (buffer.get().toInt() and 0xFF) / 255f
+                val a = (buffer.get().toInt() and 0xFF) / 255f
+                val metal = buffer.float
+                val rough = buffer.float
+                val fl = buffer.get().toInt()
+                val tbLen = buffer.get().toInt() and 0xFF
+                val tbBytes = ByteArray(tbLen); buffer.get(tbBytes)
+                val tnLen = buffer.get().toInt() and 0xFF
+                val tnBytes = ByteArray(tnLen); buffer.get(tnBytes)
+                ms.add(
+                    KernMaterial(
+                        String(nomeBytes, Charsets.UTF_8), r, gg, b, a, metal, rough,
+                        (fl and 1) != 0, (fl and 2) != 0, (fl and 4) != 0,
+                        String(tbBytes, Charsets.UTF_8), String(tnBytes, Charsets.UTF_8)
+                    )
+                )
+            }
+            gruposMaterial = gs
+            materiais = ms
+        }
+
         return KernMesh(
             positions, normals, uvs, tangents, indices,
             boundsMin, boundsMax, lods,
-            boneIndices, boneWeights, bones, clusters
+            boneIndices, boneWeights, bones, clusters,
+            gruposMaterial, materiais
         )
     }
 

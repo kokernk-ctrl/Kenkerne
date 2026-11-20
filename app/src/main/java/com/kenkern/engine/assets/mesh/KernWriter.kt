@@ -20,6 +20,8 @@ object KernWriter {
         val tangents = ArrayList<Float>()
         val indices = ArrayList<Int>()
         val lods = ArrayList<KernLod>()
+        val gruposMaterial = ArrayList<KernGrupoMaterial>() // v2 (B.3)
+        val materiais = ArrayList<KernMaterial>()           // v2 (B.3)
         var boneIndices: ByteArray? = null   // 4 por vértice
         var boneWeights: ByteArray? = null   // 4 por vértice
         var bones: List<KernBone> = emptyList()
@@ -48,6 +50,16 @@ object KernWriter {
             return this
         }
 
+        fun materialGroup(indexOffset: Int, indexCount: Int, materialIndex: Int): Builder {
+            gruposMaterial.add(KernGrupoMaterial(indexOffset, indexCount, materialIndex))
+            return this
+        }
+
+        fun material(m: KernMaterial): Builder {
+            materiais.add(m)
+            return this
+        }
+
         fun build(): KernMesh {
             val vertexCount = positions.size / 3
             val min = Vec3(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE)
@@ -64,6 +76,10 @@ object KernWriter {
             } else {
                 lods.toList()
             }
+            // Material default para grupos sem material explícito: grupos definidos
+            // sem nenhum material na tabela referenciam o índice 0 — cria um vazio
+            // (cor sólida) para não quebrar o leitor de range.
+            val mats = materiais.toList()
             return KernMesh(
                 positions.toFloatArray(),
                 normals.toFloatArray(),
@@ -75,7 +91,9 @@ object KernWriter {
                 boneIndices ?: ByteArray(vertexCount * 4),
                 boneWeights ?: ByteArray(vertexCount * 4),
                 bones,
-                clusters
+                clusters,
+                gruposMaterial.toList(),
+                mats
             )
         }
     }
@@ -83,6 +101,35 @@ object KernWriter {
     fun write(mesh: KernMesh): ByteArray {
         val indexType =
             if (mesh.vertexCount <= 65535) KernFormat.INDEX_TYPE_U16 else KernFormat.INDEX_TYPE_U32
+
+        val temMateriais = mesh.materiais.isNotEmpty() || mesh.gruposMaterial.isNotEmpty()
+        val flags: Short =
+            ((if (mesh.clusters != null && mesh.clusters!!.isNotEmpty()) KernFormat.FLAG_HAS_CLUSTERS else 0) +
+                (if (temMateriais) KernFormat.FLAG_HAS_MATERIALS else 0)).toShort()
+
+        // v2 (B.3): grupos/materiais definidos UMA vez (tamanho + escrita usam os mesmos)
+        val gruposOut = if (temMateriais) {
+            mesh.gruposMaterial.ifEmpty {
+                if (mesh.materiais.isNotEmpty()) {
+                    listOf(KernGrupoMaterial(0, mesh.indices.size, 0))
+                } else emptyList()
+            }
+        } else emptyList()
+        val matsOut = if (temMateriais) mesh.materiais.ifEmpty { listOf(materiaVazia()) } else emptyList()
+
+        var materialBlockSize = 0
+        if (temMateriais) {
+            materialBlockSize += 2 + gruposOut.size * 12
+            materialBlockSize += 2
+            for (m in matsOut) {
+                materialBlockSize += 1 + m.nome.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
+                materialBlockSize += 4 // baseColor RGBA u8
+                materialBlockSize += 4 + 4 // metallic/roughness f32
+                materialBlockSize += 1 // flags
+                materialBlockSize += 1 + m.texturaBasePath.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
+                materialBlockSize += 1 + m.texturaNormalPath.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
+            }
+        }
 
         val vertexBlockSize = mesh.vertexCount * KernFormat.VERTEX_SIZE
         val lodTableSize = mesh.lods.size * KernFormat.LOD_ENTRY_SIZE
@@ -97,7 +144,7 @@ object KernWriter {
 
         val clusterSize: Long = mesh.clusters?.size?.toLong() ?: 0L
         val staticSize: Long =
-            (KernFormat.HEADER_SIZE + vertexBlockSize + lodTableSize + indexBlockSize + boneBlockSize).toLong()
+            (KernFormat.HEADER_SIZE + vertexBlockSize + lodTableSize + indexBlockSize + boneBlockSize + materialBlockSize).toLong()
         val clusterOffset: Long = if (clusterSize > 0) staticSize else 0L
         val totalSize: Long = if (clusterSize > 0) staticSize + clusterSize else staticSize
 
@@ -106,7 +153,7 @@ object KernWriter {
         // Header (80 bytes)
         buffer.put(KernFormat.MAGIC.toByteArray(Charsets.US_ASCII))
         buffer.putShort(KernFormat.VERSION)
-        buffer.putShort(if (clusterSize > 0) KernFormat.FLAG_HAS_CLUSTERS else 0.toShort())
+        buffer.putShort(flags)
         buffer.putFloat(mesh.boundsMin.x); buffer.putFloat(mesh.boundsMin.y); buffer.putFloat(mesh.boundsMin.z)
         buffer.putFloat(mesh.boundsMax.x); buffer.putFloat(mesh.boundsMax.y); buffer.putFloat(mesh.boundsMax.z)
         buffer.putInt(mesh.vertexCount)
@@ -180,8 +227,45 @@ object KernWriter {
             if (clusterSize > 0) buffer.put(clusters)
         }
 
+        // v2 (ETAPA B.3): grupos de material por submalha + tabela de materiais
+        if (temMateriais) {
+            buffer.putShort(gruposOut.size.toShort())
+            for (g in gruposOut) {
+                buffer.putInt(g.indexOffset)
+                buffer.putInt(g.indexCount)
+                buffer.putInt(g.materialIndex)
+            }
+            buffer.putShort(matsOut.size.toShort())
+            for (m in matsOut) {
+                val nomeBytes = m.nome.toByteArray(Charsets.UTF_8)
+                buffer.put(nomeBytes.size.coerceAtMost(255).toByte())
+                buffer.put(nomeBytes.take(255).toByteArray())
+                buffer.put((m.baseColorR.coerceIn(0f, 1f) * 255f).toInt().toByte())
+                buffer.put((m.baseColorG.coerceIn(0f, 1f) * 255f).toInt().toByte())
+                buffer.put((m.baseColorB.coerceIn(0f, 1f) * 255f).toInt().toByte())
+                buffer.put((m.baseColorA.coerceIn(0f, 1f) * 255f).toInt().toByte())
+                buffer.putFloat(m.metallic)
+                buffer.putFloat(m.roughness)
+                var fl = 0
+                if (m.temTexturaBase) fl = fl or 1
+                if (m.temTexturaNormal) fl = fl or 2
+                if (m.doubleSided) fl = fl or 4
+                buffer.put(fl.toByte())
+                val tb = m.texturaBasePath.toByteArray(Charsets.UTF_8)
+                buffer.put(tb.size.coerceAtMost(255).toByte())
+                buffer.put(tb.take(255).toByteArray())
+                val tn = m.texturaNormalPath.toByteArray(Charsets.UTF_8)
+                buffer.put(tn.size.coerceAtMost(255).toByte())
+                buffer.put(tn.take(255).toByteArray())
+            }
+        }
+
         return buffer.array()
     }
+
+    private fun materiaVazia(): KernMaterial = KernMaterial(
+        "", 1f, 1f, 1f, 1f, 0f, 1f, false, false, false, "", ""
+    )
 
     internal fun halfFromFloat(value: Float): Short {
         // Conversão float -> half (binary16), sem depender de android.util.Half.

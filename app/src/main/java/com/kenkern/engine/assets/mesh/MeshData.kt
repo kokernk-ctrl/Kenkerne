@@ -20,6 +20,8 @@ class KernBone(
 /**
  * Malha no formato KERN completo: geometria + LODs + dados reservados de
  * skinning/esqueleto + bloco opcional de clusters (futura KENA).
+ * v2 (ETAPA B): + tabela de MATERIAIS e GRUPOS por submalha (ambos opcionais;
+ * malha sem material = listas vazias — o render usa a cor padrão).
  */
 class KernMesh(
     val positions: FloatArray,      // xyz por vértice (dequantizado)
@@ -33,7 +35,9 @@ class KernMesh(
     val boneIndices: ByteArray,     // 4 por vértice (reservado)
     val boneWeights: ByteArray,     // 4 por vértice (reservado)
     val bones: List<KernBone>,      // esqueleto (reservado; vazio nesta fase)
-    val clusters: ByteArray?        // bloco KENA (reservado)
+    val clusters: ByteArray?,       // bloco KENA (reservado)
+    val gruposMaterial: List<KernGrupoMaterial> = emptyList(), // v2 (B.3)
+    val materiais: List<KernMaterial> = emptyList()            // v2 (B.3)
 ) {
     val vertexCount: Int get() = positions.size / 3
 }

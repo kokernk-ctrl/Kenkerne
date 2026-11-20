@@ -140,6 +140,63 @@ object GltfAmostras {
     }
 
     /**
+     * QUAD com MATERIAL (ETAPA B.3): GLB com material (baseColorFactor 0.8/0.2/0.1,
+     * metallic 0.5, roughness 0.4) + baseColorTexture apontando para uma imagem
+     * EMBUTIDA no chunk BIN (bytes de "PNG" sintético — não decodifica nada).
+     * Dois primitivos com o MESMO material (dedup de materiais deve deixar 1).
+     */
+    fun quadComMaterialGlb(): ByteArray {
+        val pos = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f, 0f, 1f, 0f)
+        val idx = shortArrayOf(0, 1, 2, 0, 2, 3)
+        val pngFalso = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4)
+        val bin = ByteArrayOutputStream()
+        bin.write(vetorF32(pos))
+        bin.write(vetorU16(idx))
+        val posOff = 0
+        val idxOff = pos.size * 4
+        val imgOff = idxOff + idx.size * 2
+        val dados = bin.size() + pngFalso.size // total depois de escrever a imagem
+        bin.write(pngFalso)
+        val bytes = bin.toByteArray()
+        val json = """
+        {
+          "asset": {"version": "2.0"},
+          "materials": [{
+            "name": "madeira",
+            "pbrMetallicRoughness": {
+              "baseColorFactor": [0.8, 0.2, 0.1, 1.0],
+              "metallicFactor": 0.5,
+              "roughnessFactor": 0.4,
+              "baseColorTexture": {"index": 0}
+            },
+            "doubleSided": true
+          }],
+          "textures": [{"source": 0}],
+          "images": [{"bufferView": 3, "mimeType": "image/png"}],
+          "buffers": [{"byteLength": $dados}],
+          "bufferViews": [
+            {"buffer": 0, "byteOffset": $posOff, "byteLength": ${pos.size * 4}},
+            {"buffer": 0, "byteOffset": $idxOff, "byteLength": ${idx.size * 2}},
+            {"buffer": 0, "byteOffset": 0, "byteLength": 0},
+            {"buffer": 0, "byteOffset": $imgOff, "byteLength": ${pngFalso.size}}
+          ],
+          "accessors": [
+            {"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [0,0,0], "max": [1,1,0]},
+            {"bufferView": 1, "componentType": 5123, "count": 6, "type": "SCALAR"}
+          ],
+          "meshes": [{"primitives": [
+            {"attributes": {"POSITION": 0}, "indices": 1, "material": 0, "mode": 4},
+            {"attributes": {"POSITION": 0}, "indices": 1, "material": 0, "mode": 4}
+          ]}],
+          "nodes": [{"mesh": 0}],
+          "scenes": [{"nodes": [0]}],
+          "scene": 0
+        }
+        """.trimIndent()
+        return GltfImporter.empacotarGlb(json, bytes)
+    }
+
+    /**
      * CUBO em 2 NODES com transform (node 0 com quaternion+escala no mesh;
      * node 1 filho com TRANSLATION duplicando a mesma mesh) — valida matriz
      * TRS/quaternion, herança de pai e MERGE de primitivas (2 instâncias).

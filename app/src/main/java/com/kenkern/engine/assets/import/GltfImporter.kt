@@ -1,5 +1,6 @@
 package com.kenkern.engine.assets.import
 
+import com.kenkern.engine.assets.mesh.KernMaterial
 import com.kenkern.engine.assets.mesh.KernMesh
 import com.kenkern.engine.assets.mesh.KernWriter
 import com.kenkern.engine.core.math.Mat4
@@ -54,11 +55,26 @@ class ImportReport(
         )
 }
 
-/** Resultado do importador: malha .KERN pronta + bytes + meta. */
+/** Resultado do importador: malha .KERN pronta + bytes + meta + avisos + texturas. */
 class ImportResult(
     val mesh: KernMesh,
     val bytesKern: ByteArray,
-    val report: ImportReport
+    val report: ImportReport,
+    /** Avisos acumulados durante a importação (mostrados no ImportReport da UI). */
+    val avisos: List<String> = emptyList(),
+    /** Imagens de textura referenciadas pelos materiais (ETAPA B.3/C.4). */
+    val texturas: List<TexturaImportada> = emptyList()
+)
+
+/**
+ * TEXTURA extraída do arquivo de origem (ETAPA B.3/C.4): bytes originais
+ * (PNG/JPEG) + tipo de arquivo. A conversão para .KIMG (ETC2) acontece na
+ * ETAPA C, no aparelho, com hash de conteúdo como nome do asset.
+ */
+class TexturaImportada(
+    val mimeType: String,
+    val bytes: ByteArray,
+    val nomeOrigem: String
 )
 
 /**
@@ -96,24 +112,27 @@ object GltfImporter {
     // ---------------------------------------------------------------- API
 
     /** Importa um arquivo glTF/GLB completo e devolve a malha .KERN + meta. */
-    fun importar(bytes: ByteArray): ImportResult = importar(bytes, null, "modelo.gltf")
+    fun importar(bytes: ByteArray): ImportResult = importar(bytes, null, "modelo.gltf", false)
 
     /**
      * Importação com RESOLVEDOR DE ARQUIVOS EXTERNOS (ETAPA A/B.1): buffers
      * (.bin) e imagens referenciados por URI relativa são buscados via
      * [resolutor] (pasta SAF ou conteúdo de .zip). Sem resolver, URI externa
      * continua dando erro CLARO (comportamento anterior, F2.7).
+     * [manterTangentes] (B.6): lê TANGENT mesmo sem normal map (senão tangentes
+     * ficam zeradas — não há uso para elas sem normal map no shader básico).
      */
     fun importar(
         bytes: ByteArray,
         resolutor: ResolvedorExterno?,
-        nomeArquivo: String = "modelo.gltf"
+        nomeArquivo: String = "modelo.gltf",
+        manterTangentes: Boolean = false
     ): ImportResult {
         if (bytes.isEmpty()) throw GltfImportException("arquivo vazio")
         val (json, binario) = separarJsonEBinario(bytes)
         val raiz = parseJson(json, bytes)
         val buffers = lerBuffers(raiz, binario, resolutor, nomeArquivo)
-        return montarMalha(raiz, buffers, bytes.size)
+        return montarMalha(raiz, buffers, bytes.size, resolutor, nomeArquivo, manterTangentes)
     }
 
     // ---------------------------------------------------------------- container
@@ -468,12 +487,32 @@ object GltfImporter {
 
     // ---------------------------------------------------------------- cena → malha
 
+    /** Contexto de materiais/texturas da importação (ETAPA B.3). */
+    private class ContextoMaterial(
+        val raiz: JSONObject,
+        val buffers: List<ByteArray>,
+        val resolutor: ResolvedorExterno?,
+        val nomeArquivo: String,
+        val manterTangentes: Boolean
+    ) {
+        val materiaisTabela = ArrayList<KernMaterial>()       // dedup por conteúdo
+        val mapaJsonParaIndice = HashMap<Int, Int>()          // índice JSON → índice na tabela
+        val texturas = ArrayList<TexturaImportada>()
+        val texturasPorHash = HashMap<String, Int>()          // sha1 → índice em texturas
+        val avisos = ArrayList<String>(2)
+        var algumNormalMap = false
+    }
+
     private fun montarMalha(
         raiz: JSONObject,
         buffers: List<ByteArray>,
-        bytesOrigem: Int
+        bytesOrigem: Int,
+        resolutor: ResolvedorExterno?,
+        nomeArquivo: String,
+        manterTangentes: Boolean
     ): ImportResult {
         val builder = KernWriter.Builder()
+        val ctx = ContextoMaterial(raiz, buffers, resolutor, nomeArquivo, manterTangentes)
         var primitivas = 0
         var nodesComMesh = 0
         var normaisCalculadas = false
@@ -488,7 +527,7 @@ object GltfImporter {
         val identidade = Mat4().setIdentity()
         for (i in 0 until raizesDaCena.length()) {
             val r = percorrerNode(
-                raiz, nodes, raizesDaCena.getInt(i), identidade, meshes, buffers, builder
+                raiz, nodes, raizesDaCena.getInt(i), identidade, meshes, buffers, builder, ctx
             )
             primitivas += r.second
             nodesComMesh += r.third
@@ -498,6 +537,9 @@ object GltfImporter {
         if (primitivas == 0 || builder.positions.isEmpty()) {
             throw GltfImportException("cena sem geometria importável (0 primitivas TRIANGLES)")
         }
+
+        // Tabela de materiais dedupada entra no .KERN v2 (B.3)
+        for (m in ctx.materiaisTabela) builder.material(m)
 
         val malha = builder.build()
         val bytesKern = KernWriter.write(malha)
@@ -509,9 +551,11 @@ object GltfImporter {
             lods = malha.lods.size,
             primitivas = primitivas,
             nodesComMesh = nodesComMesh,
-            normaisCalculadas = normaisCalculadas
+            normaisCalculadas = normaisCalculadas,
+            materialCount = ctx.materiaisTabela.size,
+            textureCount = ctx.texturas.size
         )
-        return ImportResult(malha, bytesKern, report)
+        return ImportResult(malha, bytesKern, report, ctx.avisos, ctx.texturas)
     }
 
     /** Percorre o node e seus filhos; devolve (percorridos, primitivas, comMesh, calculouNormais). */
@@ -522,7 +566,8 @@ object GltfImporter {
         pai: Mat4,
         meshes: org.json.JSONArray,
         buffers: List<ByteArray>,
-        builder: KernWriter.Builder
+        builder: KernWriter.Builder,
+        ctx: ContextoMaterial
     ): Quad {
         if (indice < 0 || indice >= nodes.length()) {
             throw GltfImportException("node $indice não existe (${nodes.length()} definidos)")
@@ -544,7 +589,7 @@ object GltfImporter {
             val prims = mesh.optJSONArray("primitives")
                 ?: throw GltfImportException("mesh $meshIndex sem 'primitives'")
             for (p in 0 until prims.length()) {
-                val calculou = importarPrimitiva(raiz, buffers, builder, prims.getJSONObject(p), meshIndex, p, mundo)
+                val calculou = importarPrimitiva(ctx, builder, prims.getJSONObject(p), meshIndex, p, mundo)
                 primitivas++
                 calculouNormais = calculouNormais || calculou
             }
@@ -554,7 +599,7 @@ object GltfImporter {
         var percorridos = 1
         if (filhos != null) {
             for (i in 0 until filhos.length()) {
-                val r = percorrerNode(raiz, nodes, filhos.getInt(i), mundo, meshes, buffers, builder)
+                val r = percorrerNode(raiz, nodes, filhos.getInt(i), mundo, meshes, buffers, builder, ctx)
                 percorridos += r.first
                 primitivas += r.second
                 comMesh += r.third
@@ -568,8 +613,7 @@ object GltfImporter {
 
     /** Importa UMA primitiva TRIANGLES com transform de mundo aplicado. Retorna true se calculou as normais. */
     private fun importarPrimitiva(
-        raiz: JSONObject,
-        buffers: List<ByteArray>,
+        ctx: ContextoMaterial,
         builder: KernWriter.Builder,
         prim: JSONObject,
         meshIndex: Int,
@@ -587,7 +631,7 @@ object GltfImporter {
         if (posIndex < 0) {
             throw GltfImportException("primitiva $primIndex da mesh $meshIndex sem POSITION (obrigatório)")
         }
-        val pos = lerAcessorFloat(raiz, buffers, posIndex)
+        val pos = lerAcessorFloat(ctx.raiz, ctx.buffers, posIndex)
         if (pos.isEmpty() || pos.size % 3 != 0) {
             throw GltfImportException(
                 "POSITION da primitiva $primIndex (mesh $meshIndex) tem ${pos.size} floats — deve ser múltiplo de 3"
@@ -595,20 +639,38 @@ object GltfImporter {
         }
         val verts = pos.size / 3
 
+        // MATERIAL (B.3): resolve/cria na tabela; materialIndex = -1 = sem material.
+        val materialIdx = if (prim.has("material")) resolverMaterial(ctx, prim.getInt("material")) else -1
+        val temNormalMap = materialIdx >= 0 && ctx.materiaisTabela[materialIdx].temTexturaNormal
+
         val normIndex = attrs.optInt("NORMAL", -1)
         val normais: FloatArray? =
             if (normIndex >= 0) {
-                val n = lerAcessorFloat(raiz, buffers, normIndex)
+                val n = lerAcessorFloat(ctx.raiz, ctx.buffers, normIndex)
                 if (n.size != pos.size) {
                     throw GltfImportException("NORMAL (${n.size} floats) diverge de POSITION (${pos.size})")
                 }
                 n
             } else null
 
+        // TANGENTES (B.6): só têm uso com normal map (ou opção de manter);
+        // caso contrário ficam ZERADAS no .KERN (não desperdiça compressão).
+        val tangIndex = attrs.optInt("TANGENT", -1)
+        val tangentes: FloatArray? =
+            if (tangIndex >= 0 && (temNormalMap || ctx.manterTangentes)) {
+                val t = lerAcessorFloat(ctx.raiz, ctx.buffers, tangIndex)
+                if (t.size != verts * 4 && t.size != verts * 3) {
+                    throw GltfImportException(
+                        "TANGENT (${t.size} floats) diverge de $verts vértices (esperado 3 ou 4 componentes)"
+                    )
+                }
+                t
+            } else null
+
         val uvIndex = attrs.optInt("TEXCOORD_0", -1)
         val uvs: FloatArray =
             if (uvIndex >= 0) {
-                val uv = lerAcessorFloat(raiz, buffers, uvIndex)
+                val uv = lerAcessorFloat(ctx.raiz, ctx.buffers, uvIndex)
                 if (uv.size != verts * 2) {
                     throw GltfImportException("TEXCOORD_0 (${uv.size} floats) diverge de $verts vértices")
                 }
@@ -616,7 +678,7 @@ object GltfImporter {
             } else FloatArray(verts * 2)
 
         val indicesBrutos: IntArray = if (prim.has("indices")) {
-            lerAcessorIndices(raiz, buffers, prim.getInt("indices"))
+            lerAcessorIndices(ctx.raiz, ctx.buffers, prim.getInt("indices"))
         } else {
             IntArray(verts) { it }
         }
@@ -634,6 +696,7 @@ object GltfImporter {
         }
 
         val base = builder.positions.size / 3
+        val grupoOffset = builder.indices.size // início do grupo de material (B.3)
 
         // Vértices com o transform de mundo aplicado.
         for (v in 0 until verts) {
@@ -646,7 +709,19 @@ object GltfImporter {
                 ny = aplicarLinha(mundo, 1, normais, v)
                 nz = aplicarLinha(mundo, 2, normais, v)
             }
-            builder.vertex(wx, wy, wz, nx, ny, nz, uvs[v * 2], uvs[v * 2 + 1], 1f, 0f, 0f)
+            var tx = 0f; var ty = 0f; var tz = 0f
+            if (tangentes != null) {
+                tx = tangentes[v * 3]
+                ty = tangentes[v * 3 + 1]
+                tz = tangentes[v * 3 + 2]
+                // linear do mundo + renormalização (mesma regra da normal)
+                val rtx = mundo.m[0] * tx + mundo.m[4] * ty + mundo.m[8] * tz
+                val rty = mundo.m[1] * tx + mundo.m[5] * ty + mundo.m[9] * tz
+                val rtz = mundo.m[2] * tx + mundo.m[6] * ty + mundo.m[10] * tz
+                val lenT = kotlin.math.sqrt(rtx * rtx + rty * rty + rtz * rtz)
+                if (lenT > 1e-8f) { tx = rtx / lenT; ty = rty / lenT; tz = rtz / lenT }
+            }
+            builder.vertex(wx, wy, wz, nx, ny, nz, uvs[v * 2], uvs[v * 2 + 1], tx, ty, tz)
         }
 
         // Normais de ORIGEM: renormaliza após o transform (mat3 com escala).
@@ -678,7 +753,140 @@ object GltfImporter {
                 indicesBrutos[i + 2] + base
             )
         }
+        // GRUPO DE MATERIAL (B.3): intervalo de índices desta primitiva + material.
+        if (materialIdx >= 0) {
+            builder.materialGroup(grupoOffset, builder.indices.size - grupoOffset, materialIdx)
+        }
         return calculouNormais
+    }
+
+    // ---------------------------------------------------------------- materiais (B.3)
+
+    /**
+     * Resolve o material JSON (índice) para a tabela DEDUPADA do .KERN; cria a
+     * entrada na 1ª aparição e coleta os bytes das texturas (baseColor/normal).
+     * Textura AUSENTE (arquivo faltando) NÃO derruba a importação: material
+     * vira cor sólida + AVISO (nunca silêncio, nunca crash).
+     */
+    private fun resolverMaterial(ctx: ContextoMaterial, indiceJson: Int): Int {
+        ctx.mapaJsonParaIndice[indiceJson]?.let { return it }
+        val materiais = ctx.raiz.optJSONArray("materials")
+        if (materiais == null || indiceJson < 0 || indiceJson >= materiais.length()) {
+            ctx.avisos.add("material $indiceJson não existe (tabela tem ${materiais?.length() ?: 0}) — usando cor sólida")
+            return -1
+        }
+        val m = materiais.getJSONObject(indiceJson)
+        val pbr = m.optJSONObject("pbrMetallicRoughness")
+        var r = 1f; var g = 1f; var b = 1f; var a = 1f
+        pbr?.optJSONArray("baseColorFactor")?.let { c ->
+            if (c.length() >= 3) {
+                r = c.getDouble(0).toFloat(); g = c.getDouble(1).toFloat(); b = c.getDouble(2).toFloat()
+                if (c.length() >= 4) a = c.getDouble(3).toFloat()
+            }
+        }
+        val metallic = pbr?.optDouble("metallicFactor", 0.0)?.toFloat() ?: 0f
+        val roughness = pbr?.optDouble("roughnessFactor", 1.0)?.toFloat() ?: 1f
+        val nome = m.optString("name", "material$indiceJson")
+        val doubleSided = m.optBoolean("doubleSided", false)
+
+        var texBasePath = ""
+        var temTexBase = false
+        var texNormalPath = ""
+        var temTexNormal = false
+
+        pbr?.optJSONObject("baseColorTexture")?.let { t ->
+            val caminho = caminhoTextura(ctx, t.optInt("index", -1), "baseColor")
+            if (caminho != null) { texBasePath = caminho; temTexBase = true }
+        }
+        m.optJSONObject("normalTexture")?.let { t ->
+            val caminho = caminhoTextura(ctx, t.optInt("index", -1), "normal")
+            if (caminho != null) { texNormalPath = caminho; temTexNormal = true; ctx.algumNormalMap = true }
+        }
+
+        val kern = KernMaterial(
+            nome, r.coerceIn(0f, 1f), g.coerceIn(0f, 1f), b.coerceIn(0f, 1f), a.coerceIn(0f, 1f),
+            metallic.coerceIn(0f, 1f), roughness.coerceIn(0f, 1f),
+            temTexBase, temTexNormal, doubleSided, texBasePath, texNormalPath
+        )
+        // DEDUP de materiais iguais (B.4): conteúdo idêntico = MESMA entrada.
+        val existente = ctx.materiaisTabela.indexOfFirst { it == kern }
+        val indiceTabela = if (existente >= 0) existente else {
+            ctx.materiaisTabela.add(kern)
+            ctx.materiaisTabela.size - 1
+        }
+        ctx.mapaJsonParaIndice[indiceJson] = indiceTabela
+        return indiceTabela
+    }
+
+    /**
+     * Caminho FINAL do asset de textura ("assets/textures/<sha1>.kimg") a partir
+     * do índice na tabela "textures" do glTF; os bytes originais vão para
+     * [ctx.texturas] (dedup por hash — C.5).
+     */
+    private fun caminhoTextura(ctx: ContextoMaterial, indiceTextura: Int, uso: String): String? {
+        val textures = ctx.raiz.optJSONArray("textures")
+        if (textures == null || indiceTextura < 0 || indiceTextura >= textures.length()) {
+            ctx.avisos.add("textura $uso ($indiceTextura) não existe — material vira cor sólida")
+            return null
+        }
+        val t = textures.getJSONObject(indiceTextura)
+        val source = t.optInt("source", -1)
+        val images = ctx.raiz.optJSONArray("images")
+        if (source < 0 || images == null || source >= images.length()) {
+            ctx.avisos.add("textura $uso $indiceTextura sem imagem de origem — cor sólida")
+            return null
+        }
+        val img = images.getJSONObject(source)
+        val mimeType = img.optString("mimeType", checarMimeTypePorNome(img.optString("uri", "")))
+        val bytes: ByteArray = try {
+            when {
+                img.has("bufferView") -> {
+                    // embutida no GLB: recorta do buffer
+                    val views = ctx.raiz.getJSONArray("bufferViews")
+                    val view = views.getJSONObject(img.getInt("bufferView"))
+                    val buf = ctx.buffers[view.optInt("buffer", 0)]
+                    val off = view.optInt("byteOffset", 0)
+                    val len = view.optInt("byteLength", -1)
+                    if (len < 0 || off < 0 || off + len > buf.size) {
+                        throw GltfImportException("bufferView da imagem $source estoura o buffer")
+                    }
+                    buf.copyOfRange(off, off + len)
+                }
+                img.has("uri") -> {
+                    val uri = img.getString("uri")
+                    if (uri.startsWith("data:")) {
+                        val virgula = uri.indexOf(',')
+                        if (virgula < 0) throw GltfImportException("data URI da imagem $source sem ','")
+                        java.util.Base64.getMimeDecoder().decode(uri.substring(virgula + 1))
+                    } else {
+                        val viaResolver = ctx.resolutor?.bytes(uri)
+                            ?: throw GltfImportException("imagem '$uri' não achada (importe por Pasta/.zip)")
+                        viaResolver
+                    }
+                }
+                else -> throw GltfImportException("imagem $source sem bufferView nem uri")
+            }
+        } catch (e: Exception) {
+            // Textura faltando = degradação visível (aviso), não falha da importação.
+            ctx.avisos.add("textura $uso '$source' não pôde ser lida (${e.message ?: e.javaClass.simpleName}) — cor sólida")
+            return null
+        }
+        if (bytes.isEmpty()) {
+            ctx.avisos.add("textura $uso '$source' vazia — cor sólida")
+            return null
+        }
+        val sha1 = AssetLayout.sha1Hex(bytes)
+        if (sha1 !in ctx.texturasPorHash) {
+            ctx.texturasPorHash[sha1] = ctx.texturas.size
+            ctx.texturas.add(TexturaImportada(mimeType, bytes, img.optString("name", "$uso-$sha1")))
+        }
+        return "${AssetLayout.DIR_TEXTURAS}/$sha1.kimg"
+    }
+
+    private fun checarMimeTypePorNome(nome: String): String = when {
+        nome.endsWith(".png", true) -> "image/png"
+        nome.endsWith(".jpg", true) || nome.endsWith(".jpeg", true) -> "image/jpeg"
+        else -> "image/png"
     }
 
     private fun renormalizar(builder: KernWriter.Builder, base: Int, vertices: Int) {

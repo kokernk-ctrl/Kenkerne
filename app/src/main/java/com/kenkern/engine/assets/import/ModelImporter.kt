@@ -105,7 +105,9 @@ class ImportSummary(
     val aabbMax: FloatArray,
     val contemEsqueleto: Boolean,
     /** Escala do Nick sugerida pela opção "Ajustar ao tamanho" (1f = sem ajuste). */
-    val escalaSugerida: Float = 1f
+    val escalaSugerida: Float = 1f,
+    /** Texturas de origem coletadas (ETAPA C converte para .KIMG com esses bytes). */
+    val texturasExtraidas: List<TexturaImportada> = emptyList()
 ) {
     /** Razão origem/.KERN (ex.: 5.0 = 100 MB viraram 20 MB — meta do ROADMAP). */
     val razao: Float get() = if (bytesKern > 0) bytesOrigem / bytesKern.toFloat() else 0f
@@ -148,7 +150,12 @@ object ModelImporter {
 
     private const val TAG = "ModelImporter"
 
-    class Opcoes(val ajustarAoTamanho: Boolean = false, val alturaMeta: Float = 2f)
+    /** Opções da importação (B.6: manter tangentes mesmo sem normal map). */
+    class Opcoes(
+        val ajustarAoTamanho: Boolean = false,
+        val alturaMeta: Float = 2f,
+        val manterTangentes: Boolean = false
+    )
 
     /** Detecta o formato pela ASSINATURA (magic), nunca pela extensão sozinha. */
     fun detectarFormato(bytes: ByteArray): TipoFormato {
@@ -216,7 +223,9 @@ object ModelImporter {
             formato = detectarFormato(bytesOrigem)
             when (formato) {
                 TipoFormato.GLB, TipoFormato.GLTF_JSON ->
-                    resultado = GltfImporter.importar(bytesOrigem, resolutorExterno, nomeArquivo)
+                    resultado = GltfImporter.importar(
+                        bytesOrigem, resolutorExterno, nomeArquivo, opcoes.manterTangentes
+                    )
                 TipoFormato.ZIP -> {
                     val zip = ResolvedorZip.ler(bytesOrigem)
                     val nomeModelo = zip.entradas.keys.firstOrNull {
@@ -229,12 +238,12 @@ object ModelImporter {
                     resultado = GltfImporter.importar(
                         bytesModelo,
                         ResolvedorZip(zip.entradas, nomeModelo.substringBeforeLast('/')),
-                        nomeModelo
+                        nomeModelo,
+                        opcoes.manterTangentes
                     )
                     avisos.add("modelo importado de dentro do zip ('$nomeModelo')")
                 }
-                TipoFormato.FBX_BIN -> resultado = FbxImporter.importar(bytesOrigem)
-                TipoFormato.FBX_ASCII -> resultado = FbxImporter.importar(bytesOrigem)
+                TipoFormato.FBX_BIN, TipoFormato.FBX_ASCII -> resultado = FbxImporter.importar(bytesOrigem)
                 TipoFormato.DESCONHECIDO -> throw ImportException(
                     "formato não reconhecido pela assinatura de '$nomeArquivo' — use .glb, .gltf, .fbx ou um .zip com glTF dentro"
                 )
@@ -254,16 +263,26 @@ object ModelImporter {
         }
         medirPico()
 
+        // Avisos dos importadores (B.3/B.6: texturas faltando, camadas extras…)
+        avisos.addAll(resultado.avisos)
+
+        if (cancelado()) throw ImportException("importação cancelada pelo usuário")
+        onEtapa("triangulando: dedup + LODs")
+        // PÓS-PROCESSAMENTO (B.4/B.5): dedup de vértices + LODs (3 níveis)
+        val malhaFinal = PosProcessamento.aplicar(resultado.mesh)
+        val texturasFinais = resultado.texturas
+        medirPico()
+
         if (cancelado()) throw ImportException("importação cancelada pelo usuário")
         onEtapa("gravando .KERN")
-        val bytesKern = resultado.bytesKern
+        val bytesKern = com.kenkern.engine.assets.mesh.KernWriter.write(malhaFinal)
         medirPico()
 
         if (cancelado()) throw ImportException("importação cancelada pelo usuário")
         onEtapa("validando")
-        val problemas = KernIntegrity.verificar(resultado.mesh, bytesKern)
+        val problemas = KernIntegrity.verificar(malhaFinal, bytesKern)
         val erroMax = try {
-            KernIntegrity.medirErroMaximo(resultado.mesh, bytesKern)
+            KernIntegrity.medirErroMaximo(malhaFinal, bytesKern)
         } catch (e: Exception) {
             KenkernLog.w(TAG, "não mediu erro de quantização de '$nomeArquivo'", e)
             -1f
@@ -271,7 +290,7 @@ object ModelImporter {
         medirPico()
 
         // Aviso de skinning (regra: só avisar — skinning é da Fase 8).
-        val esqueleto = resultado.mesh.bones.isNotEmpty()
+        val esqueleto = malhaFinal.bones.isNotEmpty()
         if (esqueleto) avisos.add("contém esqueleto: ignorado nesta fase")
 
         // Opção "Ajustar ao tamanho": a escala vai no NICK (editável/desfazível),
@@ -297,8 +316,8 @@ object ModelImporter {
             }
         }
 
-        val min = resultado.mesh.boundsMin
-        val max = resultado.mesh.boundsMax
+        val min = malhaFinal.boundsMin
+        val max = malhaFinal.boundsMax
         val tempoMs = (System.nanoTime() - t0) / 1_000_000L
         return ImportSummary(
             nomeArquivo = nomeArquivo,
@@ -306,11 +325,11 @@ object ModelImporter {
             bytesOrigem = bytesOrigem.size.toLong(),
             bytesKern = bytesKern.size,
             bytesKernData = bytesKern,
-            vertices = resultado.mesh.vertexCount,
-            triangulos = resultado.mesh.indices.size / 3,
-            lods = resultado.mesh.lods.size,
-            materiais = resultado.report.materialCount,
-            texturas = resultado.report.textureCount,
+            vertices = malhaFinal.vertexCount,
+            triangulos = malhaFinal.indices.size / 3,
+            lods = malhaFinal.lods.size,
+            materiais = malhaFinal.materiais.size,
+            texturas = texturasFinais.size,
             avisos = avisos,
             tempoMs = tempoMs,
             picoMemoriaMb = pico,
@@ -320,7 +339,8 @@ object ModelImporter {
             aabbMin = floatArrayOf(min.x, min.y, min.z),
             aabbMax = floatArrayOf(max.x, max.y, max.z),
             contemEsqueleto = esqueleto,
-            escalaSugerida = escalaSugerida
+            escalaSugerida = escalaSugerida,
+            texturasExtraidas = texturasFinais
         )
     }
 

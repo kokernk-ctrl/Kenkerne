@@ -113,6 +113,31 @@ object KernIntegrity {
             }
         }
 
+        // 6) Grupos de material coerentes (v2, ETAPA B.3)
+        if (lida.gruposMaterial.isNotEmpty()) {
+            if (lida.materiais.isEmpty()) {
+                problemas.add("grupos de material sem tabela de materiais")
+            }
+            for ((i, g) in lida.gruposMaterial.withIndex()) {
+                if (g.indexOffset < 0 || g.indexCount < 0 ||
+                    g.indexOffset + g.indexCount > lida.indices.size
+                ) {
+                    problemas.add(
+                        "grupo de material $i fora do buffer de índices " +
+                            "(offset ${g.indexOffset}, count ${g.indexCount}, total ${lida.indices.size})"
+                    )
+                    break
+                }
+                if (g.materialIndex < 0 || g.materialIndex >= lida.materiais.size) {
+                    problemas.add(
+                        "grupo de material $i aponta para material ${g.materialIndex} " +
+                            "(tabela tem ${lida.materiais.size})"
+                    )
+                    break
+                }
+            }
+        }
+
         return problemas
     }
 
