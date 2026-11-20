@@ -171,7 +171,18 @@ class OrbitCamera {
     // ---------- Base e matrizes ----------
 
     private fun computeBasis() {
-        val yawRad = Math.toRadians(yawDegrees.toDouble()).toFloat()
+        // FIX DO OLHAR HORIZONTAL NO VOO (v0.1.12 — causa (b) comprovada):
+        // o yawRad era calculado SEMPRE do yaw do ORBITAL (yawDegrees), também
+        // no ramo FLIGHT — o flightYawDegrees atualizado pelo rotateFlight nunca
+        // era lido pela base: pitch girava (flightPitchDegrees era lido por modo)
+        // e yaw não, nem com 1 nem com 2 dedos. Agora o yaw segue o modo:
+        // ORBITAL = yawDegrees (inalterado); VOO = flightYawDegrees. Efeito
+        // colateral corrigido de graça: moveFlight/pan/screenRay/view no voo
+        // passam a seguir o olhar real (antes seguiam o yaw congelado da
+        // alternância de modo).
+        val yawRad = Math.toRadians(
+            (if (mode == CameraMode.FLIGHT) flightYawDegrees else yawDegrees).toDouble()
+        ).toFloat()
         if (mode == CameraMode.ORBITAL) {
             val pitchRad = Math.toRadians(pitchDegrees.toDouble()).toFloat()
             val cp = cos(pitchRad)

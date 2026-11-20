@@ -142,7 +142,9 @@ class TouchController(
                             val dy = y - prevY[p0]
                             if (camera.mode == CameraMode.FLIGHT) {
                                 camera.rotateFlight(dx, dy)
-                                debug?.publishFlight(GESTURE_LOOK_1)
+                                // ETAPA A (v0.1.12): publica o delta em dp (px/density)
+                                // do último MOVE de 1 dedo no voo — diagnóstico do eixo X.
+                                debug?.publishFlight(GESTURE_LOOK_1, dx / density, dy / density)
                             } else {
                                 camera.orbit(dx, dy)
                             }
@@ -200,7 +202,7 @@ class TouchController(
                         val dxdp = ((ax + bx) * 0.5f - (prevX[0] + prevX[1]) * 0.5f) / density
                         val dydp = ((ay + by) * 0.5f - (prevY[0] + prevY[1]) * 0.5f) / density
                         camera.rotateFlight(dxdp, dydp)
-                        debug?.publishFlight(GESTURE_LOOK_2)
+                        debug?.publishFlight(GESTURE_LOOK_2, dxdp, dydp)
                         prevX[0] = ax; prevY[0] = ay
                         prevX[1] = bx; prevY[1] = by
                     }

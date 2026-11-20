@@ -14,8 +14,8 @@ android {
         applicationId = "com.kenkern.engine"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.1.11-cam-fix"
+        versionCode = 13
+        versionName = "0.1.12-flight-yaw"
     }
 
     // Testes de unidade JVM: métodos do android.jar (ex.: Log.d feito a cada

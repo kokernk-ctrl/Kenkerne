@@ -96,6 +96,13 @@ class ViewportDebugState {
 
     // ---- Voo (thread UI) ---- gesto de olhar (1 ou 2 dedos)
     @Volatile var flightGesture: String = "—"
+    // ETAPA A do yaw morto no voo (v0.1.12): dx/dy em dp do ÚLTIMO MOVE de
+    // olhar no voo (1 dedo: px/density; 2 dedos: dp do ponto médio). Se o campo
+    // yaw muda mas estes deltas ficam 0, o gesto não chega ao rotateFlight;
+    // se chegam e o yaw não gira, a base é que não o usa. Primitivos @Volatile
+    // — ZERO alocação por evento.
+    @Volatile var flightLookDxDp: Float = 0f
+    @Volatile var flightLookDyDp: Float = 0f
 
     fun clearHandles() {
         for (i in handleValid.indices) handleValid[i] = false
@@ -186,9 +193,11 @@ fun ViewportDebugState.publishPinch(
     pinchResetReason = resetReason
 }
 
-/** Gesto de olhar do modo VOO para a linha de diagnóstico (constante, sem alocação). */
-fun ViewportDebugState.publishFlight(gesture: String) {
+/** Gesto de olhar do modo VOO + dx/dy (dp) do último MOVE para o diagnóstico (sem alocação). */
+fun ViewportDebugState.publishFlight(gesture: String, dxDp: Float, dyDp: Float) {
     flightGesture = gesture
+    flightLookDxDp = dxDp
+    flightLookDyDp = dyDp
 }
 
 /**

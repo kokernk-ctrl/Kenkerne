@@ -948,8 +948,10 @@ private fun buildDebugLines(sv: KenkernSurfaceView, viewPx: android.util.Size): 
         lines.add(
             String.format(
                 Locale.US,
-                "voo: yaw %.1f° · pitch %.1f° · gesto: %s",
-                cam.flightYawDegrees, cam.flightPitchDegrees, dbg.flightGesture
+                // v0.1.12 ETAPA A: Δ = dx/dy em dp do último MOVE de olhar no voo
+                "voo: yaw %.1f° · pitch %.1f° · Δ %.1f/%.1fdp · gesto: %s",
+                cam.flightYawDegrees, cam.flightPitchDegrees,
+                dbg.flightLookDxDp, dbg.flightLookDyDp, dbg.flightGesture
             )
         )
     }
