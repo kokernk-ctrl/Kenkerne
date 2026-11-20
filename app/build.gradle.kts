@@ -98,5 +98,7 @@ dependencies {
     testImplementation(libs.junit)
     // mockito-core 5.x: mock-maker INLINE por padrão — mocka MotionEvent (classe
     // final do framework) em testes de unidade JVM puros (sem Robolectric).
+    implementation(libs.luaj.jse)
+
     testImplementation(libs.mockito.core)
 }

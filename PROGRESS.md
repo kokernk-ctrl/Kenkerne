@@ -7,8 +7,8 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 ## Estado agora
 
 - **Fase**: 3 (LUA) — EM CURSO. Fase 2 FEITA (tag `fase-2-ok`, Release publicada).
-- **Tarefa atual**: F3.1 — detalhar o backlog da Fase 3 e implementar a
-  interface `ScriptRuntime` + `LuaJScriptRuntime` (ver seção "O que falta").
+- **Tarefa atual**: F3.2 — ponte de API (nick/scene/engine) sobre
+  `LuaJScriptRuntime.instalarTabela()` (a infra já existe e está testada).
 - **App**: v0.1.13 (`versionCode 14`), suíte JVM verde (37 testes), CI verde.
 
 ## O que existe (Fases 1–2, validado por CI)
@@ -25,8 +25,12 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## O que falta na Fase 3 (LUA)
 
-1. F3.1: dependência LuaJ (libs.versions.toml + app/build.gradle.kts) +
-   interface `ScriptRuntime` + `LuaJScriptRuntime` (sem NDK).
+1. ~~F3.1~~ FEITO: LuaJ 3.0.1 (luaj-jse) + `ScriptRuntime` + `LuaJScriptRuntime`
+   (compila sem rodar; iniciar roda top-level+on_start; atualizar chama
+   on_update; erro SEMPRE desativa com motivo; orçamento de tempo por tick;
+   sandbox sem os/io/require). 8 testes em LuaRuntimeTest. GOTCHA: LuaJ
+   3.0.1 precisa de `package.loaded` como mesa ao registrar MathLib —
+   plantar mesa vazia, NÃO instalar PackageLib.
 2. F3.2: ponte de API (nick.position/rotation/scale/name/active,
    scene.find, engine.time/dt, nick.class) com orçamento por tick e erro
    que DESATIVA o script (nunca derruba o app) + testes JVM.
