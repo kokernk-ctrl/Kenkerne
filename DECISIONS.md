@@ -38,6 +38,19 @@ Formato: decisão · motivo · alternativa descartada.
 11. **FBX adiado para depois do glTF/GLB** — glTF é o formato de intercâmbio
     moderno e cobre a meta de compressão; FBX é binário fechado e proprietário.
 
+12. **.KERNPACK como formato portátil (F2.6), projetos moram no armazenamento
+    do app** — autosave de 1,5 s não pode depender de ContentResolver por
+    arquivo (lentidão/perda em provedores instáveis). Alternativa descartada:
+    projeto aberto direto da árvore SAF. Import/export por intent = zero
+    permissões de armazenamento.
+13. **Checagem "shaders" do Diagnóstico usa shader de teste próprio** em vez
+    de GlesBackend.initialize() — initialize() marca o BootTrace
+    ("shader compilado") e poluiria o rastreio de crash de uma sessão real.
+    Os shaders REAIS da engine são validados ao abrir o editor.
+14. **.KERN v1 existente não precisa de migração** — nenhum arquivo válido foi
+    jamais gravado (o escritor estourava sempre, LOD ≥1 obrigatório): não
+    existem .KERN legados no mundo.
+
 ## Correções históricas (resumo; detalhes no CHANGELOG)
 
 - v0.1.12: yaw do voo lia `yawDegrees` do orbital em `computeBasis` (causa (b)).

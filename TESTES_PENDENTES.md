@@ -14,6 +14,22 @@
 8. Ligar o overlay do inseto (TopBar): linhas cam:/voo: com valores ao vivo.
 9. Reportar resultado (e print do overlay se algo falhar).
 
+## Aceite da FASE 2 — app v0.1.13 (Release `fase-2-ok`)
+
+1. Abrir o Hub: versão v0.1.13-fase2 no cabeçalho; projeto ANTIGO abre e ganha
+   as pastas ui/ e worlds/ (verificar com gerenciador de arquivos, opcional).
+2. Ícone do INSETO no Hub → Diagnóstico → "Rodar tudo": 7 checagens
+   APROVADAS (mandar print). FALHOU em glcaps/memoria pode ser característica
+   do aparelho — anotar o motivo mostrado.
+3. No editor: com o overlay (inseto da TopBar), conferir que o TORUS aparece
+   na cena (ele nunca tinha renderizado antes do fix do .KERN).
+4. Menu de três pontos de um projeto → Duplicar: "X (cópia)" aparece no Hub e
+   abre igual.
+5. Exportar (.kernpack) → escolher pasta → importar de volta (ícone de pasta
+   no Hub): projeto volta com cena idêntica.
+6. Criar projeto novo: cube/Spin/gizmo/undo/Play continuam funcionando
+   (regressão padrão da Fase 1).
+
 ## Diagnóstico (a partir da Fase 2)
 
 _Abrir no Hub → Diagnóstico → rodar → mandar print._

@@ -9,8 +9,8 @@ Status: `FEITA` (tag `fase-N-ok` publicada) · `EM CURSO` · `PLANEJADA`.
 | Fase | Nome | Entrega principal | Status |
 |------|------|-------------------|--------|
 | 1 | Fundação | Editor completo: viewport GLES3, grade infinita, céu, seleção/gizmo, câmera orbital/voo, undo/redo, Hub de projetos, .ck CK1, .KERN binário, autosave, crash diag + BootTrace, debug overlay | FEITA (`v0.1.0-fase1` … `fase-1-ok`, app v0.1.12) |
-| 2 | Projeto & Diagnóstico | Tela Diagnóstico no Hub (APROVADO/FALHOU), testes JVM de serialização (.ck/.KERN), pastas `ui/`+`worlds/`, versão de engine de fonte única, duplicar projeto, SAF (pasta escolhida pelo usuário) | EM CURSO |
-| 3 | LUA | `ScriptRuntime` + LuaJ atrás de interface, hooks de cena (start/update/eventos), editor de script, `LUA_API.md` oficial, scripts de exemplo no Diagnóstico | PLANEJADA |
+| 2 | Projeto & Diagnóstico | Tela Diagnóstico no Hub (7 checagens), testes JVM de serialização (.ck/.KERN) + 3 fixes de Fase 1 achados, pastas `ui/`+`worlds/`, versão de fonte única, duplicar, .KERNPACK import/export SAF | FEITA (`fase-2-ok`, app v0.1.13) |
+| 3 | LUA | `ScriptRuntime` + LuaJ atrás de interface, hooks de cena (start/update/eventos), editor de script, `LUA_API.md` oficial, scripts de exemplo no Diagnóstico | EM CURSO |
 | 4 | Importação .KERN | Importador glTF/GLB → .KERN (quantização, deduplicação, compressão de índices, LODs), teste de integridade (AABB, triângulos, erro máximo), meta 100 MB → ≤ 20 MB | PLANEJADA |
 | 5 | .KIMG + TRAMA | Texturas ASTC/ETC2 com mipmaps, materiais (albedo/normal/rough/metal), cache em disco, pintura básica | PLANEJADA |
 | 6 | LUME + CÉU | Luzes como Nicks (direcional/ponto/spot), sombras, dia/noite, nuvens/estrelas/clima | PLANEJADA |

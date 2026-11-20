@@ -6,54 +6,48 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
-- **Fase**: 2 (Projeto & Diagnóstico) — EM CURSO.
-- **Tarefa atual**: F2.1 (teste JVM de ida e volta do .ck).
-- **App**: v0.1.12 (`versionCode 13`), commit `01ce442`, CI verde, APK assinado
-  em `download/Kenkern-v0.1.12-flight-yaw.apk` (ambiente do agente) e na Release
-  `fase-1-ok` do GitHub.
-- **Fase 1**: FEITA — tag `fase-1-ok` + Release publicada.
+- **Fase**: 3 (LUA) — EM CURSO. Fase 2 FEITA (tag `fase-2-ok`, Release publicada).
+- **Tarefa atual**: F3.1 — detalhar o backlog da Fase 3 e implementar a
+  interface `ScriptRuntime` + `LuaJScriptRuntime` (ver seção "O que falta").
+- **App**: v0.1.13 (`versionCode 14`), suíte JVM verde (37 testes), CI verde.
 
-## O que existe (Fase 1, validado)
+## O que existe (Fases 1–2, validado por CI)
 
-- Editor: viewport GLES3 (`KenkernSurfaceView` + `EngineRenderer`), grade infinita,
-  céu, cubo procedural, seleção por toque (picking AABB), gizmo mover/rotacionar/
-  escalar, câmera Orbital + Voo (yaw/pitch por toque, pinça exponencial), painéis
-  acopláveis (Hierarquia/Inspetor), undo/redo por Commands, Play/Stop com loop de
-  timestep fixo, autosave com debounce, crash dialog + BootTrace de 6 etapas,
-  overlay de debug de toque.
-- Formatos: `.ck` texto CK1 (NICK/TRANSFORM/CLASS/FIELD/LINKERF, tolerante a
-  linhas corruptas) e `.KERN` binário (quantização pos u16, normais octaédricas
-  8:8, LODs, bones/clusters) — leitor/escritor prontos, SEM importador glTF.
-- Núcleo: `Nick` (id/nome/ativo/visível/pai/filhos/transform quaternion/classes),
-  `Scene` (hierarquia, `updateWorldTransforms`, `updateFunctions`), classes
-  nativas Spin/Bob, LINKERF (modelo de portas/links, serializado).
-- Hub: lista/cria/renomeia/exclui projetos no armazenamento interno
-  (`filesDir/projects`), estrutura de pastas por projeto, `project.kenkern`
-  (format=1), recuperação por autosave.
-- Testes JVM (CI): `OrbitCameraRayTest`, `PinchZoomRegressionTest`,
-  `FlightLookRegressionTest` (12 testes verdes). CI: `testReleaseUnitTest` +
-  `assembleRelease` assinado.
+- Tudo da Fase 1 (ver CHANGELOG) MAIS:
+- Tela Diagnóstico no Hub (ícone do inseto): 7 checagens com APROVADO/FALHOU
+  (.ck, .KERN, picking, shaders, buffers, glcaps, memória) — EglDiag cria
+  contexto pbuffer offscreen na thread de fundo; toda fase adiciona checagens.
+- Duplicar projeto; Importar/Exportar .kernpack (SAF); pastas ui/ e worlds/
+  (com migração de projetos antigos); ENGINE_VERSION = BuildConfig.VERSION_NAME.
+- Fixes da Fase 1 achados pelos testes F2: escapes do .ck; LOD_ENTRY_SIZE
+  20→32 + header desalinhado no KernReader (o torus .KERN nunca tinha
+  renderizado — agora renderiza).
 
-## O que falta na Fase 2 (ver BACKLOG)
+## O que falta na Fase 3 (LUA)
 
-Diagnóstico no Hub, testes de serialização, pastas ui/worlds, versão única,
-duplicar projeto, SAF.
+1. F3.1: dependência LuaJ (libs.versions.toml + app/build.gradle.kts) +
+   interface `ScriptRuntime` + `LuaJScriptRuntime` (sem NDK).
+2. F3.2: ponte de API (nick.position/rotation/scale/name/active,
+   scene.find, engine.time/dt, nick.class) com orçamento por tick e erro
+   que DESATIVA o script (nunca derruba o app) + testes JVM.
+3. F3.3: componente de script no Nick (campo no .ck — CK1 cresce com
+   SCRIPT path=...) + execução no updateFunctions (Play).
+4. F3.4: editor simples de script no app (painel) + scripts de exemplo.
+5. F3.5: checagem Lua no Diagnóstico + LUA_API.md oficial congelado.
+6. FIM DE FASE: tag `fase-3-ok` + Release + TESTES_PENDENTES.
 
 ## Armadilhas descobertas (não repetir)
 
-1. `computeBasis` do OrbitCamera usava yaw do modo errado no voo (fix v0.1.12) —
-   qualquer código novo de câmera deve ler o yaw **do modo certo**.
-2. `ACTION_POINTER_UP` ainda contém o dedo que subiu (zoom preso v0.1.11).
-3. Ordem de inicialização: propriedades Kotlin ANTES de init que as usa
-   (NPE do TransformGizmo na v0.1.8, thread principal, sem try/catch GL).
-4. material3 1.3.0: `AlertDialog` com containerColor não existe — usar overload
-   de botões.
-5. Touch em px da view; projeção/overlay em px de framebuffer (escala de
-   resolução) — converter com `density`/proporção, nunca misturar.
-6. Limiares de toque sempre em dp (12dp/28dp/24dp já usados).
-7. `logcat` de release usa `Log.d` do TouchController — ok (android.jar nos
-   testes JVM retorna padrão, não lança).
-8. CI já roda `testReleaseUnitTest`: teste JVM vermelho bloqueia o APK.
+1–8. (Ver git log v0.1.8–v0.1.12: yaw por modo no computeBasis, dedo morto
+   no POINTER_UP, ordem de propriedades Kotlin, AlertDialog material3 1.3,
+   px de view vs framebuffer, limiares em dp, CI bloqueia APK se teste falha.)
+9. Método de teste JVM não pode ter `.` no nome (caractere ilegal p/ JVM) —
+   usar vírgulas/palavras ("0,25" ok, "2e-3" ok, ">= " NÃO).
+10. Assinaturas EGL14 android-35: eglInitialize(display, major[], off, minor[],
+    off) e eglChooseConfig(8 args) — conferir javap antes de escrever.
+11. .KERN: toda malha tem ≥1 LOD (default no Builder.build()) — writer sem
+    LOD não existe; testes de erro devem partir disso.
+12. Diagnóstico NÃO chama GlesBackend.initialize() (marcaria BootTrace).
 
 ## Como compilar/testar (ambiente do agente)
 
@@ -61,6 +55,7 @@ duplicar projeto, SAF.
 cd /home/z/my-project/Kenkerne
 ./gradlew -Dorg.gradle.java.home=/home/z/jdk/jdk-21.0.13.1+2 :app:testDebugUnitTest
 ```
-SDK em `/home/z/android-sdk` (`local.properties` já aponta). Se o ambiente foi
-reciclado, reinstalar cmdline-tools (layout `cmdline-tools/latest`) + platform
-35 + build-tools 35 + JDK Temurin 21.
+SDK em `/home/z/android-sdk` (`local.properties` aponta). Se o ambiente foi
+reciclado: reinstalar cmdline-tools (layout `cmdline-tools/latest`!) +
+platforms;android-35 + build-tools;35.0.0 + JDK Temurin 21 em /home/z/jdk.
+LuaJ (Fase 3): adicionar em gradle/libs.versions.toml (mirror se rate-limit).
