@@ -10,3 +10,9 @@
 # Stack traces legíveis nos logs anti-crash (Log.e do modo seguro).
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# LuaJ (Fase 3): o artefato luaj-jse inclui a ponte JSR-223 (org.luaj.vm2.script.*)
+# que referencia javax.script.*, inexistente no Android. A engine NÃO usa essa
+# ponte (usamos Globals/LuaC direto) — R8 pode ignorar as referências ausentes.
+-dontwarn javax.script.**
+-dontwarn org.luaj.vm2.script.**
