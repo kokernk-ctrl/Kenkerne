@@ -58,7 +58,8 @@ fun KenkernAppRoot() {
                 onOpenProject = { handle -> vm.openProject(handle) },
                 onRenameProject = { handle, name -> vm.renameProject(handle, name) },
                 onDeleteProject = { handle -> vm.deleteProject(handle) },
-                onAbrirDiagnostico = { showDiagnostico = true }
+                onAbrirDiagnostico = { showDiagnostico = true },
+                onDuplicateProject = { handle -> vm.duplicateProject(handle) }
             )
         }
     } else {

@@ -136,6 +136,47 @@ object ProjectManager {
     }.onFailure { reportError("deleteProject", it) }.getOrDefault(false)
 
     /**
+     * DUPLICAR projeto ("Salvar como", F2.5): copia a pasta inteira para
+     * "Nome (cópia)" (única) e regrava o project.kenkern com o novo nome.
+     * Nunca lança: null em falha (motivo em [lastError]). Não mexe no original.
+     */
+    fun duplicateProject(handle: ProjectHandle): ProjectHandle? = runCatching {
+        clearError()
+        if (!handle.root.isDirectory || !File(handle.root, PROJECT_FILE).isFile) {
+            lastError = "Projeto original inválido"
+            return null
+        }
+        val base = sanitize(handle.name).ifBlank { "Projeto" }
+        var candidate = File(handle.root.parentFile, "$base (cópia)")
+        var i = 2
+        while (candidate.exists()) {
+            candidate = File(handle.root.parentFile, "$base (cópia $i)")
+            i++
+            if (i > 999) {
+                lastError = "Já existem muitas cópias de \"$base\""
+                return null
+            }
+        }
+        if (!handle.root.copyRecursively(candidate, overwrite = false)) {
+            lastError = "Falha ao copiar os arquivos do projeto"
+            runCatching { candidate.deleteRecursively() } // não deixa cópia pela metade
+            return null
+        }
+        // Novo nome no project.kenkern da CÓPIA (o original fica intocado).
+        val metaFile = File(candidate, PROJECT_FILE)
+        val novoNome = candidate.name
+        val atualizado = metaFile.readLines().map { line ->
+            if (line.trim().startsWith("name=")) "name=${CkFormat.quote(novoNome)}" else line
+        }
+        if (!writeFileAtomic(metaFile, atualizado.joinToString("\n") + "\n")) {
+            lastError = "Falha ao gravar $PROJECT_FILE da cópia"
+            runCatching { candidate.deleteRecursively() }
+            return null
+        }
+        ProjectHandle(candidate, novoNome, handle.createdAt)
+    }.onFailure { reportError("duplicateProject", it) }.getOrNull()
+
+    /**
      * Renomeia um projeto (grava o novo nome no project.kenkern e retorna o
      * handle atualizado). NUNCA lança: null em falha (motivo em [lastError]).
      */

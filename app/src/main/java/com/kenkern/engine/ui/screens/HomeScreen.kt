@@ -99,7 +99,8 @@ fun HomeScreen(
     onOpenProject: (ProjectHandle) -> Unit,
     onRenameProject: (ProjectHandle, String) -> Unit,
     onDeleteProject: (ProjectHandle) -> Unit,
-    onAbrirDiagnostico: () -> Unit = {}
+    onAbrirDiagnostico: () -> Unit = {},
+    onDuplicateProject: (ProjectHandle) -> Unit = {}
 ) {
     var showNewDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<ProjectHandle?>(null) }
@@ -195,7 +196,8 @@ fun HomeScreen(
                                 project = project,
                                 onOpen = { onOpenProject(project) },
                                 onRename = { pendingRename = project },
-                                onDelete = { pendingDelete = project }
+                                onDelete = { pendingDelete = project },
+                                onDuplicate = { onDuplicateProject(project) }
                             )
                         }
                     }
@@ -349,7 +351,8 @@ private fun ProjectCard(
     project: ProjectHandle,
     onOpen: () -> Unit,
     onRename: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onDuplicate: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
@@ -429,6 +432,13 @@ private fun ProjectCard(
                         onClick = {
                             menuOpen = false
                             onRename()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Duplicar", fontSize = 13.sp, color = KenkernTextHigh) },
+                        onClick = {
+                            menuOpen = false
+                            onDuplicate()
                         }
                     )
                     DropdownMenuItem(

@@ -189,6 +189,23 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * DUPLICA um projeto ("Salvar como", F2.5): cópia completa da pasta em
+     * background; o original não é tocado. Falhas viram mensagem de status.
+     */
+    fun duplicateProject(handle: ProjectHandle) {
+        if (isLoading.value) return
+        viewModelScope.launch {
+            val copia = withContext(Dispatchers.IO) { ProjectManager.duplicateProject(handle) }
+            statusMessage.value = if (copia != null) {
+                "Cópia criada: ${copia.name}"
+            } else {
+                ProjectManager.lastError ?: "Não foi possível duplicar o projeto"
+            }
+            refreshProjects()
+        }
+    }
+
+    /**
      * APAGA um projeto do disco (com o editor fechado antes, sem gravar nada —
      * salvar depois de apagar recriaria os arquivos). Nunca crasha: falhas
      * viram mensagem de status.
