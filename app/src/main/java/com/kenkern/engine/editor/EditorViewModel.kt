@@ -1,11 +1,13 @@
 package com.kenkern.engine.editor
 
 import android.app.Application
+import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.kenkern.engine.projects.Kernpack
 import com.kenkern.engine.autosave.AutoSaveManager
 import com.kenkern.engine.commands.AddClassCommand
 import com.kenkern.engine.commands.Command
@@ -201,6 +203,62 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             } else {
                 ProjectManager.lastError ?: "Não foi possível duplicar o projeto"
             }
+            refreshProjects()
+        }
+    }
+
+    /**
+     * EXPORTA o projeto como .kernpack (SAF CREATE_DOCUMENT): o usuário escolhe
+     * onde salvar; o zip é escrito direto no Uri. Nunca crasha.
+     */
+    fun exportarProjetoPara(handle: ProjectHandle, uri: Uri) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val app = getApplication<Application>()
+                    app.contentResolver.openOutputStream(uri, "w")?.use { saida ->
+                        Kernpack.empacotar(handle.root, saida) > 0
+                    } ?: error("não foi possível abrir o destino")
+                }
+            }
+            statusMessage.value = ok.fold(
+                onSuccess = { gravou -> if (gravou) "Projeto exportado" else "Projeto vazio — nada a exportar" },
+                onFailure = { "Falha ao exportar: ${it.message}" }
+            )
+        }
+    }
+
+    /**
+     * IMPORTA um .kernpack (SAF OPEN_DOCUMENT): extrai para uma pasta nova no
+     * armazenamento do app (nome do projeto de dentro do pacote) e registra
+     * na lista. Pacote hostil/inválido não grava nada (pasta é apagada).
+     */
+    fun importarKernpack(uri: Uri) {
+        if (isLoading.value) return
+        viewModelScope.launch {
+            val resultado = withContext(Dispatchers.IO) {
+                runCatching {
+                    val app = getApplication<Application>()
+                    val nomeLido = app.contentResolver.openInputStream(uri)?.use { Kernpack.nomeDoProjeto(it) }
+                    val base = ProjectManager.sanitize(nomeLido ?: "Importado").ifBlank { "Importado" }
+                    val pasta = ProjectManager.novaPastaUnica(ProjectManager.projectsRoot(app), base)
+                    try {
+                        val arquivos = app.contentResolver.openInputStream(uri)?.use {
+                            Kernpack.desempacotar(it, pasta)
+                        } ?: error("não foi possível abrir o pacote")
+                        val handle = ProjectManager.openProject(app, pasta)
+                            ?: error("pacote sem project.kenkern válido")
+                        "${handle.name} importado ($arquivos arquivos)"
+                    } catch (e: Exception) {
+                        pasta.deleteRecursively() // não deixa migalha de pacote ruim
+                        throw e
+                    }
+                }
+            }
+            statusMessage.value = resultado.fold(
+                onSuccess = { it },
+                onFailure = { "Falha ao importar: ${it.message ?: it.javaClass.simpleName}" }
+            )
             refreshProjects()
         }
     }

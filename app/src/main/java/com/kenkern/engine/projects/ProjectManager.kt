@@ -298,6 +298,9 @@ object ProjectManager {
             .onFailure { reportError("ensureDir(${dir.path})", it) }
             .getOrDefault(false)
 
+    /** Pasta única para IMPORTS (.kernpack) e futuras cópias: "Base", "Base 2"… */
+    fun novaPastaUnica(parent: File, base: String): File = uniqueDirectory(parent, base)
+
     private fun uniqueDirectory(parent: File, base: String): File {
         var candidate = File(parent, base)
         var i = 2

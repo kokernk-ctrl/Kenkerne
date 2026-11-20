@@ -5,6 +5,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +31,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.WarningAmber
@@ -63,6 +66,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kenkern.engine.projects.Kernpack
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
 import com.kenkern.engine.ui.theme.KenkernAmber
@@ -100,11 +104,26 @@ fun HomeScreen(
     onRenameProject: (ProjectHandle, String) -> Unit,
     onDeleteProject: (ProjectHandle) -> Unit,
     onAbrirDiagnostico: () -> Unit = {},
-    onDuplicateProject: (ProjectHandle) -> Unit = {}
+    onDuplicateProject: (ProjectHandle) -> Unit = {},
+    onImportarKernpack: (android.net.Uri) -> Unit = {},
+    onExportarProjeto: (ProjectHandle, android.net.Uri) -> Unit = { _, _ -> }
 ) {
     var showNewDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<ProjectHandle?>(null) }
     var pendingRename by remember { mutableStateOf<ProjectHandle?>(null) }
+
+    // SAF (F2.6): importar .kernpack (abrir) e exportar (criar documento)
+    val importarLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) onImportarKernpack(uri) }
+    var exportando by remember { mutableStateOf<ProjectHandle?>(null) }
+    val exportarLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        val alvo = exportando
+        exportando = null
+        if (uri != null && alvo != null) onExportarProjeto(alvo, uri)
+    }
 
     Box(
         Modifier
@@ -139,6 +158,17 @@ fun HomeScreen(
                     )
                 }
                 Spacer(Modifier.weight(1f))
+                // Importar .kernpack (SAF OPEN_DOCUMENT)
+                IconButton(
+                    onClick = { importarLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Folder,
+                        contentDescription = "Importar projeto (.kernpack)",
+                        tint = KenkernTextMid
+                    )
+                }
                 // Diagnóstico: checagens da engine no aparelho (tela da Fase 2)
                 IconButton(
                     onClick = onAbrirDiagnostico,
@@ -197,7 +227,11 @@ fun HomeScreen(
                                 onOpen = { onOpenProject(project) },
                                 onRename = { pendingRename = project },
                                 onDelete = { pendingDelete = project },
-                                onDuplicate = { onDuplicateProject(project) }
+                                onDuplicate = { onDuplicateProject(project) },
+                                onExportar = {
+                                    exportando = project
+                                    exportarLauncher.launch("${project.name}${Kernpack.EXTENSAO}")
+                                }
                             )
                         }
                     }
@@ -352,7 +386,8 @@ private fun ProjectCard(
     onOpen: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
-    onDuplicate: () -> Unit
+    onDuplicate: () -> Unit,
+    onExportar: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
@@ -432,6 +467,13 @@ private fun ProjectCard(
                         onClick = {
                             menuOpen = false
                             onRename()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Exportar (.kernpack)", fontSize = 13.sp, color = KenkernTextHigh) },
+                        onClick = {
+                            menuOpen = false
+                            onExportar()
                         }
                     )
                     DropdownMenuItem(

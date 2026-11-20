@@ -59,7 +59,9 @@ fun KenkernAppRoot() {
                 onRenameProject = { handle, name -> vm.renameProject(handle, name) },
                 onDeleteProject = { handle -> vm.deleteProject(handle) },
                 onAbrirDiagnostico = { showDiagnostico = true },
-                onDuplicateProject = { handle -> vm.duplicateProject(handle) }
+                onDuplicateProject = { handle -> vm.duplicateProject(handle) },
+                onImportarKernpack = { uri -> vm.importarKernpack(uri) },
+                onExportarProjeto = { handle, uri -> vm.exportarProjetoPara(handle, uri) }
             )
         }
     } else {
