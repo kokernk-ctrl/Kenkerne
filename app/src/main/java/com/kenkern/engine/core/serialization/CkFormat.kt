@@ -103,12 +103,24 @@ object CkFormat {
 
     fun unquote(raw: String): String {
         if (raw.length < 2 || raw.first() != '"' || raw.last() != '"') return raw
+        return unescape(raw.substring(1, raw.length - 1))
+    }
+
+    /**
+     * Remove os escapes (\\ \" \n \r \t) de um valor JÁ SEM aspas externas —
+     * a saída do [tokenize]. O [unquote] antigo era aplicado direto ao token e
+     * exigia aspas que o tokenizer já tinha tirado: strings com " ou quebra de
+     * linha voltavam ESCAPADAS do arquivo (corrupção silenciosa — achado pelo
+     * teste de ida e volta F2.1).
+     */
+    fun unescape(raw: String): String {
+        if ('\\' !in raw) return raw
         val sb = StringBuilder(raw.length)
-        var i = 1
-        val end = raw.length - 1
-        while (i < end) {
+        var i = 0
+        val n = raw.length
+        while (i < n) {
             val c = raw[i]
-            if (c == '\\' && i + 1 < end) {
+            if (c == '\\' && i + 1 < n) {
                 when (val next = raw[i + 1]) {
                     '\\' -> sb.append('\\')
                     '"' -> sb.append('"')
@@ -152,12 +164,12 @@ object CkFormat {
                 "SCENE" -> {
                     val name = tokenValue(tokens, "name")
                     if (name != null) {
-                        scene.name = unquote(name)
+                        scene.name = unescape(name)
                     }
                 }
                 "NICK" -> {
                     val id = tokenValue(tokens, "id") ?: return@forEach
-                    val name = tokenValue(tokens, "name")?.let { unquote(it) } ?: "Nick"
+                    val name = tokenValue(tokens, "name")?.let { unescape(it) } ?: "Nick"
                     val active = tokenValue(tokens, "active")?.toBooleanStrictOrNull() ?: true
                     val visible = tokenValue(tokens, "visible")?.toBooleanStrictOrNull() ?: true
                     val parent = tokenValue(tokens, "parent")
@@ -178,16 +190,16 @@ object CkFormat {
                 }
                 "CLASS" -> {
                     val nick = currentNick ?: return@forEach
-                    val type = tokenValue(tokens, "type")?.let { unquote(it) } ?: return@forEach
+                    val type = tokenValue(tokens, "type")?.let { unescape(it) } ?: return@forEach
                     val inst = NickClassInstance(type)
                     nick.addClassInstance(inst)
                     currentClass = inst
                 }
                 "FIELD" -> {
                     val inst = currentClass ?: return@forEach
-                    val name = tokenValue(tokens, "name")?.let { unquote(it) } ?: return@forEach
+                    val name = tokenValue(tokens, "name")?.let { unescape(it) } ?: return@forEach
                     val type = tokenValue(tokens, "type") ?: return@forEach
-                    val value = tokenValue(tokens, "value")?.let { unquote(it) } ?: ""
+                    val value = tokenValue(tokens, "value")?.let { unescape(it) } ?: ""
                     NickValue.parse(type, value)?.let { inst.fields[name] = it }
                 }
                 "ENDCLASS" -> currentClass = null
@@ -197,7 +209,7 @@ object CkFormat {
                     if (!inLinkerf) return@forEach
                     val id = tokenValue(tokens, "id") ?: return@forEach
                     val owner = tokenValue(tokens, "owner") ?: return@forEach
-                    val name = tokenValue(tokens, "name")?.let { unquote(it) } ?: "porta"
+                    val name = tokenValue(tokens, "name")?.let { unescape(it) } ?: "porta"
                     val kind = tokenValue(tokens, "kind")?.let {
                         runCatching { com.kenkern.engine.core.linkerf.LinkerfPortKind.valueOf(it) }.getOrNull()
                     } ?: com.kenkern.engine.core.linkerf.LinkerfPortKind.DATA_IN
