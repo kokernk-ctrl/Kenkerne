@@ -11,9 +11,12 @@ de tarefas do BACKLOG sem refazer o que está pronto.
   v0.1.13 foi re-titulada "fase ABERTA"). A tag `fase-1-ok` fica, mas os itens que
   dependem do aparelho (seleção por toque, Play real, paisagem automática, gizmos)
   estão **COMPILADO**, não VALIDADO, até o usuário confirmar (TESTES_PENDENTES.md).
-- **Tarefa atual**: F2.9 — .KIMG (texturas ASTC/ETC2 com mipmaps). F2.7 (glTF/GLB,
-  11 testes) e F2.8 (FBX, 15 testes) estão COMPILADO+CI ✓ com checagens no
-  Diagnóstico.
+- **Tarefa atual**: fechamento testável da Fase 2 por ETAPAS (A → B → C → D,
+  cada uma com CI verde + commit): **ETAPA A (botão Importar modelo) FEITA
+  (F2.16 COMPILADO+CI ✓)**; a seguir **ETAPA B (correção dos importadores:
+  FBX ASCII, materiais, dedup, LODs, gizmo/Spin/Bob)**, depois **ETAPA C
+  (F2.9 .KIMG ETC2/ASTC)** e **ETAPA D (Release v0.1.14-fase2-teste)**. F2.7
+  (glTF/GLB, 11 testes) e F2.8 (FBX, 15 testes) COMPILADO+CI ✓.
 - **Lua congelada**: o LuaJ existente é o F5.1 (antes F3.1), trabalho ANTECIPADO —
   proibido crescer código Lua antes da Fase 5. Fase 3 = LENTE/LUME/colliders/input.
 - **Regras novas** (ROADMAP.md, Regras de fase): (1) tag `fase-N-ok` só com TODOS os

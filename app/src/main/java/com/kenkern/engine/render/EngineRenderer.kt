@@ -5,6 +5,7 @@ import com.kenkern.engine.assets.mesh.KernReader
 import com.kenkern.engine.assets.mesh.KernWriter
 import com.kenkern.engine.assets.mesh.MeshData
 import com.kenkern.engine.core.Nick
+import com.kenkern.engine.core.MalhaNick
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.RotationFromMatrix
 import com.kenkern.engine.core.Scene
@@ -289,6 +290,11 @@ class EngineRenderer {
         // até saturar a capacidade e redesenhar a cena centenas de vezes.
         geometry.reset()
 
+        // Malhas importadas pendentes: carrega FORA do flush (orçamento de 6 ms)
+        // — nunca trava o frame que está desenhando (anti-trave; streaming completo = F2.11).
+        runCatching { AssetMeshLibrary.processarPendentes(backend) }
+            .onFailure { KenkernLog.e(TAG, "carga de malhas importadas falhou", it) }
+
         backend.beginFrame(0.075f, 0.075f, 0.105f, 1f)
         var skyDrawn = 0
         var gridDrawn = 0
@@ -347,18 +353,41 @@ class EngineRenderer {
             }
             while (top > 0) {
                 val nick = nickStack[--top] ?: continue
-                if (nick.active && nick.visible && cubeHandle != 0) {
-                    geometry.submit(
-                        cubeHandle,
-                        nick.transform.worldMatrix,
-                        materialGray, materialGray, materialGray, 1f
-                    )
-                    if (nick.id == selectedId) {
-                        // Contorno #FFA940 (inverted hull): world × inflação 1.06.
-                        outlineScratch.multiply(nick.transform.worldMatrix, outlineInflation)
-                        geometry.submitOutline(
-                            cubeHandle, outlineScratch, outlineR, outlineG, outlineB, 1f
+                if (nick.active && nick.visible) {
+                    val caminhoMalha = MalhaNick.path(nick)
+                    if (caminhoMalha != null) {
+                        // Nick importado (ETAPA A): desenha a MALHA do .KERN em vez do cubo.
+                        val h = AssetMeshLibrary.handleDe(caminhoMalha)
+                        if (h != 0) {
+                            geometry.submit(
+                                h,
+                                nick.transform.worldMatrix,
+                                materialGray, materialGray, materialGray, 1f
+                            )
+                            if (nick.id == selectedId) {
+                                outlineScratch.multiply(nick.transform.worldMatrix, outlineInflation)
+                                geometry.submitOutline(
+                                    h, outlineScratch, outlineR, outlineG, outlineB, 1f
+                                )
+                            }
+                        } else {
+                            // Ainda não na cache de GPU (ou falhou): enfileira a carga.
+                            // O Nick continua selecionável/picker pela AABB da classe Malha.
+                            AssetMeshLibrary.marcarNecessario(caminhoMalha)
+                        }
+                    } else if (cubeHandle != 0) {
+                        geometry.submit(
+                            cubeHandle,
+                            nick.transform.worldMatrix,
+                            materialGray, materialGray, materialGray, 1f
                         )
+                        if (nick.id == selectedId) {
+                            // Contorno #FFA940 (inverted hull): world × inflação 1.06.
+                            outlineScratch.multiply(nick.transform.worldMatrix, outlineInflation)
+                            geometry.submitOutline(
+                                cubeHandle, outlineScratch, outlineR, outlineG, outlineB, 1f
+                            )
+                        }
                     }
                 }
                 val children = nick.children

@@ -75,3 +75,16 @@ infra-diag, **32 silenciosas** (16 delas em caminhos críticos).
 - Regra de manutenção: toda NOVA ocorrência de `runCatching` entra nesta tabela
   com classificação; runCatching novo em render/formato/carregamento só pode
   existir com registro (ver REGRESSION.md, checklist "Sempre").
+
+## Adições da ETAPA A (botão "Importar modelo" — 2026-11-21)
+
+| Arquivo | Linha | Classificação | O que protegia |
+|---|---|---|---|
+| AssetMeshLibrary.kt | carga de malha pendente (processarPendentes) | VISÍVEL | falha de leitura/decodificação/upload vira KenkernLog.e UMA vez por path (não reloga por frame) + Nick segue sem malha |
+| EngineRenderer.kt | processarPendentes no frame | VISÍVEL | falha inesperada da fila não derruba o frame — KenkernLog.e |
+| KenkernSurfaceView.kt | onSurfaceCreated (limpar+destroy) | INFRA-DIAG | destroy do contexto antigo; já registrava |
+| Diagnostico.kt | rodarUma (novo caso "importar") | INFRA-DIAG ok | checagem vira FALHOU com motivo |
+| ImportModelCommand.kt | rename→copy fallback | VISÍVEL | KenkernLog.w com o arquivo que não apagou (nunca silêncio) |
+
+Regra mantida: nenhum runCatching novo sem registro; a fila de malhas usa
+falha-1×-por-path para não inundar o Console por frame.

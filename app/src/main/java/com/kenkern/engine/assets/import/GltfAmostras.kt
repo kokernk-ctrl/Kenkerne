@@ -101,6 +101,45 @@ object GltfAmostras {
     }
 
     /**
+     * O MESMO quad como .gltf com buffer em ARQUIVO EXTERNO ("quad.bin") —
+     * caminho do resolvedor de pasta/zip (ETAPA A/B.1). Use com
+     * [quadBinExterno] (o conteúdo do quad.bin) num ResolvedorZip/pasta.
+     */
+    fun quadGltfExterno(): ByteArray {
+        val pos = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f, 0f, 1f, 0f)
+        val idx = shortArrayOf(0, 1, 2, 0, 2, 3)
+        val json = """
+        {
+          "asset": {"version": "2.0"},
+          "buffers": [{"byteLength": ${pos.size * 4 + idx.size * 2}, "uri": "quad.bin"}],
+          "bufferViews": [
+            {"buffer": 0, "byteOffset": 0, "byteLength": ${pos.size * 4}},
+            {"buffer": 0, "byteOffset": ${pos.size * 4}, "byteLength": ${idx.size * 2}}
+          ],
+          "accessors": [
+            {"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [0,0,0], "max": [1,1,0]},
+            {"bufferView": 1, "componentType": 5123, "count": 6, "type": "SCALAR"}
+          ],
+          "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1, "mode": 4}]}],
+          "nodes": [{"mesh": 0}],
+          "scenes": [{"nodes": [0]}],
+          "scene": 0
+        }
+        """.trimIndent()
+        return json.toByteArray(Charsets.UTF_8)
+    }
+
+    /** Conteúdo do quad.bin externo (positions f32 + índices u16, sem padding). */
+    fun quadBinExterno(): ByteArray {
+        val pos = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f, 0f, 1f, 0f)
+        val idx = shortArrayOf(0, 1, 2, 0, 2, 3)
+        val bin = ByteArrayOutputStream()
+        bin.write(vetorF32(pos))
+        bin.write(vetorU16(idx))
+        return bin.toByteArray()
+    }
+
+    /**
      * CUBO em 2 NODES com transform (node 0 com quaternion+escala no mesh;
      * node 1 filho com TRANSLATION duplicando a mesma mesh) — valida matriz
      * TRS/quaternion, herança de pai e MERGE de primitivas (2 instâncias).

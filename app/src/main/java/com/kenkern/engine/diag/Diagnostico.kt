@@ -3,13 +3,19 @@ package com.kenkern.engine.diag
 import android.app.ActivityManager
 import android.content.Context
 import android.opengl.GLES30
+import com.kenkern.engine.assets.import.AssetLayout
 import com.kenkern.engine.assets.import.FbxAmostras
 import com.kenkern.engine.assets.import.FbxImportException
 import com.kenkern.engine.assets.import.FbxImporter
 import com.kenkern.engine.assets.import.GltfAmostras
 import com.kenkern.engine.assets.import.GltfImportException
 import com.kenkern.engine.assets.import.GltfImporter
+import com.kenkern.engine.assets.import.ImportException
+import com.kenkern.engine.assets.import.ImportSummary
 import com.kenkern.engine.assets.import.KernIntegrity
+import com.kenkern.engine.assets.import.ModelImporter
+import com.kenkern.engine.assets.import.ResolvedorZip
+import com.kenkern.engine.commands.ImportModelCommand
 import com.kenkern.engine.assets.mesh.KernReader
 import com.kenkern.engine.assets.mesh.KernWriter
 import com.kenkern.engine.assets.mesh.MeshData
@@ -38,6 +44,8 @@ import kotlin.math.max
  *  - kern     — ida e volta do formato de malha .KERN com erro máximo medido;
  *  - gltf     — importador glTF/GLB → .KERN (meta + integridade + erros claros);
  *  - fbx      — importador FBX → .KERN (merge de instâncias + integridade + erros claros);
+ *  - importar — botão Importar modelo: pipeline completa com modelo embutido
+ *               (layout de assets, nome único, UM Command undo/redo, zip com .bin);
  *  - picking  — matemática do raio de tela nos 2 modos de câmera;
  *  - shaders  — compilação/link de um programa de teste no driver (GLSL ES 3.00);
  *  - buffers  — alocação e liberação de VBO/VAO reais via GlesBackend;
@@ -80,6 +88,7 @@ class Diagnostico(private val appContext: Context) {
         Checagem("kern", ".KERN (malha) — ida e volta"),
         Checagem("gltf", "Importador glTF/GLB → .KERN (meta + integridade)"),
         Checagem("fbx", "Importador FBX → .KERN (instâncias + integridade)"),
+        Checagem("importar", "Botão Importar modelo (pipeline + undo/redo + zip)"),
         Checagem("picking", "Matemática de picking (raio de tela)"),
         Checagem("shaders", "Compilação de shaders (GLSL ES)"),
         Checagem("buffers", "Alocação de buffers (VBO/VAO)"),
@@ -94,7 +103,7 @@ class Diagnostico(private val appContext: Context) {
      * Nunca lança.
      */
     fun executar(onAtualiza: (Checagem) -> Unit) {
-        val rapidas = listOf("ck", "kern", "gltf", "fbx", "picking")
+        val rapidas = listOf("ck", "kern", "gltf", "fbx", "importar", "picking")
         val gl = listOf("shaders", "buffers", "glcaps")
 
         for (id in rapidas) rodarUma(id, onAtualiza)
@@ -131,6 +140,7 @@ class Diagnostico(private val appContext: Context) {
                 "kern" -> checarKern(c)
                 "gltf" -> checarGltf(c)
                 "fbx" -> checarFbx(c)
+                "importar" -> checarImportar(c)
                 "picking" -> checarPicking(c)
                 "shaders" -> checarShaders(c)
                 "buffers" -> checarBuffers(c)
@@ -360,6 +370,123 @@ class Diagnostico(private val appContext: Context) {
             "FBX quad + cubo compartilhado (merge 2 instâncias, TRS em graus) importados, " +
                 "integridade OK · " + r2.report.resumo() + " · erros claros OK"
         )
+    }
+
+    // ---------------------------------------------------------------- importar (ETAPA A)
+
+    /**
+     * CHECAGEM "importar": pipeline COMPLETA do botão Importar com um modelo
+     * EMBUTIDO (sem SAF): ModelImporter (GLB) + layout de assets com nome
+     * único + UM Command undo/redo (Nick sai, arquivos vão para a lixeira e
+     * voltam) + glTF externo dentro de .zip (resolver com zip-slip bloqueado).
+     */
+    private fun checarImportar(c: Checagem) {
+        // Pasta temporária que simula a raiz de um projeto (só nesta checagem).
+        val raiz = java.io.File(appContext.cacheDir, "diag-import-${System.nanoTime()}")
+        try {
+            AssetLayout.criarPastas(raiz)
+
+            // 1) Importação GLB embutida (pipeline completa, etapas + integridade)
+            val summary: ImportSummary = try {
+                ModelImporter.importarModelo(
+                    "diag-quad.glb", GltfAmostras.quadGlb(), ModelImporter.Opcoes(true, 2f)
+                )
+            } catch (e: Exception) {
+                c.falhou("GLB embutido: ${e.message}")
+                return
+            }
+            if (!summary.integridadeOk) {
+                c.falhou("GLB embutido integridade: ${summary.problemasIntegridade.joinToString("; ")}")
+                return
+            }
+            if (summary.bytesKernData.isEmpty() || summary.vertices != 4) {
+                c.falhou("GLB embutido: ${summary.vertices} vértices / ${summary.bytesKern} bytes (esperado 4 vértices)")
+                return
+            }
+
+            // 2) Layout de assets: nome único (2ª cópia vira -2, nunca sobrescreve)
+            val dirOrigem = java.io.File(raiz, AssetLayout.DIR_ORIGEM)
+            val n1 = AssetLayout.nomeUnico(dirOrigem, "diag-quad", "glb")
+            java.io.File(dirOrigem, n1).writeBytes(GltfAmostras.quadGlb())
+            val n2 = AssetLayout.nomeUnico(dirOrigem, "diag-quad", "glb")
+            if (n1 == n2) {
+                c.falhou("nome único falhou: '$n1' duas vezes (colisão sobrescreve)")
+                return
+            }
+            if (AssetLayout.caminhoRelativoSeguro("../fuga.bin") != null ||
+                AssetLayout.caminhoRelativoSeguro("/absoluto.bin") != null
+            ) {
+                c.falhou("caminhoRelativoSeguro aceitou '..' ou caminho absoluto (zip-slip)")
+                return
+            }
+
+            // 3) UM Command: cria Nick com classe Malha; undo remove Nick + recolhe
+            //    arquivos; redo devolve tudo (A.3)
+            val scene = Scene("Diag-Import")
+            val mundo = scene.createRootNick("Mundo")
+            val kernNome = AssetLayout.nomeUnico(java.io.File(raiz, AssetLayout.DIR_MODELOS), "diag-quad", "KERN")
+            val kernRel = "${AssetLayout.DIR_MODELOS}/$kernNome"
+            java.io.File(raiz, kernRel).writeBytes(summary.bytesKernData)
+            val classe = ModelImporter.criarClasseMalha(kernRel, summary.aabbMin, summary.aabbMax, summary.escalaSugerida)
+            val cmd = ImportModelCommand(
+                scene, mundo.id, "diag-quad", raiz,
+                listOf(kernRel, "${AssetLayout.DIR_ORIGEM}/$n1"), classe
+            )
+            cmd.execute()
+            val nick = scene.findNickByNameAnywhere("diag-quad")
+            if (nick == null || !com.kenkern.engine.core.MalhaNick.temMalha(nick)) {
+                c.falhou("Command não criou o Nick com a classe Malha")
+                return
+            }
+            cmd.undo()
+            if (scene.roots[0].children.isNotEmpty()) {
+                c.falhou("undo não removeu o Nick importado")
+                return
+            }
+            val kernApagado = !java.io.File(raiz, kernRel).exists() &&
+                java.io.File(java.io.File(raiz, "assets/.lixeira-import"), kernRel).exists()
+            if (!kernApagado) {
+                c.falhou("undo não recolheu o .KERN para a lixeira de importação")
+                return
+            }
+            cmd.execute()
+            val voltou = java.io.File(raiz, kernRel).exists() &&
+                scene.roots[0].children.any { it.name == "diag-quad" }
+            if (!voltou) {
+                c.falhou("redo não devolveu o .KERN e o Nick")
+                return
+            }
+
+            // 4) glTF com .bin externo dentro de .zip (resolver + zip-slip B.1)
+            val zipModelo = try {
+                val zipBytes = java.io.ByteArrayOutputStream()
+                java.util.zip.ZipOutputStream(zipBytes).use { zout ->
+                    zout.putNextEntry(java.util.zip.ZipEntry("modelo/quad.gltf"))
+                    zout.write(GltfAmostras.quadGltfExterno())
+                    zout.closeEntry()
+                    zout.putNextEntry(java.util.zip.ZipEntry("modelo/quad.bin"))
+                    zout.write(GltfAmostras.quadBinExterno())
+                    zout.closeEntry()
+                }
+                ModelImporter.importarModelo("quad.zip", zipBytes.toByteArray())
+            } catch (e: Exception) {
+                c.falhou("glTF externo no zip: ${e.message}")
+                return
+            }
+            if (!zipModelo.integridadeOk || zipModelo.vertices != 4) {
+                c.falhou("glTF externo no zip: ${zipModelo.vertices} vértices / ${zipModelo.problemasIntegridade.joinToString("; ")}")
+                return
+            }
+
+            c.aprovado(
+                "GLB embutido (4 v, integridade OK, pico %.0f MB, %d ms) · nome único + zip-slip bloqueado · " +
+                    "Command undo/redo com lixeira OK · glTF com .bin externo via .zip OK".format(
+                        java.util.Locale.US, summary.picoMemoriaMb, summary.tempoMs
+                    )
+            )
+        } finally {
+            raiz.deleteRecursively()
+        }
     }
 
     // ---------------------------------------------------------------- picking

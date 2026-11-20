@@ -32,7 +32,11 @@ class ImportReport(
     val lods: Int,
     val primitivas: Int,
     val nodesComMesh: Int,
-    val normaisCalculadas: Boolean
+    val normaisCalculadas: Boolean,
+    // ETAPA B/C: materiais e texturas extraídos (0 até a ETAPA B implementar a
+    // extração; ModelImporter usa esses contadores no ImportSummary).
+    val materialCount: Int = 0,
+    val textureCount: Int = 0
 ) {
     /** Razão origem/.KERN (ex.: 5.0 = 100 MB viraram 20 MB). */
     val razao: Float get() = if (bytesKern > 0) bytesOrigem / bytesKern.toFloat() else 0f
@@ -92,11 +96,23 @@ object GltfImporter {
     // ---------------------------------------------------------------- API
 
     /** Importa um arquivo glTF/GLB completo e devolve a malha .KERN + meta. */
-    fun importar(bytes: ByteArray): ImportResult {
+    fun importar(bytes: ByteArray): ImportResult = importar(bytes, null, "modelo.gltf")
+
+    /**
+     * Importação com RESOLVEDOR DE ARQUIVOS EXTERNOS (ETAPA A/B.1): buffers
+     * (.bin) e imagens referenciados por URI relativa são buscados via
+     * [resolutor] (pasta SAF ou conteúdo de .zip). Sem resolver, URI externa
+     * continua dando erro CLARO (comportamento anterior, F2.7).
+     */
+    fun importar(
+        bytes: ByteArray,
+        resolutor: ResolvedorExterno?,
+        nomeArquivo: String = "modelo.gltf"
+    ): ImportResult {
         if (bytes.isEmpty()) throw GltfImportException("arquivo vazio")
         val (json, binario) = separarJsonEBinario(bytes)
         val raiz = parseJson(json, bytes)
-        val buffers = lerBuffers(raiz, binario)
+        val buffers = lerBuffers(raiz, binario, resolutor, nomeArquivo)
         return montarMalha(raiz, buffers, bytes.size)
     }
 
@@ -170,8 +186,13 @@ object GltfImporter {
 
     // ---------------------------------------------------------------- buffers
 
-    /** Lê os buffers do glTF: BIN do GLB e/ou data URIs (base64) do .gltf. */
-    private fun lerBuffers(raiz: JSONObject, binario: ByteArray?): List<ByteArray> {
+    /** Lê os buffers do glTF: BIN do GLB, data URIs (base64) do .gltf e arquivos externos via resolvedor. */
+    private fun lerBuffers(
+        raiz: JSONObject,
+        binario: ByteArray?,
+        resolutor: ResolvedorExterno?,
+        nomeArquivo: String
+    ): List<ByteArray> {
         val buffers = raiz.optJSONArray("buffers")
             ?: throw GltfImportException("glTF sem array 'buffers' (glTF 2.0 exige ao menos 1)")
         val lista = ArrayList<ByteArray>(buffers.length())
@@ -187,10 +208,20 @@ object GltfImporter {
                     )
                 }
                 uri.startsWith("data:") -> decodificarDataUri(i, uri)
-                else -> throw GltfImportException(
-                    "buffer $i aponta para arquivo externo ('$uri') — não suportado nesta fase; " +
-                        "reexporte o modelo com buffers embutidos (GLB ou data URI)"
-                )
+                else -> {
+                    // ETAPA B.1: URI relativa resolvida contra a pasta SAF ou o .zip.
+                    val viaResolver = resolutor?.bytes(uri)
+                    if (viaResolver == null) {
+                        throw GltfImportException(
+                            "buffer $i aponta para o arquivo externo '$uri' e ele não foi achado " +
+                                "(importe pela opção Pasta/.zip que inclui o .bin, ou reexporte embutido)"
+                        )
+                    }
+                    if (viaResolver.isEmpty()) {
+                        throw GltfImportException("buffer externo '$uri' veio vazio (${nomeArquivo})")
+                    }
+                    viaResolver
+                }
             }
             if (declared >= 0 && dados.size < declared) {
                 throw GltfImportException(

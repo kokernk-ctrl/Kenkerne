@@ -147,7 +147,7 @@ class GltfImporterTest {
             GltfImporter.importar(GltfAmostras.bufferExterno())
             assertFalse("deveria ter lançado GltfImportException", true)
         } catch (e: GltfImportException) {
-            assertTrue("mensagem deve explicar a solução", e.message!!.contains("embutidos"))
+            assertTrue("mensagem deve explicar a solução", e.message!!.contains("embutidos") || e.message!!.contains("Pasta"))
         }
     }
 

@@ -1,0 +1,348 @@
+package com.kenkern.engine.assets.import
+
+import com.kenkern.engine.core.NickClassInstance
+import com.kenkern.engine.core.NickValue
+import com.kenkern.engine.diag.KenkernLog
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+
+/**
+ * Erro de IMPORTAÇÃO DE MODELO com motivo CLARO (regra #17: o chamador registra
+ * no KenkernLog/Console e mostra na tela — nunca silêncio, nunca crash).
+ */
+class ImportException(motivo: String) : Exception(motivo)
+
+/**
+ * Formato detectado pelo magic/assinatura (nunca só pela extensão).
+ */
+enum class TipoFormato(val rotulo: String) {
+    GLB("GLB"), GLTF_JSON("glTF (JSON)"), FBX_BIN("FBX binário"),
+    FBX_ASCII("FBX ASCII"), ZIP("glTF/FBX dentro de .zip"), DESCONHECIDO("desconhecido")
+}
+
+/**
+ * RESOLVEDOR DE ARQUIVOS EXTERNOS do glTF (.bin, texturas) — B.1/C.4.
+ * Implementações: pasta SAF (ViewModel, ContentResolver) e .zip (aqui, com
+ * bloqueio de zip-slip). Devolve os bytes do caminho RELATIVO pedido pelo
+ * glTF ou null (o importador converte null em erro CLARO com o nome).
+ */
+interface ResolvedorExterno {
+    fun bytes(caminhoRelativo: String): ByteArray?
+}
+
+/** Resolver sobre as entradas de um .zip já em memória. Zip-slip bloqueado em AssetLayout. */
+class ResolvedorZip(val entradas: Map<String, ByteArray>, private val pastaBase: String = "") : ResolvedorExterno {
+    override fun bytes(caminhoRelativo: String): ByteArray? {
+        val seguro = AssetLayout.caminhoRelativoSeguro(caminhoRelativo) ?: return null
+        // O glTF resolve URIs RELATIVAS AO MODELO: tenta 1) raiz do zip, 2) pasta
+        // do modelo, 3) só o nome do arquivo (exports que acham tudo na mesma pasta).
+        if (pastaBase.isNotEmpty()) entradas["$pastaBase/$seguro"]?.let { return it }
+        return entradas[seguro] ?: entradas[seguro.substringAfterLast('/')]
+    }
+
+    companion object {
+        /** Lê TODAS as entradas do zip (com limites; zip-slip bloqueado por entrada). */
+        fun ler(bytes: ByteArray, maxEntradas: Int = 4096, maxTotalBytes: Long = AssetLayout.LIMITE_DURO_BYTES): ResolvedorZip {
+            val mapa = HashMap<String, ByteArray>()
+            var total = 0L
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zin ->
+                var e: ZipEntry? = zin.nextEntry
+                var contagem = 0
+                while (e != null) {
+                    if (contagem++ > maxEntradas) throw ImportException("zip com mais de $maxEntradas entradas — recusado")
+                    val caminho = AssetLayout.caminhoRelativoSeguro(e.name)
+                        ?: throw ImportException(
+                            "entrada do zip com caminho inseguro ('${e.name.take(64)}') — zip-slip bloqueado"
+                        )
+                    if (!e.isDirectory) {
+                        val buf = ByteArrayOutputStream()
+                        val chunk = ByteArray(64 * 1024)
+                        var n = zin.read(chunk)
+                        while (n >= 0) {
+                            total += n
+                            if (total > maxTotalBytes) throw ImportException("zip descomprime além do limite de ${maxTotalBytes / (1024 * 1024)} MB — recusado")
+                            buf.write(chunk, 0, n)
+                            n = zin.read(chunk)
+                        }
+                        mapa[caminho] = buf.toByteArray()
+                    }
+                    e = zin.nextEntry
+                }
+            }
+            if (mapa.isEmpty()) throw ImportException("zip vazio (nenhuma entrada utilizável)")
+            return ResolvedorZip(mapa)
+        }
+    }
+}
+
+/**
+ * RELATÓRIO COMPLETO da importação (ETAPA A.4): tudo que o diálogo mostra e o
+ * "Copiar relatório" leva. Números REAIS medidos (nunca estimativa sem marca).
+ */
+class ImportSummary(
+    val nomeArquivo: String,
+    val formato: String,
+    val bytesOrigem: Long,
+    val bytesKern: Int,
+    val bytesKernData: ByteArray,
+    val vertices: Int,
+    val triangulos: Int,
+    val lods: Int,
+    val materiais: Int,
+    val texturas: Int,
+    val avisos: List<String>,
+    val tempoMs: Long,
+    val picoMemoriaMb: Float,
+    val integridadeOk: Boolean,
+    val problemasIntegridade: List<String>,
+    val erroMaxQuantizacao: Float,
+    /** Preenchido pelo chamador AO GRAVAR os arquivos (var: o caminho só existe depois). */
+    var caminhoKernRelativo: String = "",
+    var caminhoOrigemRelativo: String = "",
+    val aabbMin: FloatArray,
+    val aabbMax: FloatArray,
+    val contemEsqueleto: Boolean,
+    /** Escala do Nick sugerida pela opção "Ajustar ao tamanho" (1f = sem ajuste). */
+    val escalaSugerida: Float = 1f
+) {
+    /** Razão origem/.KERN (ex.: 5.0 = 100 MB viraram 20 MB — meta do ROADMAP). */
+    val razao: Float get() = if (bytesKern > 0) bytesOrigem / bytesKern.toFloat() else 0f
+
+    /** Texto completo para o diálogo e para a área de transferência. */
+    fun textoRelatorio(): String = buildString {
+        appendLine("ImportReport — $nomeArquivo")
+        appendLine("Formato: $formato")
+        appendLine("Tamanho: %.1f MB origem → %.2f MB .KERN (razão %.2f×)".format(
+            java.util.Locale.US, bytesOrigem / 1048576f, bytesKern / 1048576f, razao))
+        appendLine("Geometria: %d vértices · %d triângulos · %d LOD".format(java.util.Locale.US, vertices, triangulos, lods))
+        appendLine("Materiais: $materiais · Texturas: $texturas")
+        appendLine("AABB: min (%.2f, %.2f, %.2f) max (%.2f, %.2f, %.2f)".format(
+            java.util.Locale.US, aabbMin[0], aabbMin[1], aabbMin[2], aabbMax[0], aabbMax[1], aabbMax[2]))
+        appendLine("KernIntegrity: ${if (integridadeOk) "OK" else "FALHOU"}" +
+            (if (problemasIntegridade.isNotEmpty()) " — " + problemasIntegridade.joinToString("; ") else "") +
+            " · erro máx de quantização %.2f passo(s)".format(java.util.Locale.US, erroMaxQuantizacao))
+        appendLine("Tempo: %d ms · pico de memória ≈ %.0f MB".format(java.util.Locale.US, tempoMs, picoMemoriaMb))
+        if (contemEsqueleto) appendLine("AVISO: contém esqueleto: ignorado nesta fase (Fase 8 OSSATURA)")
+        for (a in avisos) appendLine("AVISO: $a")
+        appendLine("Gravado: $caminhoKernRelativo · origem copiada: $caminhoOrigemRelativo")
+    }
+}
+
+/**
+ * ORQUESTRADOR DE IMPORTAÇÃO (ETAPA A): detecta o formato, despacha para o
+ * importador certo (glTF/GLB do F2.7, FBX do F2.8), mede tempo/memória, roda o
+ * KernIntegrity e devolve o [ImportSummary]. SEM efeito colateral de arquivo —
+ * quem grava origem/.KERN é o chamador (ViewModel), que também cria o Nick via
+ * UM Command (undo remove Nick e assets).
+ *
+ * Progresso por etapas ("lendo" é do chamador): "triangulando", "gravando
+ * .KERN", "validando" — via [onEtapa]. CANCELAMENTO checado entre etapas
+ * (bom o suficiente para arquivos de segundos; cancelar DENTRO de um parser
+ * único é escopo do streaming F2.11).
+ */
+object ModelImporter {
+
+    const val CLASSE_MALHA = "Malha"
+
+    private const val TAG = "ModelImporter"
+
+    class Opcoes(val ajustarAoTamanho: Boolean = false, val alturaMeta: Float = 2f)
+
+    /** Detecta o formato pela ASSINATURA (magic), nunca pela extensão sozinha. */
+    fun detectarFormato(bytes: ByteArray): TipoFormato {
+        if (bytes.size < 8) return TipoFormato.DESCONHECIDO
+        // GLB: "glTF"
+        if (bytes[0] == 'g'.code.toByte() && bytes[1] == 'l'.code.toByte() &&
+            bytes[2] == 'T'.code.toByte() && bytes[3] == 'F'.code.toByte()
+        ) return TipoFormato.GLB
+        // ZIP: "PK\x03\x04"
+        if (bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte() &&
+            bytes[2] == 3.toByte() && bytes[3] == 4.toByte()
+        ) return TipoFormato.ZIP
+        // FBX binário: "Kaydara FBX Binary  "
+        if (bytes.size >= 23) {
+            var ok = true
+            for (i in 0 until 18) {
+                val esperado = "Kaydara FBX Binary  "[i]
+                if (bytes[i] != esperado.code.toByte()) { ok = false; break }
+            }
+            if (ok) return TipoFormato.FBX_BIN
+        }
+        // FBX ASCII ou glTF JSON: texto no início (tolera BOM/espaços)
+        var start = 0
+        while (start < bytes.size && bytes[start].toInt().toChar().isWhitespace()) start++
+        if (start + 2 < bytes.size && bytes[start] == 0xEF.toByte() &&
+            bytes[start + 1] == 0xBB.toByte() && bytes[start + 2] == 0xBF.toByte()
+        ) start += 3
+        while (start < bytes.size && bytes[start].toInt().toChar().isWhitespace()) start++
+        val head = String(bytes, start, minOf(bytes.size - start, 200), Charsets.US_ASCII)
+        if (head.startsWith("FBXHeaderExtension")) return TipoFormato.FBX_ASCII
+        if (head.contains("FBXHeaderExtension")) return TipoFormato.FBX_ASCII
+        if (head.startsWith("{")) return TipoFormato.GLTF_JSON
+        return TipoFormato.DESCONHECIDO
+    }
+
+    /**
+     * Importa o arquivo completo e devolve o resumo SEM gravar nada.
+     * [bytesOrigem] é o conteúdo do arquivo de origem JÁ lido (uma única vez).
+     * [resolutorExterno] resolve os arquivos externos de um .gltf vindo de PASTA
+     * (SAF) — para .zip o resolver é construído aqui, das entradas do pacote.
+     */
+    fun importarModelo(
+        nomeArquivo: String,
+        bytesOrigem: ByteArray,
+        opcoes: Opcoes = Opcoes(),
+        onEtapa: (String) -> Unit = {},
+        cancelado: () -> Boolean = { false },
+        resolutorExterno: ResolvedorExterno? = null
+    ): ImportSummary {
+        val t0 = System.nanoTime()
+        val rt = Runtime.getRuntime()
+        var pico = (rt.totalMemory() - rt.freeMemory()) / 1048576f
+        fun medirPico() {
+            val atual = (rt.totalMemory() - rt.freeMemory()) / 1048576f
+            if (atual > pico) pico = atual
+        }
+
+        if (bytesOrigem.isEmpty()) throw ImportException("arquivo vazio ('$nomeArquivo' tem 0 bytes)")
+        val avisos = ArrayList<String>(2)
+        var resultado: ImportResult
+        var formato: TipoFormato
+
+        try {
+            onEtapa("triangulando")
+            formato = detectarFormato(bytesOrigem)
+            when (formato) {
+                TipoFormato.GLB, TipoFormato.GLTF_JSON ->
+                    resultado = GltfImporter.importar(bytesOrigem, resolutorExterno, nomeArquivo)
+                TipoFormato.ZIP -> {
+                    val zip = ResolvedorZip.ler(bytesOrigem)
+                    val nomeModelo = zip.entradas.keys.firstOrNull {
+                        it.endsWith(".glb", ignoreCase = true) || it.endsWith(".gltf", ignoreCase = true)
+                    } ?: throw ImportException(
+                        "o .zip não contém nenhum .glb/.gltf — para FBX use o arquivo .fbx direto (não zipe)"
+                    )
+                    val bytesModelo = zip.entradas[nomeModelo]
+                        ?: throw ImportException("entrada '$nomeModelo' não encontrada no zip")
+                    resultado = GltfImporter.importar(
+                        bytesModelo,
+                        ResolvedorZip(zip.entradas, nomeModelo.substringBeforeLast('/')),
+                        nomeModelo
+                    )
+                    avisos.add("modelo importado de dentro do zip ('$nomeModelo')")
+                }
+                TipoFormato.FBX_BIN -> resultado = FbxImporter.importar(bytesOrigem)
+                TipoFormato.FBX_ASCII -> resultado = FbxImporter.importar(bytesOrigem)
+                TipoFormato.DESCONHECIDO -> throw ImportException(
+                    "formato não reconhecido pela assinatura de '$nomeArquivo' — use .glb, .gltf, .fbx ou um .zip com glTF dentro"
+                )
+            }
+        } catch (e: GltfImportException) {
+            throw ImportException("glTF inválido: ${e.message}")
+        } catch (e: FbxImportException) {
+            throw ImportException("FBX inválido: ${e.message}")
+        } catch (e: ImportException) {
+            throw e
+        } catch (e: Exception) {
+            // Falha inesperada vira erro CLARO com a causa (nunca crash nem silêncio).
+            throw ImportException(
+                "falha ao ler '$nomeArquivo': ${e.message ?: e.javaClass.simpleName} — " +
+                    "confira se o arquivo está completo e sem corrupção"
+            )
+        }
+        medirPico()
+
+        if (cancelado()) throw ImportException("importação cancelada pelo usuário")
+        onEtapa("gravando .KERN")
+        val bytesKern = resultado.bytesKern
+        medirPico()
+
+        if (cancelado()) throw ImportException("importação cancelada pelo usuário")
+        onEtapa("validando")
+        val problemas = KernIntegrity.verificar(resultado.mesh, bytesKern)
+        val erroMax = try {
+            KernIntegrity.medirErroMaximo(resultado.mesh, bytesKern)
+        } catch (e: Exception) {
+            KenkernLog.w(TAG, "não mediu erro de quantização de '$nomeArquivo'", e)
+            -1f
+        }
+        medirPico()
+
+        // Aviso de skinning (regra: só avisar — skinning é da Fase 8).
+        val esqueleto = resultado.mesh.bones.isNotEmpty()
+        if (esqueleto) avisos.add("contém esqueleto: ignorado nesta fase")
+
+        // Opção "Ajustar ao tamanho": a escala vai no NICK (editável/desfazível),
+        // o .KERN permanece fiel à origem (nunca assa escala nos vértices).
+        var escalaSugerida = 1f
+        if (opcoes.ajustarAoTamanho) {
+            val dx = resultado.mesh.boundsMax.x - resultado.mesh.boundsMin.x
+            val dy = resultado.mesh.boundsMax.y - resultado.mesh.boundsMin.y
+            val dz = resultado.mesh.boundsMax.z - resultado.mesh.boundsMin.z
+            val maior = maxOf(dx, dy, dz)
+            if (maior > 1e-6f) {
+                val escala = opcoes.alturaMeta / maior
+                if (escala > 0.001f && escala < 1000f) {
+                    escalaSugerida = escala
+                    avisos.add(
+                        "escala do Nick ajustada em %.3f× (AABB maior vira %.1f m)".format(
+                            java.util.Locale.US, escala, opcoes.alturaMeta
+                        )
+                    )
+                } else {
+                    avisos.add("AABB degenerada — \"Ajustar ao tamanho\" ignorado")
+                }
+            }
+        }
+
+        val min = resultado.mesh.boundsMin
+        val max = resultado.mesh.boundsMax
+        val tempoMs = (System.nanoTime() - t0) / 1_000_000L
+        return ImportSummary(
+            nomeArquivo = nomeArquivo,
+            formato = formato.rotulo,
+            bytesOrigem = bytesOrigem.size.toLong(),
+            bytesKern = bytesKern.size,
+            bytesKernData = bytesKern,
+            vertices = resultado.mesh.vertexCount,
+            triangulos = resultado.mesh.indices.size / 3,
+            lods = resultado.mesh.lods.size,
+            materiais = resultado.report.materialCount,
+            texturas = resultado.report.textureCount,
+            avisos = avisos,
+            tempoMs = tempoMs,
+            picoMemoriaMb = pico,
+            integridadeOk = problemas.isEmpty(),
+            problemasIntegridade = problemas,
+            erroMaxQuantizacao = erroMax,
+            aabbMin = floatArrayOf(min.x, min.y, min.z),
+            aabbMax = floatArrayOf(max.x, max.y, max.z),
+            contemEsqueleto = esqueleto,
+            escalaSugerida = escalaSugerida
+        )
+    }
+
+    /**
+     * Instância da classe "Malha" anexada ao Nick criado pela importação:
+     * caminho RELATIVO do .KERN + AABB (para picking/foco sem carregar a malha).
+     */
+    fun criarClasseMalha(
+        caminhoKern: String,
+        aabbMin: FloatArray,
+        aabbMax: FloatArray,
+        escalaFit: Float = 1f
+    ): NickClassInstance {
+        val inst = NickClassInstance(CLASSE_MALHA)
+        inst.fields["path"] = NickValue.StringValue(caminhoKern)
+        inst.fields["aabbMinX"] = NickValue.FloatValue(aabbMin[0])
+        inst.fields["aabbMinY"] = NickValue.FloatValue(aabbMin[1])
+        inst.fields["aabbMinZ"] = NickValue.FloatValue(aabbMin[2])
+        inst.fields["aabbMaxX"] = NickValue.FloatValue(aabbMax[0])
+        inst.fields["aabbMaxY"] = NickValue.FloatValue(aabbMax[1])
+        inst.fields["aabbMaxZ"] = NickValue.FloatValue(aabbMax[2])
+        inst.fields["escalaFit"] = NickValue.FloatValue(escalaFit)
+        return inst
+    }
+}

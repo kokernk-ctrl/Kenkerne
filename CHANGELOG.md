@@ -1,5 +1,35 @@
 # KENKERN — CHANGELOG
 
+## ETAPA A — Botão "Importar modelo" na TopBar (fechamento da Fase 2)
+
+- **Importar modelo (SAF)**: botão novo na TopBar (ícone Importar, 40dp,
+  contentDescription) com menu "Arquivo (.glb, .gltf, .fbx, .zip)" e
+  "Pasta (glTF com .bin e texturas)" (ACTION_OPEN_DOCUMENT_TREE). Importação
+  RODA EM BACKGROUND (Dispatchers.Default/IO) com progresso por etapas
+  ("lendo", "triangulando", "gravando .KERN", "validando") e botão CANCELAR —
+  nunca trava a UI nem a thread GL.
+- **Pipeline**: origem copiada em STREAMING (nunca 2× na memória; limite duro
+  500 MB) para `assets/models/origem/`; .KERN gravado em `assets/models/`
+  (nome único — colisão nunca sobrescreve); Nick criado com a classe "Malha"
+  (path + AABB + escalaFit), filho do selecionado ou da raiz do Mundo; opção
+  "Ajustar ao tamanho (~2 m)" aplica a escala NO Nick (o .KERN fica fiel).
+- **UM Command no Undo/Redo** (`ImportModelCommand`): desfazer remove o Nick e
+  recolhe os assets para `assets/.lixeira-import/`; refazer devolve tudo.
+- **Relatório** (diálogo + "Copiar relatório"): tamanho antes/depois e razão,
+  vértices/triângulos/LODs, materiais, avisos (skipping de esqueleto),
+  tempo, pico de memória e resultado do KernIntegrity. Arquivo > 200 MB pede
+  confirmação; erro sempre CLARO (nome + causa + o que fazer) na tela e no Console.
+- **Render da malha importada**: `AssetMeshLibrary` carrega os .KERN usados
+  pela cena FORA do flush (fila com orçamento de 6 ms por frame — anti-trave);
+  picking e Focar passam a usar a AABB REAL da malha (classe "Malha"), não só
+  o cubo de 1 m.
+- **glTF externo**: .bin e texturas resolvidos contra a pasta SAF ou o conteúdo
+  do .zip (resolver com bloqueio de zip-slip e caminhos com ".." recusados com
+  erro claro).
+- **Diagnóstico**: checagem nova "importar" (pipeline completa com modelo
+  embutido + nome único + undo/redo do Command + glTF externo em .zip).
+- Testes JVM: 15 novos (ModelImporterTest) — total da suíte: 96, verde.
+
 ## F2.8 — Importador FBX → .KERN (sem APK novo ainda)
 
 - **Importador FBX binário 7.1–7.7** (`assets/import/FbxImporter.kt`): header

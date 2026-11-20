@@ -9,6 +9,7 @@ import android.util.Log
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import com.kenkern.engine.core.Nick
+import com.kenkern.engine.core.MalhaNick
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.RotationFromMatrix
 import com.kenkern.engine.core.Scene
@@ -606,6 +607,43 @@ class KenkernSurfaceView(
         }
     }
 
+    /** Scratch do nickWorldAabb (sem alocação por frame). */
+    private val aabbMeiaLocal = FloatArray(3)
+    private val aabbCentroLocal = FloatArray(3)
+    private val pickMinW = Vec3()
+    private val pickMaxW = Vec3()
+    private val focusMinTmp = Vec3()
+    private val focusMaxTmp = Vec3()
+
+    /**
+     * AABB em MUNDO do Nick: 8 cantos da AABB LOCAL (malha importada tem AABB
+     * própria pela classe "Malha"; Nick padrão = cubo de 1 m) transformados pela
+     * matriz de mundo. Sem alocação — todos os rascunhos são pré-alocados.
+     */
+    private fun nickWorldAabb(nick: Nick, outMin: Vec3, outMax: Vec3) {
+        MalhaNick.meiaExtensaoLocal(nick, aabbMeiaLocal)
+        MalhaNick.centroLocal(nick, aabbCentroLocal)
+        val m = nick.transform.worldMatrix.m
+        outMin.set(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE)
+        outMax.set(-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
+        var i = 0
+        while (i < 8) {
+            val lx = aabbCentroLocal[0] + if (i and 1 == 0) -aabbMeiaLocal[0] else aabbMeiaLocal[0]
+            val ly = aabbCentroLocal[1] + if (i and 2 == 0) -aabbMeiaLocal[1] else aabbMeiaLocal[1]
+            val lz = aabbCentroLocal[2] + if (i and 4 == 0) -aabbMeiaLocal[2] else aabbMeiaLocal[2]
+            val wx = m[0] * lx + m[4] * ly + m[8] * lz + m[12]
+            val wy = m[1] * lx + m[5] * ly + m[9] * lz + m[13]
+            val wz = m[2] * lx + m[6] * ly + m[10] * lz + m[14]
+            if (wx < outMin.x) outMin.x = wx
+            if (wx > outMax.x) outMax.x = wx
+            if (wy < outMin.y) outMin.y = wy
+            if (wy > outMax.y) outMax.y = wy
+            if (wz < outMin.z) outMin.z = wz
+            if (wz > outMax.z) outMax.z = wz
+            i++
+        }
+    }
+
     /**
      * Picking no thread GL, em DUAS camadas:
      *  1. EXATO: raio da câmera × AABB (em mundo) de cada Nick ativo/visível —
@@ -646,12 +684,15 @@ class KenkernSurfaceView(
             val nick = pickStack[--top] ?: continue
             if (nick.active && nick.visible) {
                 tested++
-                val m = nick.transform.worldMatrix.m
-                val cx = m[12]; val cy = m[13]; val cz = m[14]
-                // meia-diagonal da AABB em mundo (box conservativa p/ rotação)
-                val ex = 0.5f * (abs(m[0]) + abs(m[4]) + abs(m[8]))
-                val ey = 0.5f * (abs(m[1]) + abs(m[5]) + abs(m[9]))
-                val ez = 0.5f * (abs(m[2]) + abs(m[6]) + abs(m[10]))
+                // AABB em MUNDO REAL (malha importada: AABB do .KERN transformada;
+                // Nick padrão: cubo de 1 m) — 8 cantos × matriz de mundo.
+                nickWorldAabb(nick, pickMinW, pickMaxW)
+                val cx = (pickMinW.x + pickMaxW.x) * 0.5f
+                val cy = (pickMinW.y + pickMaxW.y) * 0.5f
+                val cz = (pickMinW.z + pickMaxW.z) * 0.5f
+                val ex = (pickMaxW.x - pickMinW.x) * 0.5f
+                val ey = (pickMaxW.y - pickMinW.y) * 0.5f
+                val ez = (pickMaxW.z - pickMinW.z) * 0.5f
                 val t = rayAabb(pickOrigin, pickDir, cx, cy, cz, ex, ey, ez)
                 val sd = if (t >= 0f) {
                     0f // hit exato: o toque está DENTRO da AABB projetada
@@ -795,22 +836,19 @@ class KenkernSurfaceView(
         while (top > 0) {
             val nick = focusStack[--top] ?: continue
             if (nick.active && nick.visible && (focusAllNicks || nick.id == selected)) {
-                val m = nick.transform.worldMatrix.m
-                val cx = m[12]; val cy = m[13]; val cz = m[14]
-                // meia-extensão conservativa da AABB em mundo (box p/ rotação)
-                val ex = 0.5f * (abs(m[0]) + abs(m[4]) + abs(m[8]))
-                val ey = 0.5f * (abs(m[1]) + abs(m[5]) + abs(m[9]))
-                val ez = 0.5f * (abs(m[2]) + abs(m[6]) + abs(m[10]))
+                // AABB em MUNDO REAL (malha importada incluída — foco enquadra o
+                // modelo inteiro, não só o cubo de 1 m).
+                nickWorldAabb(nick, focusMinTmp, focusMaxTmp)
                 if (!hasBox) {
-                    focusMin.set(cx - ex, cy - ey, cz - ez)
-                    focusMax.set(cx + ex, cy + ey, cz + ez)
+                    focusMin.set(focusMinTmp)
+                    focusMax.set(focusMaxTmp)
                     hasBox = true
                 } else {
                     focusMin.set(
-                        minOf(focusMin.x, cx - ex), minOf(focusMin.y, cy - ey), minOf(focusMin.z, cz - ez)
+                        minOf(focusMin.x, focusMinTmp.x), minOf(focusMin.y, focusMinTmp.y), minOf(focusMin.z, focusMinTmp.z)
                     )
                     focusMax.set(
-                        maxOf(focusMax.x, cx + ex), maxOf(focusMax.y, cy + ey), maxOf(focusMax.z, cz + ez)
+                        maxOf(focusMax.x, focusMaxTmp.x), maxOf(focusMax.y, focusMaxTmp.y), maxOf(focusMax.z, focusMaxTmp.z)
                     )
                 }
             }
@@ -942,6 +980,9 @@ class KenkernSurfaceView(
             surfaceReady = false
             isEngineHealthy = false
             runCatching {
+                // Contexto novo = handles de GPU antigos inválidos: as malhas
+                // importadas voltam a subir pela fila pendente (nada de handle órfão).
+                AssetMeshLibrary.limpar()
                 backend.destroy() // libera restos de contexto anterior
             }.onFailure { KenkernLog.w(TAG, "destroy() do backend anterior falhou", it) }
             runCatching {

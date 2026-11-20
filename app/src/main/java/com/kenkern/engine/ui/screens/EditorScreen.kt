@@ -5,6 +5,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -42,11 +44,13 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -59,6 +63,8 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -72,6 +78,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -166,6 +173,42 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     // Modo da câmera: Orbital ou Voo
     var cameraMode by rememberSaveable { mutableStateOf(CameraMode.ORBITAL) }
 
+    // ---------- Importação de modelo (ETAPA A): SAF + opções ----------
+    var uriImportacaoPendente by remember { mutableStateOf<android.net.Uri?>(null) }
+    var pastaImportacaoPendente by rememberSaveable { mutableStateOf(false) }
+    var opcoesImportacaoVisiveis by rememberSaveable { mutableStateOf(false) }
+    val importarArquivoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            uriImportacaoPendente = uri
+            pastaImportacaoPendente = false
+            opcoesImportacaoVisiveis = true
+        }
+    }
+    val importarPastaLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            uriImportacaoPendente = uri
+            pastaImportacaoPendente = true
+            opcoesImportacaoVisiveis = true
+        }
+    }
+    val onImportClick: (Boolean) -> Unit = { pasta ->
+        if (pasta) {
+            importarPastaLauncher.launch(null)
+        } else {
+            // .fbx/.glb não têm MIME universal: octet-stream cobre os binários.
+            importarArquivoLauncher.launch(
+                arrayOf(
+                    "application/octet-stream", "model/gltf-binary", "model/gltf+json",
+                    "application/zip", "application/x-zip-compressed"
+                )
+            )
+        }
+    }
+
     val hierarchy = remember {
         vm.panelStore.get("hierarchy", "Hierarquia", 200f, 140f, 320f, 280f, 340f)
     }
@@ -201,7 +244,8 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 onCameraModeChange = { cameraMode = it },
                 onFocusClick = { surfaceView?.focusSelected() },
                 debugOverlay = debugOverlay,
-                onDebugToggle = { debugOverlay = !debugOverlay }
+                onDebugToggle = { debugOverlay = !debugOverlay },
+                onImportClick = onImportClick
             )
 
             // ---------- Row central: painéis acoplados | viewport | painéis ----------
@@ -475,6 +519,52 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
             }
         }
 
+        // ---------- Diálogos da importação (opções, progresso, relatório, erro, grande) ----------
+        if (opcoesImportacaoVisiveis) {
+            val nomePendente = uriImportacaoPendente?.lastPathSegment?.substringAfterLast('/') ?: "modelo"
+            AlertDialog(
+                onDismissRequest = { opcoesImportacaoVisiveis = false; uriImportacaoPendente = null },
+                containerColor = KenkernSurfaceOverlay,
+                title = { Text("Importar modelo", fontSize = 16.sp, color = KenkernTextHigh) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            if (pastaImportacaoPendente) "Pasta: $nomePendente\n\n" +
+                                "A pasta inteira (modelo + .bin + texturas) é copiada para os assets do projeto."
+                            else "Arquivo: $nomePendente",
+                            fontSize = 12.sp, color = KenkernTextMid
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Checkbox(
+                                checked = vm.importAjustarTamanho.value,
+                                onCheckedChange = { vm.importAjustarTamanho.value = it }
+                            )
+                            Text("Ajustar ao tamanho (~2 m)", fontSize = 12.sp, color = KenkernTextHigh)
+                        }
+                        Text(
+                            "O modelo entra com escala 1 e Y para cima; a operação inteira é UM passo de desfazer.",
+                            fontSize = 11.sp, color = KenkernTextLow
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        opcoesImportacaoVisiveis = false
+                        val uri = uriImportacaoPendente
+                        uriImportacaoPendente = null
+                        if (uri != null) vm.prepararImportacao(uri, pastaImportacaoPendente)
+                    }) { Text("Importar", color = KenkernAmber, fontSize = 12.sp) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { opcoesImportacaoVisiveis = false; uriImportacaoPendente = null }) {
+                        Text("Cancelar", color = KenkernTextMid, fontSize = 12.sp)
+                    }
+                }
+            )
+        }
+
+        DialogosImportacao(vm)
+
         // ---------- Status/erro ----------
         val status = vm.statusMessage.value
         if (status != null) {
@@ -573,7 +663,8 @@ private fun EditorTopBar(
     onCameraModeChange: (CameraMode) -> Unit,
     onFocusClick: () -> Unit,
     debugOverlay: Boolean,
-    onDebugToggle: () -> Unit
+    onDebugToggle: () -> Unit,
+    onImportClick: (Boolean) -> Unit
 ) {
     Surface(
         color = KenkernSurface,
@@ -607,6 +698,28 @@ private fun EditorTopBar(
             }
             TopBarIcon(Icons.Filled.Stop, "Parar") {
                 vm.setPlayState(PlayState.STOPPED)
+            }
+
+            TopBarSeparator()
+
+            // IMPORTAR MODELO (ETAPA A): menu com Arquivo e Pasta (SAF).
+            var importMenu by remember { mutableStateOf(false) }
+            Box {
+                TopBarIcon(Icons.Filled.SaveAlt, "Importar modelo") { importMenu = true }
+                DropdownMenu(
+                    expanded = importMenu,
+                    onDismissRequest = { importMenu = false },
+                    containerColor = KenkernSurfaceOverlay
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Arquivo (.glb, .gltf, .fbx, .zip)", fontSize = 12.sp, color = KenkernTextHigh) },
+                        onClick = { importMenu = false; onImportClick(false) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Pasta (glTF com .bin e texturas)", fontSize = 12.sp, color = KenkernTextHigh) },
+                        onClick = { importMenu = false; onImportClick(true) }
+                    )
+                }
             }
 
             TopBarSeparator()
@@ -1229,5 +1342,148 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
                 color = KenkernTextMid
             )
         }
+    }
+}
+
+// ===================== Diálogos da importação (ETAPA A) =====================
+
+/**
+ * Diálogos da importação de modelo, TODOS observando o ViewModel:
+ *  - progresso por etapas com CANCELAR (a importação é cooperativa);
+ *  - relatório final com "Copiar relatório" (A.4);
+ *  - erro CLARO com nome + causa + o que fazer (A.6);
+ *  - confirmação de arquivo grande (> 200 MB, A.6).
+ */
+@Composable
+private fun DialogosImportacao(vm: EditorViewModel) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+
+    // ---- Progresso por etapas + cancelar ----
+    val etapa = vm.importEtapa.value
+    if (etapa != null) {
+        AlertDialog(
+            onDismissRequest = { /* modal durante a importação; sair pelo CANCELAR */ },
+            containerColor = KenkernSurfaceOverlay,
+            title = { Text("Importando modelo", fontSize = 16.sp, color = KenkernTextHigh) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        color = KenkernAmber, strokeWidth = 3.dp,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(etapa, fontSize = 13.sp, color = KenkernTextHigh)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.cancelarImportacao() }) {
+                    Text("Cancelar", color = KenkernError, fontSize = 12.sp)
+                }
+            }
+        )
+    }
+
+    // ---- Relatório (A.4) com Copiar relatório ----
+    val relatorio = vm.importRelatorio.value
+    if (relatorio != null) {
+        AlertDialog(
+            onDismissRequest = { vm.limparRelatorioImportacao() },
+            containerColor = KenkernSurfaceOverlay,
+            title = { Text("Importação concluída", fontSize = 16.sp, color = KenkernTextHigh) },
+            text = {
+                Column {
+                    Text(
+                        relatorio.textoRelatorio(),
+                        fontSize = 11.sp,
+                        color = if (relatorio.integridadeOk) KenkernTextMid else KenkernError,
+                        modifier = Modifier
+                            .height(240.dp)
+                            .verticalScroll(rememberScrollState())
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    clipboard.setText(AnnotatedString(relatorio.textoRelatorio()))
+                    vm.limparRelatorioImportacao()
+                }) { Text("Copiar relatório", color = KenkernAmber, fontSize = 12.sp) }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.limparRelatorioImportacao() }) {
+                    Text("Fechar", color = KenkernTextMid, fontSize = 12.sp)
+                }
+            }
+        )
+    }
+
+    // ---- Erro CLARO (nome + causa + o que fazer) ----
+    val erro = vm.importErro.value
+    if (erro != null) {
+        AlertDialog(
+            onDismissRequest = { vm.limparErroImportacao() },
+            containerColor = KenkernSurfaceOverlay,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.WarningAmber, contentDescription = null,
+                        tint = KenkernError, modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Não foi possível importar", fontSize = 15.sp, color = KenkernTextHigh)
+                }
+            },
+            text = {
+                Text(
+                    erro,
+                    fontSize = 12.sp, color = KenkernTextMid,
+                    modifier = Modifier
+                        .height(180.dp)
+                        .verticalScroll(rememberScrollState())
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.limparErroImportacao() }) {
+                    Text("OK", color = KenkernAmber, fontSize = 12.sp)
+                }
+            }
+        )
+    }
+
+    // ---- Arquivo grande (> 200 MB): aviso + confirmação (A.6) ----
+    val pendenteGrande = vm.importPendenteGrande.value
+    if (pendenteGrande != null) {
+        AlertDialog(
+            onDismissRequest = { vm.recusarImportacaoGrande() },
+            containerColor = KenkernSurfaceOverlay,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.WarningAmber, contentDescription = null,
+                        tint = KenkernAmber, modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Arquivo grande", fontSize = 15.sp, color = KenkernTextHigh)
+                }
+            },
+            text = {
+                Text(
+                    "'${pendenteGrande.nome}' tem %.0f MB (acima de 200 MB).\n\n" +
+                        "A importação roda em background, mas vai usar bastante memória e tempo. Continuar?".format(
+                            java.util.Locale.US, pendenteGrande.tamanhoMb
+                        ),
+                    fontSize = 12.sp, color = KenkernTextMid
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.confirmarImportacaoGrande() }) {
+                    Text("Importar mesmo assim", color = KenkernAmber, fontSize = 12.sp)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.recusarImportacaoGrande() }) {
+                    Text("Cancelar", color = KenkernTextMid, fontSize = 12.sp)
+                }
+            }
+        )
     }
 }

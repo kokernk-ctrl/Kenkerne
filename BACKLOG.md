@@ -46,6 +46,7 @@ F1.7, F1.8 e F1.9 só viram VALIDADO-NO-APARELHO depois da execução pelo usuá
 | F2.13 | Pré-visualização de assets no navegador (malha/textura) | F2.12 | TODO |
 | F2.14 | Prefabs (criar/inserir/instância) | F2.12 | TODO |
 | F2.15 | Registro de assets com ids estáveis + detecção de referência quebrada | F2.7 | TODO |
+| F2.16 | **Botão "Importar modelo"** na TopBar (ETAPA A do fechamento da Fase 2): SAF arquivo (.glb/.gltf/.fbx/.zip) e Pasta (OpenDocumentTree); importação em background (Dispatchers.Default/IO) com progresso por etapas (lendo/triangulando/gravando/validando) e cancelar; origem copiada em streaming para assets/models/origem/ + .KERN em assets/models/; UM Command no Undo/Redo (ImportModelCommand — undo remove Nick e recolhe assets para a lixeira, redo devolve); classe "Malha" no Nick com path + AABB (picking/foco pela malha real); render da malha importada via AssetMeshLibrary (carga fora do flush, orçamento 6 ms); ImportReport com tamanho antes/depois, triângulos, tempo, pico de memória e KernIntegrity + "Copiar relatório"; > 200 MB pede confirmação; resolução de glTF externo (.bin/texturas) via pasta SAF e .zip com bloqueio de zip-slip; checagem "importar" no Diagnóstico (modelo embutido) | F2.7, F2.8 | COMPILADO+CI ✓ (pendente aparelho; 15 testes JVM novos)
 
 Meta de compressão da Fase 2 (100 MB → ≤ 20 MB) é da PIPELINE de assets completa:
 F2.7 já emite o relatório (meta); deduplicação, LODs gerados e compressão de
