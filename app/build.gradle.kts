@@ -101,4 +101,6 @@ dependencies {
     implementation(libs.luaj.jse)
 
     testImplementation(libs.mockito.core)
+    // Importador glTF (F2.7): mesmo package org.json do Android, só nos testes JVM.
+    testImplementation(libs.org.json)
 }

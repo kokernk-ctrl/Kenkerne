@@ -1,5 +1,36 @@
 # KENKERN — CHANGELOG
 
+## F2.7 — Importador glTF/GLB → .KERN (app v0.1.13, sem APK novo ainda)
+
+- **Importador glTF 2.0 completo** (`assets/import`): GLB (chunks JSON+BIN com
+  magic/offsets/limites validados) e .gltf (buffers em data URI; buffer externo
+  = erro CLARO com orientação). POSITION/NORMAL/TEXCOORD_0/índices nos
+  componentTypes i8/u8/i16/u16/u32/f32; só primitivas TRIANGLES (mode≠4 = erro
+  claro). Transform dos nodes (matriz column-major OU TRS/quaternion, herança
+  de pais) aplicado aos vértices; NORMAL pela matriz 3×3 renormalizada; NORMAL
+  ausente = acumulação suave de faces. Todas as primitivas da cena padrão
+  fundidas em 1 KernMesh; saída SEMPRE pelo KernWriter (quantização u16 +
+  octaédrica 8:8).
+- **Meta de compressão**: `ImportReport` (bytes origem → bytes .KERN, razão,
+  vértices/triângulos/primitivas/nodes/lods, flag da meta do roadmap 100 MB →
+  ≤ 20 MB) — a meta de 5× é da pipeline completa (dedup/LODs/índices, F2.8+);
+  mesh denso já sai ~1,3× menor.
+- **Teste de integridade** (`KernIntegrity`): roundtrip pelo KernReader REAL —
+  contagens, índices no range e idênticos, AABB do header, erro máximo de
+  posição pós-dequantização medido em PASSOS de quantização, tabela de LODs.
+- **FIX CRÍTICO da Fase 1 achado pelo importador**: rotação de quaternion com
+  meia amplitude — `Quaternion.toMatrix` e `Mat4.setTRS` tinham os produtos com
+  `w` SEM o fator 2 (90° em Y mapeava (0,0,1) para comprimento 0,5). Todo Nick
+  girando (Spin/Bob), o gizmo e o torus entortavam/encolhiam em vez de girar.
+  Play nunca tinha sido validado no aparelho — por isso invisível.
+  Fix + `QuaternionMatrixRegressionTest` (REGRESSION.md).
+- **Diagnóstico**: checagem nova `gltf` (gera GLB na memória → importa → valida
+  integridade + meta + erro claro) — 8 checagens agora.
+- Testes JVM novos: GltfImporterTest (10), QuaternionMatrixRegressionTest (5),
+  KenkernLogTest (5). Suíte: 37 → 67 testes, verde.
+- Dependência só de TESTE: `org.json:json` (mesma API nativa do Android; não
+  entra no APK).
+
 ## Realinhamento ao ROADMAP (2026-11-21 — sem APK novo)
 
 - **Tag `fase-2-ok` REMOVIDA** (local, remote e referências): foi criada sem

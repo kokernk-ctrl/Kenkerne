@@ -3,6 +3,10 @@ package com.kenkern.engine.diag
 import android.app.ActivityManager
 import android.content.Context
 import android.opengl.GLES30
+import com.kenkern.engine.assets.import.GltfAmostras
+import com.kenkern.engine.assets.import.GltfImportException
+import com.kenkern.engine.assets.import.GltfImporter
+import com.kenkern.engine.assets.import.KernIntegrity
 import com.kenkern.engine.assets.mesh.KernReader
 import com.kenkern.engine.assets.mesh.KernWriter
 import com.kenkern.engine.assets.mesh.MeshData
@@ -69,6 +73,7 @@ class Diagnostico(private val appContext: Context) {
     fun novaLista(): List<Checagem> = listOf(
         Checagem("ck", ".ck (cena) — ida e volta"),
         Checagem("kern", ".KERN (malha) — ida e volta"),
+        Checagem("gltf", "Importador glTF/GLB → .KERN (meta + integridade)"),
         Checagem("picking", "Matemática de picking (raio de tela)"),
         Checagem("shaders", "Compilação de shaders (GLSL ES)"),
         Checagem("buffers", "Alocação de buffers (VBO/VAO)"),
@@ -83,7 +88,7 @@ class Diagnostico(private val appContext: Context) {
      * Nunca lança.
      */
     fun executar(onAtualiza: (Checagem) -> Unit) {
-        val rapidas = listOf("ck", "kern", "picking")
+        val rapidas = listOf("ck", "kern", "gltf", "picking")
         val gl = listOf("shaders", "buffers", "glcaps")
 
         for (id in rapidas) rodarUma(id, onAtualiza)
@@ -118,6 +123,7 @@ class Diagnostico(private val appContext: Context) {
             when (id) {
                 "ck" -> checarCk(c)
                 "kern" -> checarKern(c)
+                "gltf" -> checarGltf(c)
                 "picking" -> checarPicking(c)
                 "shaders" -> checarShaders(c)
                 "buffers" -> checarBuffers(c)
@@ -236,6 +242,61 @@ class Diagnostico(private val appContext: Context) {
                     "%.1e (tolerância %.1e)".format(java.util.Locale.US, erroMax, tolerancia)
             )
         }
+    }
+
+    // ---------------------------------------------------------------- glTF (F2.7)
+
+    private fun checarGltf(c: Checagem) {
+        // 1) Quad GLB completo (POSITION+NORMAL+UV+índices u16)
+        val r1 = try {
+            GltfImporter.importar(GltfAmostras.quadGlb())
+        } catch (e: Exception) {
+            c.falhou("quad GLB: ${e.message}")
+            return
+        }
+        if (r1.mesh.vertexCount != 4 || r1.mesh.indices.size != 6) {
+            c.falhou("quad GLB: ${r1.mesh.vertexCount} vértices / ${r1.mesh.indices.size} índices (esperado 4/6)")
+            return
+        }
+        val p1 = KernIntegrity.verificar(r1.mesh, r1.bytesKern)
+        if (p1.isNotEmpty()) {
+            c.falhou("quad GLB integridade: ${p1.joinToString("; ")}")
+            return
+        }
+
+        // 2) Cubo em 2 nodes com transform (TRS/quaternion + herança) → merge
+        val r2 = try {
+            GltfImporter.importar(GltfAmostras.cuboComTransformGlb())
+        } catch (e: Exception) {
+            c.falhou("cubo com transform: ${e.message}")
+            return
+        }
+        if (r2.mesh.vertexCount != 16 || r2.mesh.indices.size != 72) {
+            c.falhou("cubo com transform: ${r2.mesh.vertexCount} vértices / ${r2.mesh.indices.size} índices (esperado 16/72 — merge de 2 instâncias)")
+            return
+        }
+        val p2 = KernIntegrity.verificar(r2.mesh, r2.bytesKern)
+        if (p2.isNotEmpty()) {
+            c.falhou("cubo com transform integridade: ${p2.joinToString("; ")}")
+            return
+        }
+
+        // 3) Erros CLAROS (nunca silenciosos — regra da engine)
+        val magicOk = try {
+            GltfImporter.importar(GltfAmostras.magicQuebrado())
+            false
+        } catch (e: GltfImportException) {
+            true
+        }
+        if (!magicOk) {
+            c.falhou("arquivo com magic quebrado NÃO gerou erro claro")
+            return
+        }
+
+        c.aprovado(
+            "GLB quad + cubo com transform (merge 2 instâncias) importados, integridade OK · " +
+                r1.report.resumo() + " · erros claros OK"
+        )
     }
 
     // ---------------------------------------------------------------- picking

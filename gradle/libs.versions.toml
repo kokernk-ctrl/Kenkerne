@@ -9,6 +9,9 @@ coroutines = "1.9.0"
 junit = "4.13.2"
 mockito = "5.14.2"
 luaj = "3.0.1"
+# Testes JVM do importador glTF (F2.7): o app usa o org.json nativo do Android;
+# nos testes JVM a MESMA API vem do artefato oficial (não entra no APK).
+orgJson = "20240303"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -28,6 +31,7 @@ mockito-core = { group = "org.mockito", name = "mockito-core", version.ref = "mo
 # LUA (Fase 3): runtime de script do jogo — LuaJ puro na JVM/ART, sem NDK.
 # Troca por Lua 5.4 nativo só se o PROFILER provar gargalo (DECISIONS.md #6).
 luaj-jse = { group = "org.luaj", name = "luaj-jse", version.ref = "luaj" }
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

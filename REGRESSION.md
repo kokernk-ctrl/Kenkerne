@@ -39,6 +39,11 @@
 
 ## Regressões históricas (resolvidas — manter os testes)
 
+- **Rotação de quaternion meia-amplitude (v0.1.13, achado pelo F2.7)**: os termos
+  com `w` na conversão quaternion→matrix (`Quaternion.toMatrix` e `Mat4.setTRS`)
+  estavam SEM o fator 2 — uma rotação de 90° em Y mapeava (0,0,1) para um vetor
+  de comprimento 0,5 (malha encolhia/entortava em vez de girar; Play nunca foi
+  validado no aparelho, por isso não foi visto). Fix + `QuaternionMatrixRegressionTest`.
 - Zoom orbital preso (v0.1.10) → `PinchZoomRegressionTest`.
 - Olhar horizontal morto no voo (v0.1.11) → `FlightLookRegressionTest`.
 - Raio de tela invertido no orbital → `OrbitCameraRayTest`.

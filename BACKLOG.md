@@ -37,7 +37,7 @@ F1.7, F1.8 e F1.9 só viram VALIDADO-NO-APARELHO depois da execução pelo usuá
 | F2.4 | Pastas ui/worlds + ENGINE_VERSION de fonte única (BuildConfig) | — | COMPILADO+CI ✓ |
 | F2.5 | Duplicar projeto (+ 3 testes JVM) | — | COMPILADO+CI ✓ (pendente aparelho) |
 | F2.6 | .KERNPACK import/export via SAF (+ 5 testes JVM, zip-slip) | F2.4 | COMPILADO+CI ✓ (pendente aparelho) |
-| F2.7 | **Importador glTF/GLB → .KERN**: parser GLB (chunks JSON+BIN) e .gltf (data URI), POSITION/NORMAL/TEXCOORD_0/indices, transform dos nodes (TRS/matriz), merge de primitivas em 1 KernMesh, meta de compressão (relatório bytes origem → .KERN, meta do roadmap 100 MB → ≤ 20 MB), teste de integridade (AABB, contagem de triângulos, erro máx pós-quantização, índices no range) + checagem nova no Diagnóstico | F2.2 | DOING — plano commitado antes do código (10 linhas, ver histórico do commit) |
+| F2.7 | **Importador glTF/GLB → .KERN**: parser GLB (chunks JSON+BIN) e .gltf (data URI), POSITION/NORMAL/TEXCOORD_0/indices (i8/u8/i16/u16/u32/f32), transform dos nodes (matriz column-major OU TRS/quaternion), merge de primitivas em 1 KernMesh, meta de compressão (ImportReport: bytes origem → .KERN, razão, meta do roadmap 100 MB → ≤ 20 MB anotada), teste de integridade (AABB, contagem de triângulos, erro máx pós-quantização em passos, índices no range, LODs) + checagem `gltf` nova no Diagnóstico | F2.2 | COMPILADO+CI ✓ (10 testes JVM; FBX é o F2.8 separado) |
 | F2.8 | Importador FBX → .KERN (depois do glTF/GLB — DECISIONS #11) | F2.7 | TODO |
 | F2.9 | .KIMG: texturas ASTC/ETC2 com mipmaps | F2.7 | TODO |
 | F2.10 | Cache de assets em disco (LRU) | F2.9 | TODO |

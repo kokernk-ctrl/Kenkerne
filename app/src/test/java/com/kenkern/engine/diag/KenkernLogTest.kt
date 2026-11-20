@@ -68,6 +68,6 @@ class KenkernLogTest {
     @Test
     fun exception_sem_mensagem_usa_o_nome_da_classe() {
         KenkernLog.e("T", "sem mensagem", NullPointerException())
-        assertEquals("java.lang.NullPointerException", KenkernLog.registros().single().detalhe)
+        assertEquals("NullPointerException", KenkernLog.registros().single().detalhe)
     }
 }

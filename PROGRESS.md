@@ -11,8 +11,8 @@ de tarefas do BACKLOG sem refazer o que está pronto.
   v0.1.13 foi re-titulada "fase ABERTA"). A tag `fase-1-ok` fica, mas os itens que
   dependem do aparelho (seleção por toque, Play real, paisagem automática, gizmos)
   estão **COMPILADO**, não VALIDADO, até o usuário confirmar (TESTES_PENDENTES.md).
-- **Tarefa atual**: F2.7 — importador glTF/GLB → .KERN (meta de compressão +
-  teste de integridade). Plano em 10 linhas commitado antes do código.
+- **Tarefa atual**: F2.8 — importador FBX → .KERN (F2.7 glTF/GLB está
+  COMPILADO+CI ✓ com 10 testes JVM e checagem `gltf` no Diagnóstico).
 - **Lua congelada**: o LuaJ existente é o F5.1 (antes F3.1), trabalho ANTECIPADO —
   proibido crescer código Lua antes da Fase 5. Fase 3 = LENTE/LUME/colliders/input.
 - **Regras novas** (ROADMAP.md, Regras de fase): (1) tag `fase-N-ok` só com TODOS os

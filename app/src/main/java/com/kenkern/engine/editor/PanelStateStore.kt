@@ -41,10 +41,6 @@ class PanelStateStore(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val states = HashMap<String, PanelUiState>()
 
-    private companion object {
-        const val TAG = "Kenkern/PanelStateStore"
-    }
-
     fun get(
         key: String,
         title: String,
@@ -110,6 +106,7 @@ class PanelStateStore(context: Context) {
     }
 
     companion object {
+        private const val TAG = "Kenkern/PanelStateStore"
         private const val PREFS_NAME = "kenkern_panels"
         const val MIN_FLOAT_W_DP = 220f
         const val MIN_FLOAT_H_DP = 200f

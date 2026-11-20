@@ -51,9 +51,9 @@ class Mat4 {
         val r = rot
         val sx = scl.x; val sy = scl.y; val sz = scl.z
         val xx = r.x + r.x; val yy = r.y + r.y; val zz = r.z + r.z
-        val xy = r.x * yy; val xz = r.x * zz; val xw = r.x * r.w
-        val yz = r.y * zz; val yw = r.y * r.w
-        val zw = r.z * r.w
+        val xy = r.x * yy; val xz = r.x * zz; val xw = r.x * r.w * 2f
+        val yz = r.y * zz; val yw = r.y * r.w * 2f
+        val zw = r.z * r.w * 2f
         val xxx = r.x * xx; val xyy = r.y * yy; val xzz = r.z * zz
         val yyy = r.y * yy; val zzz = r.z * zz
         m[0] = (1f - (yyy + zzz)) * sx; m[4] = (xy - zw) * sy; m[8] = (xz + yw) * sz; m[12] = pos.x

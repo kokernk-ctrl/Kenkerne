@@ -83,9 +83,9 @@ class Quaternion(var x: Float = 0f, var y: Float = 0f, var z: Float = 0f, var w:
     fun toMatrix(out: Mat4) {
         val m = out.m
         val xx = x + x; val yy = y + y; val zz = z + z
-        val xy = x * yy; val xz = x * zz; val xw = x * ww()
-        val yz = y * zz; val yw = y * ww()
-        val zw = z * ww()
+        val xy = x * yy; val xz = x * zz; val xw = x * ww() * 2f
+        val yz = y * zz; val yw = y * ww() * 2f
+        val zw = z * ww() * 2f
         val xxx = x * xx; val xyy = y * yy; val xzz = z * zz
         val yyy = y * yy; val zzz = z * zz
         m[0] = 1f - (yyy + zzz); m[4] = xy - zw; m[8] = xz + yw
