@@ -20,27 +20,38 @@ real, paisagem automática e gizmos (Fase 1) ficam `COMPILADO` até este aceite.
 
 ## Aceite da FASE 2 — app v0.1.13 (build da fase ABERTA — parte FEITA)
 
-> A tag `fase-2-ok` foi removida (2026-11-21). Este aceite valida SOMENTE os itens
-> já feitos da Fase 2 (Diagnóstico, pastas, duplicar, .KERNPACK). Os pendentes
-> (importador glTF/GLB → .KERN, .KIMG, cache, streaming, navegador, pré-
-> visualização, prefabs, registro de assets) ganham aceite quando implementados.
+> A tag `fase-2-ok` foi removida (2026-11-21). Este aceite valida os itens já feitos
+> da Fase 2 (Diagnóstico, pastas, duplicar, .KERNPACK) MAIS o importador glTF/GLB
+> (F2.7) e o fix da rotação. Continuam pendentes na Fase 2: FBX (F2.8), .KIMG,
+> cache, streaming, navegador, pré-visualização, prefabs, registro de assets.
 
 1. Abrir o Hub: versão v0.1.13-fase2 no cabeçalho; projeto ANTIGO abre e ganha
    as pastas ui/ e worlds/ (verificar com gerenciador de arquivos, opcional).
-2. Ícone do INSETO no Hub → Diagnóstico → "Rodar tudo": 7 checagens
+2. Ícone do INSETO no Hub → Diagnóstico → "Rodar tudo": 8 checagens
    APROVADAS (mandar print). FALHOU em glcaps/memoria pode ser característica
    do aparelho — anotar o motivo mostrado.
 3. No editor: com o overlay (inseto da TopBar), conferir que o TORUS aparece
    na cena (ele nunca tinha renderizado antes do fix do .KERN).
-4. Menu de três pontos de um projeto → Duplicar: "X (cópia)" aparece no Hub e
+4. **Rotação correta (fix do quaternion)**: Play com a classe Spin — o cubo
+   GIRA uniforme, sem encolher/entortar. Girar o nick no Inspetor (yaw 90°) e
+   conferir que a malha fica 90° de verdade.
+5. Menu de três pontos de um projeto → Duplicar: "X (cópia)" aparece no Hub e
    abre igual.
-5. Exportar (.kernpack) → escolher pasta → importar de volta (ícone de pasta
+6. Exportar (.kernpack) → escolher pasta → importar de volta (ícone de pasta
    no Hub): projeto volta com cena idêntica.
-6. Criar projeto novo: cube/Spin/gizmo/undo/Play continuam funcionando
+7. Criar projeto novo: cube/Spin/gizmo/undo/Play continuam funcionando
    (regressão padrão da Fase 1).
 
-## Diagnóstico (a partir da Fase 2)
+## Importador glTF/GLB (F2.7) — aceite no aparelho
+
+1. Diagnóstico → checagem "Importador glTF/GLB → .KERN" APROVADA com o resumo
+   da meta (print). (A checagem gera GLB na memória, importa e valida.)
+2. (Quando o painel de importação existir, F2.12: importar um .glb real e ver
+   a malha no viewport — hoje o importador está no núcleo + Diagnóstico.)
+
+## Diagnóstico (a partir da Fase 2; 8 checagens desde o F2.7)
 
 _Abrir no Hub → Diagnóstico → rodar → mandar print._
-(Após F2.3: .ck ida e volta, .KERN ida e volta, picking, shaders, caps GL,
-buffers, memória — cada linha APROVADO/FALHOU com motivo.)
+(.ck ida e volta, .KERN ida e volta, **importador glTF/GLB → .KERN**, picking,
+shaders, caps GL, buffers, memória — cada linha APROVADO/FALHOU com motivo;
+erros desta sessão também aparecem na seção CONSOLE.)
