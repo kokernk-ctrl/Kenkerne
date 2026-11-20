@@ -11,7 +11,11 @@ object KernFormat {
 
     const val HEADER_SIZE = 80
     const val VERTEX_SIZE = 24
-    const val LOD_ENTRY_SIZE = 20
+    // Entrada de LOD = 2 ints (offset/count) + 6 floats (bounds) = 32 bytes.
+    // FIX F2.2: era 20 (bug da Fase 1) — o buffer do escritor ficava 12 bytes
+    // curto por LOD e estourava nos índices; o runCatching do EngineRenderer
+    // engolia e o torus de teste .KERN nunca renderizou (silenciado desde a v0.1.0).
+    const val LOD_ENTRY_SIZE = 32
 
     const val FLAG_HAS_CLUSTERS: Short = 1
 

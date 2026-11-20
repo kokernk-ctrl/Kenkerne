@@ -36,6 +36,11 @@ object KernReader {
 
         require(vertexCount > 0) { "KERN sem vértices" }
         require(vertexBlockSize == vertexCount * KernFormat.VERTEX_SIZE) { "vertexBlockSize inconsistente" }
+        // FIX F2.2: o escritor preenche o header com zeros até HEADER_SIZE (80);
+        // o leitor lia só os 66 bytes de campos e começava os vértices 14 bytes
+        // ANTES de onde eles estão — tudo desalinhado (UVs/índices lixo). Bug
+        // empilhado sob o LOD_ENTRY_SIZE e engolido pelo runCatching desde a v0.1.0.
+        buffer.position(KernFormat.HEADER_SIZE)
 
         // Vértices
         val positions = FloatArray(vertexCount * 3)
