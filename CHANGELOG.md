@@ -1,5 +1,40 @@
 # KENKERN — CHANGELOG
 
+## F2.8 — Importador FBX → .KERN (sem APK novo ainda)
+
+- **Importador FBX binário 7.1–7.7** (`assets/import/FbxImporter.kt`): header
+  "Kaydara FBX Binary" + versão u32; records de node com offsets u32 (< 7500) ou
+  u64 (≥ 7500); propriedades i16/bool/i32/f32/f64/i64, strings (nomes "A::B"
+  viram "B") e arrays 'd'/'i'/'f'/'l'/'b' com encoding 0 (raw) e 1 (zlib/Inflater
+  com validação de tamanho). Footer ignorado. Limites de profundidade/contagem
+  e validação de endOffset/propsLen contra corrupção — erro CLARO, nunca
+  silêncio (regra #17; o arquivo não tem UM runCatching).
+- **Malha**: Vertices + PolygonVertexIndex (fim de polígono = índice negativo,
+  `idx.inv()`); polígonos de N cantos triangulados em LEQUE (quad/ngon → 2+n-3
+  triângulos, preservando winding); vértices EXPANDIDOS por canto (hard edges
+  corretos nativamente; dedup fica para a pipeline de compressão).
+- **Normais/UV**: primeira camada de LayerElementNormal/UV (3 e 2 componentes;
+  camadas extras = AVISO no KenkernLog); mappings ByPolygonVertex/ByVertice/
+  ByPolygon com Direct e IndexToDirect; normais ausentes = acumulação suave por
+  face (mesma matemática do glTF); UV convertida para a convenção glTF
+  (v' = 1 − v — DECISIONS #20).
+- **Hierarquia/instâncias**: Connections OO monta pais/filhos de Model;
+  mundo = pai × TRS local (Lcl Translation/Rotation em GRAUS/Scaling) × TRS
+  geométrico (Geometric T/R/S); geometria compartilhada por 2+ Models =
+  instâncias fundidas (offset de índices); PreRotation/PostRotation presentes =
+  AVISO no KenkernLog (malha estática não usa; rigs são da Fase 8).
+- **Saída idêntica ao glTF**: KernWriter.Builder → .KERN (quantização u16 +
+  octaédrica 8:8) + KernIntegrity (roundtrip real) + ImportReport reutilizado
+  (geometrias×instâncias no lugar de primitivas).
+- **Fora de escopo com erro claro**: FBX ASCII/texto (pede binário), FBX 6.x/5.x
+  (pede conversão), polígono aberto, índice fora do range.
+- **Diagnóstico**: checagem nova `fbx` (quad + cubo compartilhado por 2 Models +
+  erro claro) — 9 checagens agora.
+- Testes JVM novos: FbxImporterTest (15) + FbxAmostras (mini-escritor de FBX
+  binário sintético — quad, ngon, ByVertice, sem normais, zlib, cubo com 2
+  Models, v7500, ASCII, 6.x, polígono aberto). Suíte: 67 → 82 testes, verde.
+  `assembleRelease` verde.
+
 ## F2.7 — Importador glTF/GLB → .KERN (app v0.1.13, sem APK novo ainda)
 
 - **Importador glTF 2.0 completo** (`assets/import`): GLB (chunks JSON+BIN com

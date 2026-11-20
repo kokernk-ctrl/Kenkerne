@@ -22,12 +22,12 @@ real, paisagem automática e gizmos (Fase 1) ficam `COMPILADO` até este aceite.
 
 > A tag `fase-2-ok` foi removida (2026-11-21). Este aceite valida os itens já feitos
 > da Fase 2 (Diagnóstico, pastas, duplicar, .KERNPACK) MAIS o importador glTF/GLB
-> (F2.7) e o fix da rotação. Continuam pendentes na Fase 2: FBX (F2.8), .KIMG,
+> (F2.7) e o fix da rotação. Continuam pendentes na Fase 2: .KIMG (F2.9),
 > cache, streaming, navegador, pré-visualização, prefabs, registro de assets.
 
 1. Abrir o Hub: versão v0.1.13-fase2 no cabeçalho; projeto ANTIGO abre e ganha
    as pastas ui/ e worlds/ (verificar com gerenciador de arquivos, opcional).
-2. Ícone do INSETO no Hub → Diagnóstico → "Rodar tudo": 8 checagens
+2. Ícone do INSETO no Hub → Diagnóstico → "Rodar tudo": 9 checagens
    APROVADAS (mandar print). FALHOU em glcaps/memoria pode ser característica
    do aparelho — anotar o motivo mostrado.
 3. No editor: com o overlay (inseto da TopBar), conferir que o TORUS aparece
@@ -49,9 +49,19 @@ real, paisagem automática e gizmos (Fase 1) ficam `COMPILADO` até este aceite.
 2. (Quando o painel de importação existir, F2.12: importar um .glb real e ver
    a malha no viewport — hoje o importador está no núcleo + Diagnóstico.)
 
-## Diagnóstico (a partir da Fase 2; 8 checagens desde o F2.7)
+## Importador FBX (F2.8) — aceite no aparelho
+
+1. Diagnóstico → checagem "Importador FBX → .KERN (instâncias + integridade)"
+   APROVADA com o resumo (print). (A checagem gera FBX binário na memória,
+   importa quad + cubo compartilhado por 2 Models e valida integridade.)
+2. (Quando o painel de importação existir, F2.12: importar um .fbx REAL do
+   Blender (exportação binária 7.4) e ver a malha no viewport — triangulação de
+   polígonos e transform dos Models serão os pontos a conferir.)
+
+## Diagnóstico (a partir da Fase 2; 9 checagens desde o F2.8)
 
 _Abrir no Hub → Diagnóstico → rodar → mandar print._
-(.ck ida e volta, .KERN ida e volta, **importador glTF/GLB → .KERN**, picking,
-shaders, caps GL, buffers, memória — cada linha APROVADO/FALHOU com motivo;
-erros desta sessão também aparecem na seção CONSOLE.)
+(.ck ida e volta, .KERN ida e volta, **importador glTF/GLB → .KERN**,
+**importador FBX → .KERN**, picking, shaders, caps GL, buffers, memória — cada
+linha APROVADO/FALHOU com motivo; erros desta sessão também aparecem na seção
+CONSOLE.)

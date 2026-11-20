@@ -3,6 +3,9 @@ package com.kenkern.engine.diag
 import android.app.ActivityManager
 import android.content.Context
 import android.opengl.GLES30
+import com.kenkern.engine.assets.import.FbxAmostras
+import com.kenkern.engine.assets.import.FbxImportException
+import com.kenkern.engine.assets.import.FbxImporter
 import com.kenkern.engine.assets.import.GltfAmostras
 import com.kenkern.engine.assets.import.GltfImportException
 import com.kenkern.engine.assets.import.GltfImporter
@@ -33,6 +36,8 @@ import kotlin.math.max
  * Checagens da Fase 2:
  *  - ck       — ida e volta do formato de cena .ck (CK1);
  *  - kern     — ida e volta do formato de malha .KERN com erro máximo medido;
+ *  - gltf     — importador glTF/GLB → .KERN (meta + integridade + erros claros);
+ *  - fbx      — importador FBX → .KERN (merge de instâncias + integridade + erros claros);
  *  - picking  — matemática do raio de tela nos 2 modos de câmera;
  *  - shaders  — compilação/link de um programa de teste no driver (GLSL ES 3.00);
  *  - buffers  — alocação e liberação de VBO/VAO reais via GlesBackend;
@@ -74,6 +79,7 @@ class Diagnostico(private val appContext: Context) {
         Checagem("ck", ".ck (cena) — ida e volta"),
         Checagem("kern", ".KERN (malha) — ida e volta"),
         Checagem("gltf", "Importador glTF/GLB → .KERN (meta + integridade)"),
+        Checagem("fbx", "Importador FBX → .KERN (instâncias + integridade)"),
         Checagem("picking", "Matemática de picking (raio de tela)"),
         Checagem("shaders", "Compilação de shaders (GLSL ES)"),
         Checagem("buffers", "Alocação de buffers (VBO/VAO)"),
@@ -88,7 +94,7 @@ class Diagnostico(private val appContext: Context) {
      * Nunca lança.
      */
     fun executar(onAtualiza: (Checagem) -> Unit) {
-        val rapidas = listOf("ck", "kern", "gltf", "picking")
+        val rapidas = listOf("ck", "kern", "gltf", "fbx", "picking")
         val gl = listOf("shaders", "buffers", "glcaps")
 
         for (id in rapidas) rodarUma(id, onAtualiza)
@@ -124,6 +130,7 @@ class Diagnostico(private val appContext: Context) {
                 "ck" -> checarCk(c)
                 "kern" -> checarKern(c)
                 "gltf" -> checarGltf(c)
+                "fbx" -> checarFbx(c)
                 "picking" -> checarPicking(c)
                 "shaders" -> checarShaders(c)
                 "buffers" -> checarBuffers(c)
@@ -296,6 +303,62 @@ class Diagnostico(private val appContext: Context) {
         c.aprovado(
             "GLB quad + cubo com transform (merge 2 instâncias) importados, integridade OK · " +
                 r1.report.resumo() + " · erros claros OK"
+        )
+    }
+
+    // ---------------------------------------------------------------- fbx
+
+    private fun checarFbx(c: Checagem) {
+        // 1) Quad FBX (2 triângulos expandidos = 6 vértices; normais Direct + UV IndexToDirect)
+        val r1 = try {
+            FbxImporter.importar(FbxAmostras.quadFbx())
+        } catch (e: Exception) {
+            c.falhou("quad FBX: ${e.message}")
+            return
+        }
+        if (r1.mesh.vertexCount != 6 || r1.mesh.indices.size != 6) {
+            c.falhou("quad FBX: ${r1.mesh.vertexCount} vértices / ${r1.mesh.indices.size} índices (esperado 6/6)")
+            return
+        }
+        val p1 = KernIntegrity.verificar(r1.mesh, r1.bytesKern)
+        if (p1.isNotEmpty()) {
+            c.falhou("quad FBX integridade: ${p1.joinToString("; ")}")
+            return
+        }
+
+        // 2) Cubo em 6 polígonos de quad compartilhado por 2 Models (TRS em graus)
+        //    → merge de instâncias: 24 cantos × 2 = 48 vértices, 36 índices × 2 = 72
+        val r2 = try {
+            FbxImporter.importar(FbxAmostras.cuboCompartilhadoFbx())
+        } catch (e: Exception) {
+            c.falhou("cubo compartilhado: ${e.message}")
+            return
+        }
+        if (r2.mesh.vertexCount != 48 || r2.mesh.indices.size != 72) {
+            c.falhou("cubo compartilhado: ${r2.mesh.vertexCount} vértices / ${r2.mesh.indices.size} índices (esperado 48/72)")
+            return
+        }
+        val p2 = KernIntegrity.verificar(r2.mesh, r2.bytesKern)
+        if (p2.isNotEmpty()) {
+            c.falhou("cubo compartilhado integridade: ${p2.joinToString("; ")}")
+            return
+        }
+
+        // 3) Erros CLAROS (nunca silenciosos — regra da engine)
+        val asciiOk = try {
+            FbxImporter.importar(FbxAmostras.asciiFbx())
+            false
+        } catch (e: FbxImportException) {
+            true
+        }
+        if (!asciiOk) {
+            c.falhou("FBX ASCII NÃO gerou erro claro")
+            return
+        }
+
+        c.aprovado(
+            "FBX quad + cubo compartilhado (merge 2 instâncias, TRS em graus) importados, " +
+                "integridade OK · " + r2.report.resumo() + " · erros claros OK"
         )
     }
 

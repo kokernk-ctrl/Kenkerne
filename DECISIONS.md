@@ -81,6 +81,16 @@ Formato: decisão · motivo · alternativa descartada.
     para F2.8. Parser JSON do glTF usa `org.json` (nativo no Android;
     `testImplementation org.json:json` só nos testes JVM) — sem dependência nova
     no APK. Alternativa descartada: parser JSON artesanal (risco de bug).
+20. **Convenção de UV normalizada para a glTF (origem TOPO-esquerda) e FBX só
+    binário (F2.8)** — (a) o importador FBX converte v' = 1 − v na entrada, para
+    que TODOS os importadores entreguem UV na mesma convenção ao .KERN (texturas
+    da TRAMA/Fase 4 não terão um "modo FBX"); (b) FBX ASCII (texto) e FBX 6.x/5.x
+    dão ERRO CLARO pedindo binário 7.x — só o caminho binário 7.1–7.7 é
+    implementado (é o que Blender/Maya/Assimp exportam por padrão);
+    (c) PreRotation/PostRotation presentes = AVISO no `KenkernLog` e ignorados
+    (malha estática não os usa; rigs/animações são da Fase 8). Alternativa
+    descartada: manter a convenção nativa de cada formato (misturaria convenções
+    no mesmo formato .KERN).
 
 ## Correções históricas (resumo; detalhes no CHANGELOG)
 

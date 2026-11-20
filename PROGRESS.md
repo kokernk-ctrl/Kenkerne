@@ -11,22 +11,23 @@ de tarefas do BACKLOG sem refazer o que está pronto.
   v0.1.13 foi re-titulada "fase ABERTA"). A tag `fase-1-ok` fica, mas os itens que
   dependem do aparelho (seleção por toque, Play real, paisagem automática, gizmos)
   estão **COMPILADO**, não VALIDADO, até o usuário confirmar (TESTES_PENDENTES.md).
-- **Tarefa atual**: F2.8 — importador FBX → .KERN (F2.7 glTF/GLB está
-  COMPILADO+CI ✓ com 10 testes JVM e checagem `gltf` no Diagnóstico).
+- **Tarefa atual**: F2.9 — .KIMG (texturas ASTC/ETC2 com mipmaps). F2.7 (glTF/GLB,
+  11 testes) e F2.8 (FBX, 15 testes) estão COMPILADO+CI ✓ com checagens no
+  Diagnóstico.
 - **Lua congelada**: o LuaJ existente é o F5.1 (antes F3.1), trabalho ANTECIPADO —
   proibido crescer código Lua antes da Fase 5. Fase 3 = LENTE/LUME/colliders/input.
 - **Regras novas** (ROADMAP.md, Regras de fase): (1) tag `fase-N-ok` só com TODOS os
   itens de aceite implementados; (2) nenhum `runCatching` engole erro em silêncio —
   Log + Console (`KenkernLog`) + tela Diagnóstico; auditoria em
   `docs/RUNCATCHING_AUDIT.md`.
-- **App**: v0.1.13 (`versionCode 14`) + trabalho do realinhamento; suíte JVM verde.
+- **App**: v0.1.13 (`versionCode 14`) + F2.7/F2.8; suíte JVM 82 testes, verde.
 
 ## O que existe (Fases 1–2, validado por CI)
 
 - Tudo da Fase 1 (ver CHANGELOG) MAIS:
 - Tela Diagnóstico no Hub (ícone do inseto): checagens APROVADO/FALHOU
-  (.ck, .KERN, picking, shaders, buffers, glcaps, memória) — EglDiag cria
-  contexto pbuffer offscreen na thread de fundo; toda fase adiciona checagens.
+  (.ck, .KERN, gltf, fbx, picking, shaders, buffers, glcaps, memória) — EglDiag
+  cria contexto pbuffer offscreen na thread de fundo; toda fase adiciona checagens.
 - Duplicar projeto; Importar/Exportar .kernpack (SAF); pastas ui/ e worlds/
   (com migração de projetos antigos); ENGINE_VERSION = BuildConfig.VERSION_NAME.
 - Fixes da Fase 1 achados pelos testes F2: escapes do .ck; LOD_ENTRY_SIZE
@@ -35,17 +36,25 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 - Console de erros `KenkernLog` (Log + anel em memória) exibido no Diagnóstico e
   no overlay do editor — nenhum runCatching crítico engole erro em silêncio.
 - Importador glTF/GLB → .KERN (F2.7): parser GLB/.gltf + meta de compressão +
-  teste de integridade + checagem `gltf` no Diagnóstico. FBX fica para F2.8.
+  teste de integridade + checagem `gltf` no Diagnóstico.
+- Importador FBX binário → .KERN (F2.8): parser 7.1–7.7 (u32/u64, zlib),
+  triangulação em leque de polígonos, vértices expandidos por canto, normais/UV
+  por camada (Direct/IndexToDirect; UV v'=1−v, DECISIONS #20), hierarquia de
+  Models (Lcl/Geometric TRS em graus), merge de instâncias + checagem `fbx` no
+  Diagnóstico. FBX ASCII/6.x = erro claro.
 
 ## O que falta na Fase 2 (ordem)
 
 1. F2.7: importador glTF/GLB → .KERN — **FEITO** (COMPILADO+CI ✓, 11 testes
    JVM, checagem `gltf` no Diagnóstico; gotchas do GLB documentados no
    cabeçalho do GltfImporter.kt).
-2. F2.8: **importador FBX → .KERN** — TAREFA ATUAL (EM CURSO).
-3. F2.9–F2.15: .KIMG (ASTC/ETC2), cache, streaming anti-trave, navegador,
-   pré-visualização, prefabs, registro de assets (ids estáveis + ref quebrada).
-4. FIM DE FASE só quando F2.1–F2.15 estiverem implementados (regra nova) →
+2. F2.8: importador FBX → .KERN — **FEITO** (COMPILADO+CI ✓, 15 testes JVM,
+   checagem `fbx` no Diagnóstico; gotchas do FBX no cabeçalho do FbxImporter.kt
+   e no DECISIONS #20).
+3. F2.9: **.KIMG (ASTC/ETC2 com mipmaps)** — TAREFA ATUAL (próxima).
+4. F2.10–F2.15: cache LRU, streaming anti-trave, navegador, pré-visualização,
+   prefabs, registro de assets (ids estáveis + ref quebrada).
+5. FIM DE FASE só quando F2.1–F2.15 estiverem implementados (regra nova) →
    teste de aceite no aparelho → VALIDADO-NO-APARELHO → aí sim tag `fase-2-ok`.
 
 ## Armadilhas descobertas (não repetir)

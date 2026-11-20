@@ -33,12 +33,12 @@ F1.7, F1.8 e F1.9 só viram VALIDADO-NO-APARELHO depois da execução pelo usuá
 |----|--------|-----------|--------|
 | F2.1 | Teste JVM: ida e volta do .ck (+ FIX: escapes voltavam corrompidos) | — | COMPILADO+CI ✓ (pendente aparelho via Diagnóstico) |
 | F2.2 | Teste JVM: ida e volta do .KERN (+ FIX: LOD_ENTRY_SIZE e header desalinhado — torus nunca renderizou) | — | COMPILADO+CI ✓ (pendente aparelho) |
-| F2.3 | Tela Diagnóstico no Hub (8 checagens APROVADO/FALHOU; a 8ª, `gltf`, entrou no F2.7) | F2.1, F2.2 | COMPILADO+CI ✓ (pendente aparelho) |
+| F2.3 | Tela Diagnóstico no Hub (9 checagens APROVADO/FALHOU; a 8ª, `gltf`, entrou no F2.7 e a 9ª, `fbx`, no F2.8) | F2.1, F2.2 | COMPILADO+CI ✓ (pendente aparelho) |
 | F2.4 | Pastas ui/worlds + ENGINE_VERSION de fonte única (BuildConfig) | — | COMPILADO+CI ✓ |
 | F2.5 | Duplicar projeto (+ 3 testes JVM) | — | COMPILADO+CI ✓ (pendente aparelho) |
 | F2.6 | .KERNPACK import/export via SAF (+ 5 testes JVM, zip-slip) | F2.4 | COMPILADO+CI ✓ (pendente aparelho) |
 | F2.7 | **Importador glTF/GLB → .KERN**: parser GLB (chunks JSON+BIN) e .gltf (data URI), POSITION/NORMAL/TEXCOORD_0/indices (i8/u8/i16/u16/u32/f32), transform dos nodes (matriz column-major OU TRS/quaternion), merge de primitivas em 1 KernMesh, meta de compressão (ImportReport: bytes origem → .KERN, razão, meta do roadmap 100 MB → ≤ 20 MB anotada), teste de integridade (AABB, contagem de triângulos, erro máx pós-quantização em passos, índices no range, LODs) + checagem `gltf` nova no Diagnóstico | F2.2 | COMPILADO+CI ✓ (11 testes JVM; FBX é o F2.8 separado) |
-| F2.8 | Importador FBX → .KERN (depois do glTF/GLB — DECISIONS #11) | F2.7 | **EM CURSO** |
+| F2.8 | **Importador FBX → .KERN**: parser binário 7.1–7.7 (offsets u32/u64, arrays zlib), PolygonVertexIndex (polígono = índice negativo), triangulação em leque de quad/ngon, vértices expandidos por canto, normais/UV (ByPolygonVertex/ByVertice/ByPolygon × Direct/IndexToDirect; ausente = acumulada; UV v'=1−v), hierarquia de Models com Lcl/Geometric T-R-S em graus, merge de instâncias (geometria compartilhada), KernIntegrity + ImportReport, checagem `fbx` no Diagnóstico; FBX ASCII/6.x = erro claro | F2.7 | COMPILADO+CI ✓ (15 testes JVM; DECISIONS #19/#20) |
 | F2.9 | .KIMG: texturas ASTC/ETC2 com mipmaps | F2.7 | TODO |
 | F2.10 | Cache de assets em disco (LRU) | F2.9 | TODO |
 | F2.11 | Streaming progressivo anti-trave (carregamento fora do frame, sem bloquear a thread GL) | F2.10 | TODO |
