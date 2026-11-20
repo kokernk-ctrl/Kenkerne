@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.WarningAmber
@@ -97,7 +98,8 @@ fun HomeScreen(
     onCreateProject: (String) -> Unit,
     onOpenProject: (ProjectHandle) -> Unit,
     onRenameProject: (ProjectHandle, String) -> Unit,
-    onDeleteProject: (ProjectHandle) -> Unit
+    onDeleteProject: (ProjectHandle) -> Unit,
+    onAbrirDiagnostico: () -> Unit = {}
 ) {
     var showNewDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<ProjectHandle?>(null) }
@@ -136,6 +138,17 @@ fun HomeScreen(
                     )
                 }
                 Spacer(Modifier.weight(1f))
+                // Diagnóstico: checagens da engine no aparelho (tela da Fase 2)
+                IconButton(
+                    onClick = onAbrirDiagnostico,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.BugReport,
+                        contentDescription = "Diagnóstico",
+                        tint = KenkernTextMid
+                    )
+                }
                 Button(
                     onClick = { showNewDialog = true },
                     enabled = !isLoading,

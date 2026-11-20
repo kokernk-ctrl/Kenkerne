@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kenkern.engine.editor.EditorViewModel
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.ui.screens.CrashReportDialog
+import com.kenkern.engine.ui.screens.DiagnosticoScreen
 import com.kenkern.engine.ui.screens.EditorScreen
 import com.kenkern.engine.ui.screens.HomeScreen
 import com.kenkern.engine.ui.screens.CrashReportStore
@@ -34,6 +35,8 @@ fun KenkernAppRoot() {
     // Estado aqui na raiz (vive enquanto o app vive): aparece 1x por início,
     // não reaparece ao voltar do editor para o Hub.
     var showCrashReport by remember { mutableStateOf(CrashReportStore.hasPendingReport(context)) }
+    // DIAGNÓSTICO (Fase 2): tela de checagens da engine, acessível pelo Hub.
+    var showDiagnostico by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.refreshProjects() }
 
@@ -42,16 +45,22 @@ fun KenkernAppRoot() {
     }
 
     if (currentProject == null) {
-        HomeScreen(
-            projects = vm.projects.value,
-            isLoading = vm.isLoading.value,
-            statusMessage = vm.statusMessage.value,
-            onConsumeStatus = { vm.consumeStatus() },
-            onCreateProject = { name -> vm.createAndEnterProject(name) },
-            onOpenProject = { handle -> vm.openProject(handle) },
-            onRenameProject = { handle, name -> vm.renameProject(handle, name) },
-            onDeleteProject = { handle -> vm.deleteProject(handle) }
-        )
+        if (showDiagnostico) {
+            BackHandler { showDiagnostico = false }
+            DiagnosticoScreen(onVoltar = { showDiagnostico = false })
+        } else {
+            HomeScreen(
+                projects = vm.projects.value,
+                isLoading = vm.isLoading.value,
+                statusMessage = vm.statusMessage.value,
+                onConsumeStatus = { vm.consumeStatus() },
+                onCreateProject = { name -> vm.createAndEnterProject(name) },
+                onOpenProject = { handle -> vm.openProject(handle) },
+                onRenameProject = { handle, name -> vm.renameProject(handle, name) },
+                onDeleteProject = { handle -> vm.deleteProject(handle) },
+                onAbrirDiagnostico = { showDiagnostico = true }
+            )
+        }
     } else {
         EditorScreen(vm, onExit = { vm.exitProject() })
     }
