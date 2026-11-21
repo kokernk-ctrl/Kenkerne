@@ -156,23 +156,51 @@ object ChecagemRelease {
     }
 
     private fun checarLua(): Resultado {
-        val fonte = "diag_t = 0\n" +
-            "on_update = function(dt) diag_t = diag_t + dt end\n"
+        // SCRIPT REAL (D2.4, v0.1.16): usa PRINT + MATH + BIT32 + STRING de fato.
+        // No release minificado o R8 quebrava o bind reflexivo das libs do LuaJ
+        // (Bit32Lib$Bit32LibV via Class.newInstance) — um script que só soma
+        // floats PASSARIA e esconderia o bug. O valor esperado é fixo e
+        // verificado: math.floor(abs(-2.5)+4.5)=7 · bit32.bor(lshift(1,4),3)=19 ·
+        // string.format("%x",19)="13" (len 2) → 7+19+2 = 28; on_update soma 1
+        // → 29 após o primeiro tick.
+        val fonte = """
+            print("diagnostico: prova do LuaJ (math+bit32+string+print)")
+            diag_resultado = 0
+            local function prova(a, b)
+              local m = math.floor(math.abs(a) + b)
+              local bits = bit32.bor(bit32.lshift(1, 4), 3)
+              local txt = string.format("%x", bits)
+              print("diagnostico:", txt)
+              diag_resultado = m + bits + string.len(txt)
+            end
+            prova(-2.5, 4.5)
+            on_update = function(dt) diag_resultado = diag_resultado + 1 end
+        """.trimIndent()
         val rt = try {
             ScriptRuntime.criar("diag-release", fonte, orcamentoMs = 50L)
         } catch (e: Exception) {
             return Resultado("lua", ok = false, "exceção ao criar ScriptRuntime: ${e.message ?: e.javaClass.simpleName}")
         }
-        if (rt == null) return Resultado("lua", ok = false, "script trivial não compilou (criar devolveu null)")
+        if (rt == null) return Resultado("lua", ok = false, "script real não compilou (criar devolveu null)")
         val iniciou = rt.iniciar()
         if (!iniciou) {
-            return Resultado("lua", ok = false, "script trivial não iniciou: ${rt.ultimoErro() ?: "sem erro reportado"}")
+            return Resultado("lua", ok = false, "script real não iniciou: ${rt.ultimoErro() ?: "sem erro reportado"} — bind reflexivo das libs do LuaJ é o primeiro suspeito (R8)")
         }
         val atualizou = rt.atualizar(1f / 60f)
-        return if (atualizou) {
-            Resultado("lua", ok = true, "ScriptRuntime (LuaJ) carregou, iniciou e executou on_update")
+        if (!atualizou) {
+            return Resultado("lua", ok = false, "on_update falhou/desativou: ${rt.ultimoErro() ?: "sem erro reportado"}")
+        }
+        // Valor esperado lido do AMBIENTE — prova que math, bit32 e string
+        // produziram os números CERTOS (não só que não lançaram).
+        val globals = (rt as? com.kenkern.engine.core.script.LuaJScriptRuntime)?.ambiente()
+        val valor = globals?.get("diag_resultado")?.toint() ?: Int.MIN_VALUE
+        return if (valor == 29) {
+            Resultado(
+                "lua", ok = true,
+                "script real executou print + math + bit32 + string (resultado 28 = 7+19+2; +1 no on_update = 29) — bind reflexivo das libs OK"
+            )
         } else {
-            Resultado("lua", ok = false, "on_update falhou/desativou: ${rt.ultimoErro() ?: "sem erro reportado"}")
+            Resultado("lua", ok = false, "resultado do script foi $valor (esperado 29) — math/bit32/string produziram números errados ou o ambiente divergiu")
         }
     }
 }
