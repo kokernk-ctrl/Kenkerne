@@ -613,41 +613,16 @@ class KenkernSurfaceView(
         }
     }
 
-    /** Scratch do nickWorldAabb (sem alocação por frame). */
-    private val aabbMeiaLocal = FloatArray(3)
-    private val aabbCentroLocal = FloatArray(3)
+    // Scratch do picking (sem alocação por frame). O CÁLCULO mora no
+    // PickingMath (fonte única compartilhada com o Diagnóstico — D1).
     private val pickMinW = Vec3()
     private val pickMaxW = Vec3()
     private val focusMinTmp = Vec3()
     private val focusMaxTmp = Vec3()
 
-    /**
-     * AABB em MUNDO do Nick: 8 cantos da AABB LOCAL (malha importada tem AABB
-     * própria pela classe "Malha"; Nick padrão = cubo de 1 m) transformados pela
-     * matriz de mundo. Sem alocação — todos os rascunhos são pré-alocados.
-     */
+    /** Delegação ao PickingMath (fonte única do picking — D1). */
     private fun nickWorldAabb(nick: Nick, outMin: Vec3, outMax: Vec3) {
-        MalhaNick.meiaExtensaoLocal(nick, aabbMeiaLocal)
-        MalhaNick.centroLocal(nick, aabbCentroLocal)
-        val m = nick.transform.worldMatrix.m
-        outMin.set(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE)
-        outMax.set(-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
-        var i = 0
-        while (i < 8) {
-            val lx = aabbCentroLocal[0] + if (i and 1 == 0) -aabbMeiaLocal[0] else aabbMeiaLocal[0]
-            val ly = aabbCentroLocal[1] + if (i and 2 == 0) -aabbMeiaLocal[1] else aabbMeiaLocal[1]
-            val lz = aabbCentroLocal[2] + if (i and 4 == 0) -aabbMeiaLocal[2] else aabbMeiaLocal[2]
-            val wx = m[0] * lx + m[4] * ly + m[8] * lz + m[12]
-            val wy = m[1] * lx + m[5] * ly + m[9] * lz + m[13]
-            val wz = m[2] * lx + m[6] * ly + m[10] * lz + m[14]
-            if (wx < outMin.x) outMin.x = wx
-            if (wx > outMax.x) outMax.x = wx
-            if (wy < outMin.y) outMin.y = wy
-            if (wy > outMax.y) outMax.y = wy
-            if (wz < outMin.z) outMin.z = wz
-            if (wz > outMax.z) outMax.z = wz
-            i++
-        }
+        PickingMath.worldAabb(nick, outMin, outMax)
     }
 
     /**
@@ -699,11 +674,11 @@ class KenkernSurfaceView(
                 val ex = (pickMaxW.x - pickMinW.x) * 0.5f
                 val ey = (pickMaxW.y - pickMinW.y) * 0.5f
                 val ez = (pickMaxW.z - pickMinW.z) * 0.5f
-                val t = rayAabb(pickOrigin, pickDir, cx, cy, cz, ex, ey, ez)
+                val t = PickingMath.rayAabb(pickOrigin, pickDir, cx, cy, cz, ex, ey, ez)
                 val sd = if (t >= 0f) {
                     0f // hit exato: o toque está DENTRO da AABB projetada
                 } else {
-                    projectedAabbDistance(
+                    PickingMath.projectedAabbDistance(
                         viewProj, renderW.toFloat(), renderH.toFloat(), bufToView,
                         pickTouchX, pickTouchY, cx, cy, cz, ex, ey, ez
                     )
@@ -739,90 +714,6 @@ class KenkernSurfaceView(
             tested
         )
         return bestId
-    }
-
-    /**
-     * Distância (px da VIEW) do toque à AABB projetada na tela: projeta os 8
-     * cantos da caixa para o framebuffer, converte para px da view e mede a
-     * distância ao retângulo. Retorna -1 se algum canto cair atrás da câmera
-     * (a caixa cruza o plano da câmera — só o teste exato vale nesse caso).
-     */
-    private fun projectedAabbDistance(
-        vp: Mat4, renderW: Float, renderH: Float, bufToView: Float,
-        touchX: Float, touchY: Float,
-        cx: Float, cy: Float, cz: Float,
-        ex: Float, ey: Float, ez: Float
-    ): Float {
-        var minX = Float.MAX_VALUE
-        var minY = Float.MAX_VALUE
-        var maxX = -Float.MAX_VALUE
-        var maxY = -Float.MAX_VALUE
-        val mm = vp.m
-        var i = 0
-        while (i < 8) {
-            val px = if (i and 1 == 0) cx - ex else cx + ex
-            val py = if (i and 2 == 0) cy - ey else cy + ey
-            val pz = if (i and 4 == 0) cz - ez else cz + ez
-            val cw = mm[3] * px + mm[7] * py + mm[11] * pz + mm[15]
-            if (abs(cw) < 1e-6f || cw <= 0f) return -1f
-            val inv = 1f / cw
-            val ndcX = (mm[0] * px + mm[4] * py + mm[8] * pz + mm[12]) * inv
-            val ndcY = (mm[1] * px + mm[5] * py + mm[9] * pz + mm[13]) * inv
-            val bx = (ndcX * 0.5f + 0.5f) * renderW * bufToView
-            val by = (1f - (ndcY * 0.5f + 0.5f)) * renderH * bufToView
-            if (bx < minX) minX = bx
-            if (bx > maxX) maxX = bx
-            if (by < minY) minY = by
-            if (by > maxY) maxY = by
-            i++
-        }
-        val dx = maxOf(minX - touchX, 0f, touchX - maxX)
-        val dy = maxOf(minY - touchY, 0f, touchY - maxY)
-        return sqrt(dx * dx + dy * dy)
-    }
-
-    /** Slab test raio-AABB; retorna t (>= 0) ou -1 se não há interseção. */
-    private fun rayAabb(
-        o: Vec3, d: Vec3,
-        cx: Float, cy: Float, cz: Float,
-        ex: Float, ey: Float, ez: Float
-    ): Float {
-        var tmin = 0f
-        var tmax = Float.MAX_VALUE
-        // X
-        if (abs(d.x) < 1e-9f) {
-            if (abs(o.x - cx) > ex) return -1f
-        } else {
-            var t1 = (cx - ex - o.x) / d.x
-            var t2 = (cx + ex - o.x) / d.x
-            if (t1 > t2) { val tmp = t1; t1 = t2; t2 = tmp }
-            if (t1 > tmin) tmin = t1
-            if (t2 < tmax) tmax = t2
-            if (tmin > tmax) return -1f
-        }
-        // Y
-        if (abs(d.y) < 1e-9f) {
-            if (abs(o.y - cy) > ey) return -1f
-        } else {
-            var t1 = (cy - ey - o.y) / d.y
-            var t2 = (cy + ey - o.y) / d.y
-            if (t1 > t2) { val tmp = t1; t1 = t2; t2 = tmp }
-            if (t1 > tmin) tmin = t1
-            if (t2 < tmax) tmax = t2
-            if (tmin > tmax) return -1f
-        }
-        // Z
-        if (abs(d.z) < 1e-9f) {
-            if (abs(o.z - cz) > ez) return -1f
-        } else {
-            var t1 = (cz - ez - o.z) / d.z
-            var t2 = (cz + ez - o.z) / d.z
-            if (t1 > t2) { val tmp = t1; t1 = t2; t2 = tmp }
-            if (t1 > tmin) tmin = t1
-            if (t2 < tmax) tmax = t2
-            if (tmin > tmax) return -1f
-        }
-        return tmin
     }
 
     /**

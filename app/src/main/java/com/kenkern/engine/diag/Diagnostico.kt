@@ -35,6 +35,9 @@ import com.kenkern.engine.core.serialization.CkFormat
 import com.kenkern.engine.render.CameraMode
 import com.kenkern.engine.render.GlesBackend
 import com.kenkern.engine.render.OrbitCamera
+import com.kenkern.engine.render.PickingMath
+import com.kenkern.engine.render.TouchController
+import com.kenkern.engine.core.math.Mat4
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -100,6 +103,7 @@ class Diagnostico(private val appContext: Context) {
         Checagem("etc2", "ETC2 — upload e leitura de pixel (GL offscreen)"),
         Checagem("astc", "ASTC — extensão do aparelho (informativo)"),
         Checagem("picking", "Matemática de picking (raio de tela)"),
+        Checagem("toque", "Toque no cubo — API real do TouchController"),
         Checagem("shaders", "Compilação de shaders (GLSL ES)"),
         Checagem("buffers", "Alocação de buffers (VBO/VAO)"),
         Checagem("glcaps", "Capacidades GL (versão/extensões/compute)"),
@@ -114,7 +118,7 @@ class Diagnostico(private val appContext: Context) {
      * Nunca lança.
      */
     fun executar(onAtualiza: (Checagem) -> Unit) {
-        val rapidas = listOf("ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "release")
+        val rapidas = listOf("ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release")
         val gl = listOf("shaders", "buffers", "glcaps", "etc2", "astc")
 
         for (id in rapidas) rodarUma(id, onAtualiza)
@@ -154,6 +158,7 @@ class Diagnostico(private val appContext: Context) {
                 "importar" -> checarImportar(c)
                 "kimg" -> checarKimg(c)
                 "picking" -> checarPicking(c)
+                "toque" -> checarToqueCubo(c)
                 "shaders" -> checarShaders(c)
                 "buffers" -> checarBuffers(c)
                 "glcaps" -> checarGlCaps(c)
@@ -793,16 +798,30 @@ class Diagnostico(private val appContext: Context) {
         val o = Vec3()
         val d = Vec3()
         val fwd = Vec3()
-        val problemas = ArrayList<String>(3)
+        val esperado = Vec3()
+        val problemas = ArrayList<String>(4)
+        val valores = StringBuilder()
 
-        // Raio pelo CENTRO da tela == direção de olhar (base do toque-para-mundo).
+        // ORBITAL: raio pelo CENTRO da tela == direção de olhar, e a ORIGEM do
+        // raio == OLHO (OrbitCamera.eyePoint — a MESMA fonte da matriz de view).
+        // CORREÇÃO D1 (v0.1.16): a checagem antiga comparava a origem com
+        // target + fwd*dist (fwd = DIREÇÃO DE OLHAR) — sinal INVERTIDO: o olho
+        // fica em target - fwd*dist. O raio estava CERTO; a checagem é que
+        // exigia um ponto atrás do alvo — por isso o aparelho falhava com
+        // "origem orbital" e os testes JVM (que comparam com eyePoint)
+        // passavam. Agora a checagem usa eyePoint, a fonte única.
         cam.mode = CameraMode.ORBITAL
         cam.forwardVector(fwd)
+        cam.eyePoint(esperado)
         cam.screenRay(0f, 0f, 16f / 9f, o, d)
-        if (o.distanceTo(Vec3().set(cam.target).addScaled(fwd, cam.distance)) > 0.01f) problemas.add("origem orbital")
+        val difOrigemO = o.distanceTo(esperado)
+        if (difOrigemO > 1e-4f) problemas.add("origem orbital")
         if (abs(d.x - fwd.x) > 1e-3f || abs(d.y - fwd.y) > 1e-3f || abs(d.z - fwd.z) > 1e-3f) {
             problemas.add("direção orbital")
         }
+        valores.append("ORBITAL: olho=(%.3f, %.3f, %.3f) origem do raio=(%.3f, %.3f, %.3f) dif=%.4f ".format(
+            java.util.Locale.US, esperado.x, esperado.y, esperado.z, o.x, o.y, o.z, difOrigemO
+        ))
 
         cam.mode = CameraMode.FLIGHT
         cam.flightPosition.set(3f, 2f, 5f)
@@ -810,10 +829,14 @@ class Diagnostico(private val appContext: Context) {
         cam.flightPitchDegrees = 12f
         cam.forwardVector(fwd)
         cam.screenRay(0f, 0f, 9f / 16f, o, d)
-        if (o.distanceTo(cam.flightPosition) > 1e-4f) problemas.add("origem voo")
+        val difOrigemV = o.distanceTo(cam.flightPosition)
+        if (difOrigemV > 1e-4f) problemas.add("origem voo")
         if (abs(d.x - fwd.x) > 1e-3f || abs(d.y - fwd.y) > 1e-3f || abs(d.z - fwd.z) > 1e-3f) {
             problemas.add("direção voo")
         }
+        valores.append("· VOO: origem=(%.3f, %.3f, %.3f) dif=%.4f".format(
+            java.util.Locale.US, o.x, o.y, o.z, difOrigemV
+        ))
 
         // Inversão de Y (ndcY = 1 - 2y/h): raio do TOCO tem componente Y maior.
         val topo = Vec3()
@@ -823,9 +846,137 @@ class Diagnostico(private val appContext: Context) {
         if (topo.y <= base.y) problemas.add("inversão de Y")
 
         if (problemas.isEmpty()) {
-            c.aprovado("raio do centro = olhar em ORBITAL e VOO; topo/base e Y invertidos corretamente")
+            c.aprovado("raio do centro = olhar em ORBITAL e VOO; origem do raio = olho (eyePoint); topo/base e Y invertidos corretamente")
         } else {
-            c.falhou("divergência: ${problemas.joinToString()}")
+            // Mensagem NUNCA genérica: modo, olho, origem do raio, diferença,
+            // near dinâmico e o tamanho de view sintético desta checagem.
+            c.falhou(
+                "divergência: ${problemas.joinToString()} · modo=${cam.mode} " +
+                    "nearDinâmico=%.3f view=2400×1080(px,16:9 sintético) escala=100%% · ".format(
+                        java.util.Locale.US, cam.effectiveNear()
+                    ) + valores
+            )
+            KenkernLog.e(TAG, "checagem picking falhou: ${problemas.joinToString()} · $valores", null)
+        }
+    }
+
+    // ---------------------------------------------------------------- toque no cubo (D1.4)
+
+    /**
+     * CHECAGEM "toque no cubo" (D1.4): reproduz o caminho REAL do aparelho com
+     * as MESMAS APIs — TouchController classifica o gesto (tap curto, slop em
+     * dp), requestPick normaliza px da VIEW, OrbitCamera.screenRay cria o raio
+     * (fonte única) e PickingMath.rayAabb é o MESMO slab test do viewport.
+     * O toque é disparado no pixel PROJETADO do centro do cubo da cena padrão
+     * e PRECISA acertar. Números visíveis na mensagem se falhar.
+     */
+    private fun checarToqueCubo(c: Checagem) {
+        // Cena padrão do editor: Mundo > Cubo na origem (cubo de 1 m).
+        val scene = Scene("Diag-Toque")
+        val mundo = scene.createRootNick("Mundo")
+        val cubo = scene.createNick("Cubo", mundo)
+        // Mesmo contrato do loop de render: matrizes de mundo atualizadas ANTES
+        // do picking (KenkernSurfaceView.onDrawFrame faz o mesmo).
+        scene.updateWorldTransforms()
+
+        // Mesmos números do viewport real: view 2400×1080 px, density 3,
+        // escala de resolução 100% (framebuffer = view).
+        val viewW = 2400f
+        val viewH = 1080f
+        val density = 3f
+        val escalaResolucao = 1.0f
+        val fbW = (viewW * escalaResolucao).toInt()
+        val fbH = (viewH * escalaResolucao).toInt()
+        val aspect = fbW.toFloat() / fbH.toFloat()
+
+        val cam = OrbitCamera() // cena padrão: target (0, 0.8, 0), dist 9, fov 55
+        val proj = Mat4()
+        val view = Mat4()
+        val vp = Mat4()
+        cam.projection(proj, aspect)
+        cam.view(view)
+        vp.multiply(proj, view)
+
+        // Centro do cubo em mundo → px da VIEW (mesma cadeia do overlay: px do
+        // framebuffer × bufToView).
+        val centro = Vec3(0f, 0f, 0f)
+        val mm = vp.m
+        val cw = mm[3] * centro.x + mm[7] * centro.y + mm[11] * centro.z + mm[15]
+        if (cw <= 0f) {
+            c.falhou("centro do cubo caiu atrás da câmera (cw=%.3f) — projeção/view divergiram".format(java.util.Locale.US, cw))
+            return
+        }
+        val inv = 1f / cw
+        val ndcCx = (mm[0] * centro.x + mm[4] * centro.y + mm[8] * centro.z + mm[12]) * inv
+        val ndcCy = (mm[1] * centro.x + mm[5] * centro.y + mm[9] * centro.z + mm[13]) * inv
+        val bufToView = viewW / fbW.toFloat()
+        val tapX = (ndcCx * 0.5f + 0.5f) * fbW * bufToView
+        val tapY = (1f - (ndcCy * 0.5f + 0.5f)) * fbH * bufToView
+
+        // Toque sintético PELA MESMA API do TouchController (DOWN → UP em 150 ms
+        // no mesmo px = tap válido; limiar de seleção real é 250 ms).
+        var tapXRecebido = -1f
+        var tapYRecebido = -1f
+        val touch = TouchController(
+            cam,
+            tapSlopPx = 12f * density,
+            density = density,
+            onTap = { x, y -> tapXRecebido = x; tapYRecebido = y }
+        )
+        val evDown = android.view.MotionEvent.obtain(0L, 0L, android.view.MotionEvent.ACTION_DOWN, tapX, tapY, 0)
+        val evUp = android.view.MotionEvent.obtain(0L, 150L, android.view.MotionEvent.ACTION_UP, tapX, tapY, 0)
+        try {
+            touch.onTouch(evDown)
+            touch.onTouch(evUp)
+        } finally {
+            evDown.recycle()
+            evUp.recycle()
+        }
+        if (tapXRecebido < 0f) {
+            c.falhou(
+                "TouchController NÃO classificou como tap (tap só até 250 ms e dentro do slop de 12 dp×density=%.1f) — " +
+                    "toque em (%.1f, %.1f) px da view".format(java.util.Locale.US, density, tapX, tapY)
+            )
+            return
+        }
+
+        // Inverso EXATO do requestPick (px da view → NDC) e raio pela fonte única.
+        val ndcX = (tapXRecebido / viewW) * 2f - 1f
+        val ndcY = 1f - (tapYRecebido / viewH) * 2f
+        val origem = Vec3()
+        val dir = Vec3()
+        cam.screenRay(ndcX, ndcY, aspect, origem, dir)
+
+        val minW = Vec3()
+        val maxW = Vec3()
+        PickingMath.worldAabb(cubo, minW, maxW)
+        val cx = (minW.x + maxW.x) * 0.5f
+        val cy = (minW.y + maxW.y) * 0.5f
+        val cz = (minW.z + maxW.z) * 0.5f
+        val ex = (maxW.x - minW.x) * 0.5f
+        val ey = (maxW.y - minW.y) * 0.5f
+        val ez = (maxW.z - minW.z) * 0.5f
+        val t = PickingMath.rayAabb(origem, dir, cx, cy, cz, ex, ey, ez)
+        if (t >= 0f) {
+            c.aprovado(
+                "tap em (%.0f, %.0f) px → NDC (%.3f, %.3f) → raio do olho acertou o cubo em t=%.3f m ".format(
+                    java.util.Locale.US, tapXRecebido, tapYRecebido, ndcX, ndcY, t
+                ) +
+                    "(view %.0f×%.0f px, escala %.0f%%, density %.1f, olho (%.2f, %.2f, %.2f))".format(
+                        java.util.Locale.US, viewW, viewH, escalaResolucao * 100f, density,
+                        origem.x, origem.y, origem.z
+                    )
+            )
+        } else {
+            c.falhou(
+                "raio do toque NÃO acertou o cubo: tap (%.1f, %.1f) px → NDC (%.3f, %.3f) · origem (%.3f, %.3f, %.3f) · ".format(
+                    java.util.Locale.US, tapXRecebido, tapYRecebido, ndcX, ndcY, origem.x, origem.y, origem.z
+                ) +
+                    "dir (%.3f, %.3f, %.3f) · AABB centro (%.3f, %.3f, %.3f) meia (%.2f, %.2f, %.2f) · aspect %.4f".format(
+                        java.util.Locale.US, dir.x, dir.y, dir.z, cx, cy, cz, ex, ey, ez, aspect
+                    )
+            )
+            KenkernLog.e(TAG, "toque no cubo não acertou: ndc=($ndcX,$ndcY) origem=$origem dir=$dir", null)
         }
     }
 
