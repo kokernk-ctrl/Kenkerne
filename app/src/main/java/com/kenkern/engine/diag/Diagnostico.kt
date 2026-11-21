@@ -55,6 +55,9 @@ import kotlin.math.max
  *  - buffers  — alocação e liberação de VBO/VAO reais via GlesBackend;
  *  - glcaps   — versão/renderizador/extensões/compute/limites;
  *  - memoria  — classes de memória e limites do aparelho.
+ *  - release  — fumaça do APK minificado: classes críticas por nome + uma
+ *               operação mínima de cada subsistema (guarda anti-R8, V1 da
+ *               auditoria 0.1.15).
  *
  * Regras: nada aqui derruba o app (toda checagem é blindada); sem GL no
  * construtor (só quando [executar] roda numa thread de fundo com o [EglDiag]);
@@ -100,7 +103,8 @@ class Diagnostico(private val appContext: Context) {
         Checagem("shaders", "Compilação de shaders (GLSL ES)"),
         Checagem("buffers", "Alocação de buffers (VBO/VAO)"),
         Checagem("glcaps", "Capacidades GL (versão/extensões/compute)"),
-        Checagem("memoria", "Limites de memória do aparelho")
+        Checagem("memoria", "Limites de memória do aparelho"),
+        Checagem("release", "Release minificado — classes críticas + operações mínimas")
     )
 
     /**
@@ -110,7 +114,7 @@ class Diagnostico(private val appContext: Context) {
      * Nunca lança.
      */
     fun executar(onAtualiza: (Checagem) -> Unit) {
-        val rapidas = listOf("ck", "kern", "gltf", "fbx", "importar", "kimg", "picking")
+        val rapidas = listOf("ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "release")
         val gl = listOf("shaders", "buffers", "glcaps", "etc2", "astc")
 
         for (id in rapidas) rodarUma(id, onAtualiza)
@@ -156,6 +160,7 @@ class Diagnostico(private val appContext: Context) {
                 "etc2" -> checarEtc2(c, egl)
                 "astc" -> checarAstc(c)
                 "memoria" -> checarMemoria(c)
+                "release" -> checarRelease(c)
             }
         }.onFailure {
             c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
@@ -960,6 +965,30 @@ class Diagnostico(private val appContext: Context) {
             c.falhou("memória crítica: $detalhe")
         } else {
             c.aprovado(detalhe)
+        }
+    }
+
+    // ---------------------------------------------------------------- release
+
+    /**
+     * Checagem "release" (auditoria V1.5): fumaça do APK MINIFICADO — se uma
+     * regra R8 futura remover classe que o release usa, aparece FALHOU aqui.
+     * A lógica está em [ChecagemRelease] (pura) para os testes JVM rodarem o
+     * MESMO código.
+     */
+    private fun checarRelease(c: Checagem) {
+        val resultados = ChecagemRelease.executar()
+        val (ok, primeiroErro) = ChecagemRelease.resumo(resultados)
+        val quebrados = resultados.filter { !it.ok }
+        if (quebrados.isEmpty()) {
+            c.aprovado(
+                "${resultados.size} passos OK (classes por nome, glTF, FBX, .KIMG, ETC2, Lua) — " +
+                    "R8 não removeu nada que o release usa"
+            )
+        } else {
+            val nomes = quebrados.joinToString(", ") { it.passo }
+            c.falhou("$ok/${resultados.size} passos OK — falha em [$nomes]: $primeiroErro")
+            KenkernLog.e(TAG, "fumaça do release falhou nos passos: $nomes", null)
         }
     }
 }

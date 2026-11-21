@@ -7,6 +7,17 @@
 # além de aplicar otimizações no código de suporte.
 -keep class com.kenkern.engine.** { *; }
 
+# AUDITORIA v0.1.15 (V1): nenhuma regra -keep nova era necessária. Provas:
+#  1. dexdump do APK v0.1.14 = 3.441 classes, TODAS as 22 subpackages
+#     com.kenkern.engine.* presentes (importador glTF/FBX, KIMG/Etc2,
+#     ScriptRuntime, KenkernLog, telas Compose);
+#  2. mapping.txt: 141 classes org.luaj.vm2 → a2.* (LuaJ encolhido mas
+#     PRESENTE — LuaJScriptRuntime referencia a2.f/a2.m = Globals/LuaError);
+#  3. zero Class.forName/getMethod/newInstance/ServiceLoader/Parcelable no
+#     código da engine (grep) — nada removível por uso indireto;
+#  4. guardas contínuos: checagem "release" no Diagnóstico (Class.forName +
+#     operação mínima de glTF/FBX/.KIMG/ETC2/Lua) + ChecagemReleaseTest JVM.
+
 # Stack traces legíveis nos logs anti-crash (Log.e do modo seguro).
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
