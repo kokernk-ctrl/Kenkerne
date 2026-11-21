@@ -1,5 +1,31 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## Aceite das CORREÇÕES D1–D5 — Release `v0.1.16-fase2-teste`
+
+> Valida as correções das 4 falhas do Diagnóstico da v0.1.15 no aparelho
+> (Mali-G57, GLES 3.2). Fase 2 CONTINUA ABERTA (faltam F2.11–F2.15); a tag
+> `fase-2-ok` CONTINUA não criada. Todos os itens ficam `COMPILADO` até este
+> aceite.
+
+1. Instalar a v0.1.16 pela Release: o app abre em **PAISAGEM** automaticamente
+   (sensor, as duas laterais) e NÃO abre em vertical (D5).
+2. Hub → ícone do INSETO → Diagnóstico: o cabeçalho mostra "Diagnóstico" e
+   "checagens da engine neste aparelho" em 1 linha cada, sem corte (D5).
+3. Diagnóstico → "Rodar tudo": **16 checagens** — as 4 que falhavam devem
+   ficar APROVADO: **picking** (mensagem nova com olho/origem do raio),
+   **release** (script Lua real com print+math+bit32+string), **importar**
+   (undo/redo com a lixeira no caminho certo) e **etc2** (mensagem separa
+   (a) erro de upload (b) status do framebuffer (c) pixel GPU vs decodificação
+   CPU + fallback RGBA8); conferir as NOVAS checagens **"toque no cubo"**
+   (toque no centro projetado do cubo acerta) e **"tex-cena"** (quad texturizado
+   não-preto). **Meta: 0 falhas** — enviar o print (D6.2).
+4. No editor, TOCAR no cubo da cena padrão: ele deve SELECIONAR (D1) — e
+   duplo toque continua focando, arrasto continua girando a câmera.
+5. IMPORTAR um modelo (ex.: DamagedHelmet.glb, 3,8 MB) e DESFAZER: o Nick sai
+   e o .KERN volta para a lixeira; REFAZER devolve tudo (D3). Se o desfazer
+   falhar, a mensagem mostra origem/destino/existe/canRead/canWrite/mesmoVolume.
+6. Reportar o resultado com o print do Diagnóstico (16 checagens).
+
 ## Aceite da AUDITORIA v0.1.15 — Release `v0.1.15-fase2-teste`
 
 > Valida a auditoria (V1 fumaça do release, V2 importação com camada Deflate

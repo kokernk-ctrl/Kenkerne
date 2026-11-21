@@ -1,5 +1,119 @@
 # KENKERN — CHANGELOG
 
+## v0.1.16 — CORREÇÃO das 4 falhas do Diagnóstico no aparelho (nenhuma funcionalidade nova)
+
+> Aparelho do usuário: Mali-G57, GLES 3.2, v0.1.15 — 9 aprovadas, 4 falharam
+> (picking, release, importar, etc2). Fatos do aparelho valem mais que testes
+> de JVM. 4 checagens novas (16 no total). Fase 2 CONTINUA ABERTA
+> (faltam F2.11–F2.15); NENHUMA tag `fase-2-ok`.
+
+### D1 — picking "divergência: origem orbital" (prioridade máxima)
+
+- **Causa raiz** (Diagnostico.kt, checarPicking): a CHECAGEM comparava a origem
+  do raio com `target + fwd*dist` usando `fwd = forwardVector` (DIREÇÃO DE
+  OLHAR) — sinal INVERTIDO: o olho fica em `target − fwd*dist`. O raio de
+  `OrbitCamera.screenRay` SEMPRE nasceu no olho (os testes JVM de raio comparam
+  com `eyePoint` desde a v0.1.x e passavam). O aparelho divergiu por um bug na
+  checagem, não por float/densidade/escala de resolução.
+- **Correção**: a checagem usa `eyePoint()` (fonte única); mensagem de falha
+  mostra olho, origem do raio, diferença, modo e near dinâmico (nunca genérica).
+- **Fonte única do hit-test**: `PickingMath` NOVO (render) — `rayAabb`,
+  `worldAabb` e `projectedAabbDistance` saíram do KenkernSurfaceView (privados)
+  e agora são o MESMO código usado pelo viewport e pelo Diagnóstico; olho/raio
+  continuam com UMA função (`OrbitCamera.screenRay`), usada por picking, gizmo
+  e checagens (o foco usa `focusOn`, mesma base interna).
+- **Checagem NOVA "toque no cubo"**: cena padrão (Mundo > Cubo), tap sintético
+  pela API REAL do TouchController (MotionEvent DOWN→UP em 150 ms, slop 12 dp×
+  density 3), raio pelo pixel PROJETADO do centro do cubo, hit obrigatório.
+- **Testes JVM**: ToqueCuboPickingTest reproduz as entradas EXATAS da checagem
+  e varre 5 views (paisagem/retrato) × 7 distâncias (0,1–2000 m) × 3 escalas
+  (100/75/50%) — origem = olho e hit em TODAS as combinações.
+
+### D2 — release minificado: LuaJ quebrado pelo R8
+
+- **Causa raiz comprovada no bytecode** (javap do luaj-jse 3.0.1):
+  `Bit32Lib.call()` resolve `Bit32Lib$Bit32LibV` por `Class.forName` e
+  `LibFunction.bind()` instancia por `Class.newInstance()` — REFLEXÃO em todas
+  as libs (bit32/math/string/table). No release o R8 renomeava org.luaj.*
+  (141 classes → a2.*) e o newInstance quebrou no aparelho.
+- **A conclusão V1 ("zero reflexão, R8 refutado") valia SÓ para a engine e
+  estava ERRADA para o LuaJ** — reconhecido em proguard-rules.pro e DECISIONS #23.
+- **Correção**: `-keep class org.luaj.** { *; }` com motivo + auditoria dos
+  terceiros (org.json e mockito são testImplementation; androidx/kotlinx têm
+  consumer-rules próprios — LuaJ era o único reflexivo no APK). O primeiro push
+  desta regra quebrou o R8 (luajc → Apache BCEL ausente no Android) — corrigido
+  com `-dontwarn org.apache.bcel.**` (a engine usa LuaC, nunca o luajc).
+- **Checagem "release" agora roda script Lua REAL**: print + função com math,
+  bit32 e string; o VALOR é conferido (28 = floor(abs(-2.5)+4.5) +
+  bor(lshift(1,4),3) + len(format("%x",19)) = 7+19+2; +1 no on_update = 29).
+  Um script que só soma floats passaria e esconderia o bug.
+- **Por que o CI não roda a suíte contra o dex minificado**: R8 produz ART/dex,
+  unit tests JVM rodam sobre classes compiladas; exigiria emulator
+  (connectedAndroidTest) — a prova definitiva é a checagem "release" NO APARELHO.
+
+### D3 — importar: "undo não recolheu o .KERN para a lixeira de importação"
+
+- **Causa raiz** (Diagnostico.kt, checarImportar): a checagem procurava o
+  arquivo em `assets/.lixeira-import/<rel>` — SEM o `<importId>` que o Command
+  usa (`assets/.lixeira-import/imp-<id>/<rel>`). **O undo FUNCIONAVA**; a
+  checagem olhava a pasta errada e falhava no aparelho.
+- **Correções no Command** (robustez, não funcionalidade nova): lixeira fica
+  DENTRO do projeto (mesmo volume por construção); `Files.move(REPLACE_EXISTING)`
+  com fallback copiar+apagar verificado por tamanho; nomes já existentes
+  substituídos com registro; falha final = `ImportException` com origem,
+  destino, existe/canRead/canWrite e mesmoVolume (FileStore) + KenkernLog.
+- **Testes JVM** (ImportModelCommandTest, 4): undo→lixeira→redo; volume
+  diferente SIMULADO no ponto exato do Files.move com o fallback rodando por
+  dentro; colisão de nome; falha total com os caminhos na mensagem.
+
+### D4 — etc2: pixel lido da GPU era (0,0,0), esperado (117,117,0)
+
+- **Causa raiz** (EglDiag.kt): o pbuffer offscreen era **1×1** e a checagem
+  desenhava num viewport 4×4 e lia o pixel (1,2) — **leitura FORA da
+  superfície** = GL_INVALID_OPERATION e buffer zerado. Upload e draw estavam
+  corretos; a LEITURA que falhava no Mali-G57.
+- **Correção**: pbuffer 64×64 + framebuffer offscreen PRÓPRIO com os TRÊS casos
+  separados na mensagem: (a) `glGetError` do upload (valor + nome da constante);
+  (b) `glCheckFramebufferStatus` do FBO (nome); (c) pixel após draw real com
+  GL_NEAREST, só mip 0, comparado com a DECODIFICAÇÃO EM CPU do MESMO bloco.
+  Caso de CONTROLE RGBA8 (o mesmo upload do fallback do GlesBackend) separa
+  "driver recusou ETC2" de "caminho GL quebrado". Verificações registradas no
+  código: internalformat 0x9274/0x9278 (valores crus, sem variante sRGB —
+  comparação direta com a CPU), tamanho de bytes = mip.dados.size,
+  GL_UNPACK_ALIGNMENT irrelevante em upload comprimido (RGBA8 = 4 B/px =
+  alinhamento padrão), min filter GL_NEAREST sem mipmap incompleto, uniform +
+  unidade 0, draw antes do glReadPixels no mesmo contexto, blocos linha-major.
+- **PSNR 10,7 dB explicado e corrigido**: o padrão 8×8 da checagem kimg era
+  ADVERSARIAL (alfa alternada por pixel = pior caso do EAC). Medição JVM dos
+  dois padrões: **10,71 dB adversarial — exatamente o número do aparelho** —
+  vs **24,66 dB realista** (gradiente suave + ruído ±3; textura 8×8 é minúscula,
+  cada bloco 4×4 quantiza ¼ do gradiente; texturas reais 2048× ficam em
+  30,6–39,2 dB, auditoria V2). Os DOIS PSNRs agora vão na mensagem.
+- **Checagem NOVA "tex-cena"**: quad texturizado pela textura criada no caminho
+  REAL da engine (`GlesBackend.createTextureFromKimg`, com o fallback RGBA8
+  automático — que registra no Console) e o pixel central NÃO pode ser preto.
+
+### D5 — paisagem automática não funcionava
+
+- **Causa raiz** (AndroidManifest.xml): `android:screenOrientation="fullUser"`
+  na ÚNICA Activity do app — o Hub, o Diagnóstico e o editor vivem nela via
+  KenkernAppRoot; nenhum tema sobrescreve e não existe `setRequestedOrientation`
+  no código (verificado por grep). Correção: **sensorLandscape** (paisagem
+  automática com o sensor, as duas laterais).
+- **Cabeçalho do Diagnóstico**: o subtítulo "checagens da engine neste aparelho"
+  cortava porque a Row tinha altura FIXA de 56 dp (não cresce com a fonte do
+  sistema) — agora `heightIn(min = 48.dp)`, título e subtítulo em 1 linha cada.
+
+### Verificação
+
+- 142 testes JVM verdes (4 novos na D1/D3, 1 novo na D4); assembleRelease verde
+  local (R8 com as regras novas); lint sem erros novos; APK release
+  1,7 MB (0,15 MB a mais = LuaJ inteiro preservado pelo -keep do D2).
+- Correção da correção: push D2/D3/D4/D5 falharam no CI em
+  minifyReleaseWithR8 (Missing class org.apache.bcel…) — corrigido no commit
+  seguinte (dontwarn bcel); o CI do fechamento D6 ficou verde com as regras
+  finais.
+
 ## v0.1.15 — AUDITORIA E CORREÇÃO da v0.1.14 (nenhuma funcionalidade nova)
 
 ### V1 — APK release de 1,5 MB é LEGÍTIMO (hipótese de R8 removendo classes REFUTADA)
