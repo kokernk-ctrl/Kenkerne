@@ -45,3 +45,12 @@
 -dontwarn javax.script.**
 -dontwarn org.luaj.vm2.script.**
 
+# D2 (v0.1.16): o -keep de org.luaj.** acima também preserva o luajc
+# (org.luaj.vm2.luajc.JavaBuilder — compilador Lua→bytecode JVM que referencia
+# Apache BCEL, dependência de COMPILED do luaj-jse ausente no Android). A
+# engine compila Lua com o LuaC (org.luaj.vm2.compiler.LuaC) e NUNCA usa o
+# luajc — R8 pode ignorar as classes ausentes (erro comprovado no CI:
+# "Missing class org.apache.bcel.classfile.Field" em minifyReleaseWithR8).
+-dontwarn org.apache.bcel.**
+
+
