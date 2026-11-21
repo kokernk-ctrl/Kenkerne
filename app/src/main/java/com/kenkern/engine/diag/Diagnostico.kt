@@ -494,10 +494,22 @@ class Diagnostico(private val appContext: Context) {
                 c.falhou("undo não removeu o Nick importado")
                 return
             }
-            val kernApagado = !java.io.File(raiz, kernRel).exists() &&
-                java.io.File(java.io.File(raiz, "assets/.lixeira-import"), kernRel).exists()
+            // CORREÇÃO D3 (v0.1.16): a checagem antiga procurava o arquivo em
+            // assets/.lixeira-import/<rel> — SEM o <importId> que o Command usa
+            // (assets/.lixeira-import/imp-<id>/<rel>). O undo FUNCIONAVA; a
+            // checagem olhava a pasta errada e falhava com "undo não recolheu
+            // o .KERN" no aparelho. Agora usa cmd.pastaLixeira (o caminho REAL)
+            // e, se falhar, mostra a causa exata com os caminhos.
+            val kernOrigem = java.io.File(raiz, kernRel)
+            val kernNaLixeira = java.io.File(cmd.pastaLixeira, kernRel)
+            val kernApagado = !kernOrigem.exists() && kernNaLixeira.exists()
             if (!kernApagado) {
-                c.falhou("undo não recolheu o .KERN para a lixeira de importação")
+                c.falhou(
+                    "undo não recolheu o .KERN para a lixeira de importação — origem ${kernOrigem.path} " +
+                        "(existe=${kernOrigem.exists()}) · lixeira ${cmd.pastaLixeira.path} " +
+                        "(existe=${cmd.pastaLixeira.exists()}) · arquivo esperado ${kernNaLixeira.path} " +
+                        "(existe=${kernNaLixeira.exists()})"
+                )
                 return
             }
             cmd.execute()

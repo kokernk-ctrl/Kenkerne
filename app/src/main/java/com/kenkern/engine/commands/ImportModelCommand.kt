@@ -7,6 +7,9 @@ import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.diag.KenkernLog
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
  * UM Command para a importação inteira (ETAPA A.3): criar o Nick com a classe
@@ -19,8 +22,13 @@ import java.io.File
  *                primeira — o redo é barato e exato;
  *  - redo (execute de novo): devolve os arquivos da lixeira E reinsere o Nick.
  *
- * Falha de arquivo NÃO engole erro: lança [ImportException] — o ViewModel
- * registra no KenkernLog e mostra na tela (regra #17).
+ * LIXEIRA (D3, v0.1.16): fica DENTRO da raiz do projeto
+ * (assets/.lixeira-import/<importId>/) — MESMO VOLUME por construção, sem
+ * cruzar cache e files. Os movimentos usam [Files.move] com fallback EXPLICITO
+ * copiar+apagar (verificado por tamanho); qualquer falha lança
+ * [ImportException] com os CAMINHOS REAIS (origem, destino, existe,
+ * canRead/canWrite, mesmo volume) e registra no [KenkernLog] — erro nunca é
+ * engolido (regra #17).
  */
 class ImportModelCommand(
     private val scene: Scene,
@@ -40,9 +48,14 @@ class ImportModelCommand(
     private var storedParent: Nick? = null
     private var storedIndex: Int = 0
 
-    private fun pastaLixeira(): File = File(raizProjeto, LIXEIRA + importId)
-
     private val importId: String = "imp-" + System.nanoTime().toString(36)
+
+    /**
+     * Pasta da lixeira DESTA importação — pública para a checagem "importar"
+     * do Diagnóstico e para os testes JVM conferirem o MESMO caminho real
+     * (antes a checagem adivinhava o caminho sem o <importId> e falhava — D3).
+     */
+    val pastaLixeira: File = File(raizProjeto, LIXEIRA + importId)
 
     override fun execute() {
         val existing = created
@@ -68,9 +81,10 @@ class ImportModelCommand(
 
     /** Move os arquivos criados para a lixeira (preserva caminho relativo). */
     private fun recolherParaLixeira() {
-        val lixeira = pastaLixeira()
-        if (!lixeira.exists() && !lixeira.mkdirs()) {
-            throw ImportException("não criou a lixeira de importação ($lixeira.name)")
+        if (!pastaLixeira.exists() && !pastaLixeira.mkdirs()) {
+            val causa = "mkdirs devolveu false (papel do caminho? permissão? volume cheio?)"
+            KenkernLog.e(TAG, "undo da importação: ${diagnosticoCaminhos(raizProjeto, pastaLixeira, causa)}", null)
+            throw ImportException("undo não criou a lixeira de importação — $causa · ${diagnosticoCaminhos(raizProjeto, pastaLixeira, "")}")
         }
         for (rel in arquivosCriados) {
             val origem = File(raizProjeto, rel)
@@ -80,38 +94,82 @@ class ImportModelCommand(
                 KenkernLog.w(TAG, "undo da importação: '$rel' já não existia")
                 continue
             }
-            val destino = File(lixeira, rel)
-            destino.parentFile?.mkdirs()
-            if (!origem.renameTo(destino)) {
-                // rename pode falhar entre volumes: copia+apaga como fallback EXPLICITO.
-                origem.copyTo(destino, overwrite = true)
-                if (!origem.delete()) {
-                    KenkernLog.w(TAG, "undo da importação: não apagou '$rel' após copiar para a lixeira")
-                }
-            }
+            moverArquivo(origem, File(pastaLixeira, rel), "undo")
             limparPastasVazias(origem.parentFile)
         }
     }
 
     /** Traz os arquivos de volta da lixeira (redo). */
     private fun restaurarDaLixeira() {
-        val lixeira = pastaLixeira()
         for (rel in arquivosCriados) {
-            val origem = File(lixeira, rel)
+            val origem = File(pastaLixeira, rel)
             if (!origem.exists()) {
                 KenkernLog.w(TAG, "redo da importação: '$rel' não estava na lixeira (arquivo mantido se existir)")
                 continue
             }
-            val destino = File(raizProjeto, rel)
-            destino.parentFile?.mkdirs()
-            if (!origem.renameTo(destino)) {
-                origem.copyTo(destino, overwrite = true)
-                if (!origem.delete()) {
-                    KenkernLog.w(TAG, "redo da importação: não apagou a cópia da lixeira de '$rel'")
-                }
+            moverArquivo(origem, File(raizProjeto, rel), "redo")
+        }
+        pastaLixeira.deleteRecursively()
+    }
+
+    /**
+     * Move origem → destino: primeiro [Files.move] (REPLACE_EXISTING — nomes
+     * já existentes são substituídos e isso é registrado); se o move falhar
+     * (volume diferente, permissão, bloqueio — IOException), fallback
+     * COPIAR+APAGAR com verificação de tamanho. Falha final = [ImportException]
+     * com os caminhos reais. Nada silencioso.
+     */
+    private fun moverArquivo(origem: File, destino: File, fase: String) {
+        destino.parentFile?.let { pai ->
+            if (!pai.exists() && !pai.mkdirs()) {
+                val causa = "mkdirs do pai do destino devolveu false"
+                KenkernLog.e(TAG, "$fase da importação: ${diagnosticoCaminhos(origem, destino, causa)}", null)
+                throw ImportException("$fase não criou a pasta do destino — ${diagnosticoCaminhos(origem, destino, causa)}")
             }
         }
-        lixeira.deleteRecursively()
+        if (destino.exists()) {
+            KenkernLog.w(TAG, "$fase da importação: destino já existia e será substituído: ${destino.path}")
+        }
+        try {
+            val falhaSimulada = testeFalhaNoMove // teste JVM simula volume diferente
+            if (falhaSimulada != null) throw falhaSimulada(origem, destino)
+            Files.move(origem.toPath(), destino.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            return
+        } catch (e: IOException) {
+            KenkernLog.w(
+                TAG,
+                "$fase da importação: Files.move falhou (${e.javaClass.simpleName}: ${e.message ?: "sem mensagem"}) — " +
+                    "fallback copiar+apagar: ${origem.path} → ${destino.path}"
+            )
+        }
+        try {
+            Files.copy(origem.toPath(), destino.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            if (Files.size(origem.toPath()) != Files.size(destino.toPath())) {
+                throw IOException("tamanho divergiu após copiar (${Files.size(origem.toPath())} vs ${Files.size(destino.toPath())})")
+            }
+            Files.delete(origem.toPath())
+        } catch (e: Exception) {
+            val causa = "fallback copiar+apagar falhou: ${e.javaClass.simpleName}: ${e.message ?: "sem mensagem"}"
+            KenkernLog.e(TAG, "$fase da importação: ${diagnosticoCaminhos(origem, destino, causa)}", e)
+            throw ImportException("$fase não recolheu o arquivo — ${diagnosticoCaminhos(origem, destino, causa)}")
+        }
+    }
+
+    /**
+     * Diagnóstico de caminhos para a mensagem de erro (D3.1): origem e destino
+     * com existe/canRead/canWrite e se estão no MESMO volume (FileStore).
+     * FileStore pode falhar em alguns sistemas — nesse caso o campo vira
+     * "desconhecido" e o motivo vai NA MENSAGEM (nunca silêncio).
+     */
+    private fun diagnosticoCaminhos(origem: File, destino: File, causa: String): String {
+        val mesmoVolume = try {
+            (Files.getFileStore(origem.toPath()) == Files.getFileStore(destino.toPath())).toString()
+        } catch (e: Exception) {
+            "desconhecido (${e.javaClass.simpleName}: ${e.message ?: "sem mensagem"})"
+        }
+        val prefixo = if (causa.isBlank()) "" else "causa: $causa · "
+        return "${prefixo}origem ${origem.path} (existe=${origem.exists()} canRead=${origem.canRead()} canWrite=${origem.canWrite()}) · " +
+            "destino ${destino.path} (existe=${destino.exists()} canWrite=${destino.canWrite()}) · mesmoVolume=$mesmoVolume"
     }
 
     /** Apaga pastas que sobraram vazias (não toca nas raízes padrão de assets). */
@@ -131,5 +189,14 @@ class ImportModelCommand(
     companion object {
         private const val TAG = "ImportModelCommand"
         private const val LIXEIRA = "assets/.lixeira-import/"
+
+        /**
+         * SEAM DE TESTE (só os testes JVM setam): quando não-nulo, o
+         * [Files.move] de cada arquivo lança a IOException devolvida por esta
+         * função — simula exatamente a falha de mover ENTRE VOLUMES (ExDev) no
+         * mesmo ponto do código real; o fallback copiar+apagar roda POR DENTRO
+         * nos arquivos de verdade. Nunca setado em produção.
+         */
+        internal var testeFalhaNoMove: ((origem: File, destino: File) -> IOException)? = null
     }
 }
