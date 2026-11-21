@@ -72,6 +72,7 @@ object FbxImporter {
     /** Importa um arquivo FBX binário completo e devolve a malha .KERN + meta. */
     fun importar(bytes: ByteArray): ImportResult {
         texturasEmbutidas.clear() // por importação: sem estado de uma chamada anterior
+        avisos.clear() // HONESTIDADE (V3): avisos do ImportReport, por importação
         if (bytes.isEmpty()) throw FbxImportException("arquivo vazio")
         if (!magicValido(bytes)) {
             // Erro CLARO e distinto para FBX ASCII (texto).
@@ -755,7 +756,7 @@ object FbxImporter {
             materialCount = tabelaMateriais.size,
             textureCount = texturasEmbutidas.size
         )
-        return ImportResult(malha, bytesKern, report, emptyList(), texturasEmbutidas.values.toList())
+        return ImportResult(malha, bytesKern, report, avisos.toList(), texturasEmbutidas.values.toList())
     }
 
     /**
@@ -796,11 +797,12 @@ object FbxImporter {
                 // guarda os bytes para o ModelImporter coletar (acesso via nome)
                 texturasEmbutidas[sha1] = TexturaImportada("image/png", content, nome)
             } else {
-                KenkernLog.w(
-                    TAG,
-                    "material '${mat.nome}': textura externa '$nome' sem Content embutido — " +
-                        "cor sólida nesta fase (a ETAPA C resolve texturas externas)"
-                )
+                // HONESTIDADE (V3): além do Console, o aviso entra no ImportReport
+                // (textura procedural/externa sem embutido = cor sólida nesta fase).
+                val motivo = "material '${mat.nome}': textura externa '$nome' sem conteúdo " +
+                    "embutido (procedural ou caminho externo) — cor sólida nesta fase"
+                avisos.add(motivo)
+                KenkernLog.w(TAG, motivo)
             }
         }
         return KernMaterial(
@@ -811,6 +813,9 @@ object FbxImporter {
 
     /** Texturas embutidas em Videos (sha1 → bytes), coletadas pelo ModelImporter. */
     val texturasEmbutidas = LinkedHashMap<String, TexturaImportada>()
+
+    /** Avisos do ImportReport (V3): limitações reais encontradas na importação. */
+    val avisos = ArrayList<String>(4)
 
     /** Mundo do Model = mundo(pai) × TRS local × TRS geométrico (com memo + ciclo). */
     private fun mundoDoModelo(

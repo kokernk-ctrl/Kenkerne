@@ -175,6 +175,47 @@ class GltfImporterTest {
         }
     }
 
+    // ---------------------------------------- avisos honestos (auditoria V3)
+
+    @Test
+    fun skins_animações_e_extensões_declaradas_geram_AVISO_no_relatório() {
+        val r = GltfImporter.importar(GltfAmostras.quadComIgnoradosGlb())
+        val avisos = r.avisos.joinToString(" | ")
+        assertTrue(
+            "aviso de esqueleto ausente: $avisos",
+            avisos.contains("contém esqueleto: ignorado nesta fase")
+        )
+        assertTrue(
+            "aviso de animações ausente: $avisos",
+            avisos.contains("contém animações: ignoradas nesta fase")
+        )
+        assertTrue(
+            "aviso de extensão ignorada ausente: $avisos",
+            avisos.contains("KHR_materials_transmission")
+        )
+        assertTrue(
+            "aviso de textura PBR ignorada ausente: $avisos",
+            avisos.contains("emissiveTexture") && avisos.contains("occlusionTexture") &&
+                avisos.contains("metallicRoughness")
+        )
+        // O quad continua importando (4 vértices) — o aviso não bloqueia.
+        assertEquals(4, r.mesh.vertexCount)
+    }
+
+    @Test
+    fun extensionsRequired_da_ERRO_CLARO_com_o_nome_da_extensão() {
+        try {
+            GltfImporter.importar(GltfAmostras.quadExigindoExtensaoGlb())
+            assertFalse("deveria ter lançado GltfImportException", true)
+        } catch (e: GltfImportException) {
+            assertTrue(
+                "mensagem sem o nome da extensão: ${e.message}",
+                e.message!!.contains("KHR_draco_mesh_compression") &&
+                    e.message!!.contains("NÃO suporta")
+            )
+        }
+    }
+
     // ------------------------------------------------------------ helpers
 
     private fun maxAbsComponente(pos: FloatArray, componente: Int): Float {

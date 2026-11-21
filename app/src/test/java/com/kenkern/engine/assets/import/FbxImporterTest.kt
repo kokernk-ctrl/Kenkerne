@@ -256,4 +256,20 @@ class FbxImporterTest {
             assertTrue(e.message!!.contains("vazio"))
         }
     }
+
+    // ---------------------------------------- avisos honestos (auditoria V3)
+
+    @Test
+    fun textura_externa_sem_content_gera_AVISO_no_relatório() {
+        val r = FbxImporter.importar(FbxAmostras.quadAsciiComTexturaExternaFbx())
+        val avisos = r.avisos.joinToString(" | ")
+        assertTrue(
+            "aviso de textura externa/procedural ausente: $avisos",
+            avisos.contains("sem conteúdo embutido") && avisos.contains("cor sólida nesta fase")
+        )
+        // O material continua válido (cor sólida) e o quad importa (6 vértices).
+        assertEquals(6, r.mesh.vertexCount)
+        assertEquals(1, r.mesh.materiais.size)
+        assertFalse(r.mesh.materiais[0].temTexturaBase)
+    }
 }

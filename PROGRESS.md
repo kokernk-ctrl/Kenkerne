@@ -6,25 +6,30 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
-- **Fase**: 2 (Projeto & Assets) — **EM CURSO (ABERTA)**. A tag `fase-2-ok` foi
-  REMOVIDA em 2026-11-21 (foi criada sem cumprir a Fase 2 do roadmap; a Release
-  v0.1.13 foi re-titulada "fase ABERTA"). A tag `fase-1-ok` fica, mas os itens que
-  dependem do aparelho (seleção por toque, Play real, paisagem automática, gizmos)
-  estão **COMPILADO**, não VALIDADO, até o usuário confirmar (TESTES_PENDENTES.md).
-- **Tarefa atual**: fechamento testável da Fase 2 CONCLUÍDO por ETAPAS (A → B →
-  C → D, cada uma com CI verde + commit): **A (F2.16 botão Importar modelo),
-  B (F2.17 importadores: FBX ASCII + materiais .KERN v2 + dedup + LODs) e
-  C (F2.9 .KIMG ETC2 + cache por hash + GPU) FEITAS; D = Release
-  `v0.1.14-fase2-teste` publicada com APK assinado (SEM tag `fase-2-ok`)**.
-  Suíte JVM: 123 testes, verde. Diagnóstico: 12 checagens. Aceite de 9 passos
-  em TESTES_PENDENTES.md — itens ficam COMPILADO até o usuário validar.
+- **Fase**: 2 (Projeto & Assets) — **EM CURSO (ABERTA)**. A auditoria v0.1.15
+  (2026-11-21) CONFIRMOU que a fase NÃO está fechada: faltam F2.11 streaming,
+  F2.12 navegador, F2.13 pré-visualização, F2.14 prefabs e F2.15 registro de
+  assets. A tag `fase-2-ok` permanece REMOVIDA (não criar até TODOS os itens
+  + "aprovado" do usuário). Itens que dependem do aparelho estão **COMPILADO**,
+  não VALIDADO (TESTES_PENDENTES.md).
+- **Tarefa atual**: AUDITORIA E CORREÇÃO da v0.1.14 (V1–V4, cada etapa com CI
+  verde + commit): **V1** — APK 1,5 MB provado LEGÍTIMO (R8 desde a v0.1.3;
+  dexdump: nada removido — 22 subpackages + 141 classes LuaJ presentes) +
+  checagem `release` no Diagnóstico como guarda anti-R8; **V2** — medição em
+  4 modelos REAIS Khronos (razões reais 1,26×–4,25×; meta 5× NÃO atingida) +
+  camada Deflate em disco do .KIMG adotada por padrão (DECISIONS #22);
+  **V3** — honestidade dos docs e avisos das limitações no ImportReport;
+  **V4** — release única `v0.1.15-fase2-teste`.
+- **Suíte JVM**: 134 testes, verde. **Diagnóstico**: 14 checagens (a nova é
+  `release` — fumaça do APK minificado).
 - **Lua congelada**: o LuaJ existente é o F5.1 (antes F3.1), trabalho ANTECIPADO —
   proibido crescer código Lua antes da Fase 5. Fase 3 = LENTE/LUME/colliders/input.
-- **Regras novas** (ROADMAP.md, Regras de fase): (1) tag `fase-N-ok` só com TODOS os
-  itens de aceite implementados; (2) nenhum `runCatching` engole erro em silêncio —
-  Log + Console (`KenkernLog`) + tela Diagnóstico; auditoria em
+- **Regras** (ROADMAP.md, Regras de fase): (1) tag `fase-N-ok` só com TODOS os
+  itens de aceite implementados; (2) nenhum `runCatching` engole erro em
+  silêncio — Log + Console (`KenkernLog`) + tela Diagnóstico; auditoria em
   `docs/RUNCATCHING_AUDIT.md`.
-- **App**: v0.1.13 (`versionCode 14`) + F2.7/F2.8; suíte JVM 82 testes, verde.
+- **App**: v0.1.15 (versionCode 16) — auditoria; a v0.1.14 (versionCode 15) foi
+  a release anterior.
 
 ## O que existe (Fases 1–2, validado por CI)
 
@@ -49,17 +54,32 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## O que falta na Fase 2 (ordem)
 
-1. F2.7: importador glTF/GLB → .KERN — **FEITO** (COMPILADO+CI ✓, 11 testes
-   JVM, checagem `gltf` no Diagnóstico; gotchas do GLB documentados no
-   cabeçalho do GltfImporter.kt).
-2. F2.8: importador FBX → .KERN — **FEITO** (COMPILADO+CI ✓, 15 testes JVM,
-   checagem `fbx` no Diagnóstico; gotchas do FBX no cabeçalho do FbxImporter.kt
-   e no DECISIONS #20).
-3. F2.9: **.KIMG (ASTC/ETC2 com mipmaps)** — TAREFA ATUAL (próxima).
-4. F2.10–F2.15: cache LRU, streaming anti-trave, navegador, pré-visualização,
-   prefabs, registro de assets (ids estáveis + ref quebrada).
-5. FIM DE FASE só quando F2.1–F2.15 estiverem implementados (regra nova) →
-   teste de aceite no aparelho → VALIDADO-NO-APARELHO → aí sim tag `fase-2-ok`.
+1. F2.7: importador glTF/GLB → .KERN — **FEITO** (COMPILADO+CI ✓).
+2. F2.8: importador FBX → .KERN — **FEITO** (COMPILADO+CI ✓).
+3. F2.9: .KIMG (ETC2/mipmaps) + cache por hash + GPU — **FEITO** (COMPILADO+CI ✓).
+4. F2.16: botão Importar modelo — **FEITO** (COMPILADO+CI ✓).
+5. F2.17: correção dos importadores (FBX ASCII, materiais, dedup, LODs) —
+   **FEITO** (COMPILADO+CI ✓).
+6. **F2.11**: streaming progressivo anti-trave — TODO.
+7. **F2.12**: navegador de arquivos do projeto — TODO.
+8. **F2.13**: pré-visualização de assets — TODO.
+9. **F2.14**: prefabs — TODO.
+10. **F2.15**: registro de assets com ids estáveis + ref quebrada — TODO.
+11. FIM DE FASE só quando F2.1–F2.15 estiverem implementados (regra do
+   ROADMAP) → teste de aceite no aparelho → VALIDADO-NO-APARELHO → aí sim
+   tag `fase-2-ok`.
+
+## Auditoria v0.1.15 (V1–V4; detalhes no CHANGELOG)
+
+- V1: tamanho do APK provado com dexdump/apkanalyzer/mapping.txt; checagem
+  `release` nova no Diagnóstico (guarda anti-R8); nenhuma regra -keep nova.
+- V2: razões REAIS em 4 modelos Khronos (0,62×–4,25× sem/com camada); meta
+  5× NÃO atingida — alavancas listadas; Deflate em disco do .KIMG adotado
+  (37–61% menos disco, carga +8–16 ms por textura 2048²); GPU ETC2 vs RGBA8
+  = 87% de economia (é aí que a compressão realmente melhora).
+- V3: Fase 2 ABERTA (5 itens pendentes); ASTC = só DETECÇÃO no Diagnóstico
+  (encoder ASTC NÃO existe — pendência no BACKLOG); limitações dos
+  importadores avisadas no ImportReport.
 
 ## Armadilhas descobertas (não repetir)
 

@@ -1,5 +1,38 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## Aceite da AUDITORIA v0.1.15 — Release `v0.1.15-fase2-teste`
+
+> Valida a auditoria (V1 fumaça do release, V2 importação com camada Deflate
+> em disco do .KIMG, V3 avisos honestos do ImportReport). A Fase 2 CONTINUA
+> ABERTA (faltam F2.11–F2.15) e a tag `fase-2-ok` CONTINUA não criada. Todos
+> os itens abaixo ficam `COMPILADO` até este aceite.
+>
+> **Modelos reais usados nos testes do agente (Khronos glTF-Sample-Assets,
+> licença aberta — reprodutíveis pelo `ModeloRealMedicaoTest`)**:
+> DamagedHelmet.glb (3,8 MB) · FlightHelmet glTF+bin+15 PNG (48,4 MB) ·
+> Sponza glTF+bin+68 texturas (52,7 MB) · BrainStem.glb (3,2 MB, com
+> esqueleto+animação — o ImportReport deve avisar "ignorados nesta fase").
+
+1. Instalar a v0.1.15 pela Release, abrir o Hub → ícone do INSETO →
+   Diagnóstico → "Rodar tudo": **14 checagens**, conferir a NOVA checagem
+   **"Release minificado — classes críticas + operações mínimas"** (deve estar
+   APROVADO; se aparecer FALHOU, o APK está quebrado — enviar o print).
+2. IMPORTAR o DamagedHelmet.glb: o relatório deve mostrar razão ≥ 1,0×,
+   PSNR das texturas e o modelo com textura visível; desfazer/refazer.
+3. IMPORTAR o FlightHelmet (pasta glTF com .bin + texturas): relatório deve
+   avisar **"extensões glTF declaradas e IGNORADAS: KHR_materials_transmission"**
+   — e a malha importa mesmo assim (4,25× de razão na medição do agente).
+4. IMPORTAR o BrainStem.glb: relatório deve avisar **"contém esqueleto"** e
+   **"contém animações: ignoradas"** — e o modelo estático aparece na cena.
+5. IMPORTAR um FBX com textura externa (sem embutido): relatório deve avisar
+   "textura externa … sem conteúdo embutido — cor sólida nesta fase" e o
+   modelo aparece com cor sólida do material.
+6. Fechar e reabrir o projeto: texturas NÃO reconvertam (cache por hash) e a
+   segunda abertura é mais rápida.
+7. Conferir que o app inteiro funciona normal (regressão): gizmo, Play, undo,
+   .kernpack, Diagnóstico completo.
+8. Reportar resultado com o print do Diagnóstico (as 14 checagens).
+
 ## Aceite da FASE 2 (fechamento testável) — app v0.1.14 (Release `v0.1.14-fase2-teste`)
 
 > Valida o fechamento testável da Fase 2: botão Importar modelo (A), importadores

@@ -316,6 +316,78 @@ object GltfAmostras {
     /** GLB que NÃO é glTF (magic errado) — para o teste de erro claro. */
     fun magicQuebrado(): ByteArray = "XXXXarquivo-não-glTF".toByteArray(Charsets.US_ASCII)
 
+    /**
+     * QUAD com coisas que esta fase IGNORA (auditoria V3): extensionsUsed,
+     * skins, animations e material com emissive/occlusion/metallicRoughness
+     * texture. O importador DEVE avisar cada ignorância no ImportReport.
+     */
+    fun quadComIgnoradosGlb(): ByteArray {
+        val pos = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f, 0f, 1f, 0f)
+        val idx = shortArrayOf(0, 1, 2, 0, 2, 3)
+        val dados = ByteArrayOutputStream()
+        dados.write(vetorF32(pos))
+        dados.write(vetorU16(idx))
+        val json = """
+        {
+          "asset": {"version": "2.0"},
+          "extensionsUsed": ["KHR_materials_transmission"],
+          "buffers": [{"byteLength": ${dados.size()}}],
+          "bufferViews": [
+            {"buffer": 0, "byteOffset": 0, "byteLength": ${pos.size * 4}},
+            {"buffer": 0, "byteOffset": ${pos.size * 4}, "byteLength": ${idx.size * 2}}
+          ],
+          "accessors": [
+            {"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [0,0,0], "max": [1,1,0]},
+            {"bufferView": 1, "componentType": 5123, "count": 6, "type": "SCALAR"}
+          ],
+          "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1, "mode": 4,
+            "material": 0}]}],
+          "materials": [{"name": "com-extras", "pbrMetallicRoughness": {"metallicRoughnessTexture": {"index": 0}},
+            "emissiveTexture": {"index": 0}, "occlusionTexture": {"index": 0}}],
+          "skins": [{}],
+          "animations": [{}],
+          "nodes": [{"mesh": 0}],
+          "scenes": [{"nodes": [0]}],
+          "scene": 0
+        }
+        """.trimIndent()
+        return GltfImporter.empacotarGlb(json, dados.toByteArray())
+    }
+
+    /**
+     * QUAD com extensionsRequired (auditoria V3): o importador NÃO suporta
+     * nenhuma extensão obrigatória — deve dar ERRO CLARO com o nome dela
+     * (Draco/Meshopt comprimem os buffers: importar "por cima" mentiria).
+     */
+    fun quadExigindoExtensaoGlb(): ByteArray {
+        val pos = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f, 0f, 1f, 0f)
+        val idx = shortArrayOf(0, 1, 2, 0, 2, 3)
+        val dados = ByteArrayOutputStream()
+        dados.write(vetorF32(pos))
+        dados.write(vetorU16(idx))
+        val json = """
+        {
+          "asset": {"version": "2.0"},
+          "extensionsRequired": ["KHR_draco_mesh_compression"],
+          "extensionsUsed": ["KHR_draco_mesh_compression"],
+          "buffers": [{"byteLength": ${dados.size()}}],
+          "bufferViews": [
+            {"buffer": 0, "byteOffset": 0, "byteLength": ${pos.size * 4}},
+            {"buffer": 0, "byteOffset": ${pos.size * 4}, "byteLength": ${idx.size * 2}}
+          ],
+          "accessors": [
+            {"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [0,0,0], "max": [1,1,0]},
+            {"bufferView": 1, "componentType": 5123, "count": 6, "type": "SCALAR"}
+          ],
+          "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1, "mode": 4}]}],
+          "nodes": [{"mesh": 0}],
+          "scenes": [{"nodes": [0]}],
+          "scene": 0
+        }
+        """.trimIndent()
+        return GltfImporter.empacotarGlb(json, dados.toByteArray())
+    }
+
     /** GLB válido no container mas com acessor que não existe — erro claro. */
     fun acessorFaltando(): ByteArray {
         val pos = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f)

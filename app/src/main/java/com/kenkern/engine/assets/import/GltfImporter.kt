@@ -517,6 +517,12 @@ object GltfImporter {
         var nodesComMesh = 0
         var normaisCalculadas = false
 
+        // HONESTIDADE (auditoria V3): o que o glTF DECLARA e esta fase ignora
+        // entra no ImportReport como aviso — nada é descartado em silêncio.
+        // Extensões OBRIGATÓRIAS (extensionsRequired) rejeitam o arquivo com
+        // erro claro (spec glTF: leitor sem suporte NÃO pode fingir sucesso).
+        anunciarIgnorados(raiz, ctx)
+
         val meshes = raiz.optJSONArray("meshes")
             ?: throw GltfImportException("glTF sem array 'meshes' (nada para importar)")
         val nodes = raiz.optJSONArray("nodes")
@@ -540,6 +546,11 @@ object GltfImporter {
 
         // Tabela de materiais dedupada entra no .KERN v2 (B.3)
         for (m in ctx.materiaisTabela) builder.material(m)
+
+        // Avisos repetidos (mesma frase em N materiais) viram UM só.
+        val avisosUnicos = ctx.avisos.distinct()
+        ctx.avisos.clear()
+        ctx.avisos.addAll(avisosUnicos)
 
         val malha = builder.build()
         val bytesKern = KernWriter.write(malha)
@@ -803,6 +814,17 @@ object GltfImporter {
             if (caminho != null) { texNormalPath = caminho; temTexNormal = true; ctx.algumNormalMap = true }
         }
 
+        // HONESTIDADE (V3): texturas de PBR que o .KERN v2 NÃO carrega ficam
+        // no ImportReport — o aparelho não pode surpreender o usuário.
+        for (ignorado in listOf("emissiveTexture", "occlusionTexture")) {
+            if (m.optJSONObject(ignorado) != null) {
+                ctx.avisos.add("material '$nome': textura $ignorado IGNORADA nesta fase (o .KERN v2 só leva baseColor + normal)")
+            }
+        }
+        if (pbr?.optJSONObject("metallicRoughnessTexture") != null) {
+            ctx.avisos.add("material '$nome': textura metallicRoughness IGNORADA nesta fase (entram os FATORES metallic/roughness)")
+        }
+
         val kern = KernMaterial(
             nome, r.coerceIn(0f, 1f), g.coerceIn(0f, 1f), b.coerceIn(0f, 1f), a.coerceIn(0f, 1f),
             metallic.coerceIn(0f, 1f), roughness.coerceIn(0f, 1f),
@@ -925,6 +947,37 @@ object GltfImporter {
             acumuladas[v * 3] += nx
             acumuladas[v * 3 + 1] += ny
             acumuladas[v * 3 + 2] += nz
+        }
+    }
+
+    /**
+     * HONESTIDADE (auditoria v0.1.15, V3): lista no ImportReport TUDO que o
+     * glTF declara e esta fase ignora (esqueleto, animações, extensões) e
+     * REJEITA com erro claro os arquivos que exigem extensão não suportada
+     * (Draco/Meshopt = buffers comprimidos — o parser não consegue ler, então
+     * "importar por cima" produziria geometria errada em silêncio).
+     */
+    private fun anunciarIgnorados(raiz: JSONObject, ctx: ContextoMaterial) {
+        val exigidas = raiz.optJSONArray("extensionsRequired")
+        if (exigidas != null && exigidas.length() > 0) {
+            val nomes = (0 until exigidas.length()).joinToString(", ") { exigidas.optString(it) }
+            throw GltfImportException(
+                "glTF exige extensões que o importador NÃO suporta: [$nomes] — " +
+                    "exporte o modelo sem compressão Draco/Meshopt e sem extensões obrigatórias"
+            )
+        }
+        val declaradas = raiz.optJSONArray("extensionsUsed")
+        if (declaradas != null && declaradas.length() > 0) {
+            val nomes = (0 until declaradas.length()).joinToString(", ") { declaradas.optString(it) }
+            ctx.avisos.add("extensões glTF declaradas e IGNORADAS nesta fase: $nomes")
+        }
+        val skins = raiz.optJSONArray("skins")
+        if (skins != null && skins.length() > 0) {
+            ctx.avisos.add("contém esqueleto: ignorado nesta fase (Fase 8 OSSATURA)")
+        }
+        val animacoes = raiz.optJSONArray("animations")
+        if (animacoes != null && animacoes.length() > 0) {
+            ctx.avisos.add("contém animações: ignoradas nesta fase (Fase 8 OSSATURA)")
         }
     }
 

@@ -297,6 +297,48 @@ Connections:  {
     /** Arquivo que NÃO é FBX (magic quebrado) — erro claro. */
     fun magicQuebrado(): ByteArray = "XXXXarquivo-não-FBX".toByteArray(Charsets.US_ASCII)
 
+    /**
+     * FBX ASCII com material + Video SEM Content (textura externa/procedural,
+     * auditoria V3): o importador DEVE avisar no ImportReport que a textura é
+     * ignorada nesta fase (cor sólida) — nunca silêncio.
+     */
+    fun quadAsciiComTexturaExternaFbx(): ByteArray = """
+FBXHeaderExtension:  {
+    FBXHeaderVersion: 1003
+    FBXVersion: 7400
+}
+Objects:  {
+    Geometry: 1000, "Geometry::quad", "Mesh" {
+        Vertices: *12 {
+            a: 0,0,0,1,0,0,1,1,0,0,1,0
+        }
+        PolygonVertexIndex: *6 {
+            a: 0,1,-3,0,2,-4
+        }
+    }
+    Model: 2000, "Model::quad", "Mesh" {
+        Version: 232
+    }
+    Material: 3000, "Material::com-textura", "" {
+        Version: 102
+        ShadingModel: "phong"
+        Properties70:  {
+            P: "DiffuseColor", "Color", "", "A",0.2,0.4,0.8
+        }
+    }
+    Video: 4000, "Video::textura_externa", "Clip" {
+        Type: "Clip"
+        Filename: "textura_externa.png"
+    }
+}
+Connections:  {
+    C: "OO",1000,2000
+    C: "OO",2000,0
+    C: "OO",3000,2000
+    C: "OO",4000,3000
+}
+""".trimIndent().toByteArray(Charsets.UTF_8)
+
     /** FBX binário de versão 6100 (FBX 6.x) — erro claro pedindo 7.x. */
     fun versao6100Fbx(): ByteArray {
         val out = ByteArrayOutputStream()

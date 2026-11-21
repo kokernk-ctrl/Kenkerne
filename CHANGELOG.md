@@ -1,5 +1,96 @@
 # KENKERN — CHANGELOG
 
+## v0.1.15 — AUDITORIA E CORREÇÃO da v0.1.14 (nenhuma funcionalidade nova)
+
+### V1 — APK release de 1,5 MB é LEGÍTIMO (hipótese de R8 removendo classes REFUTADA)
+
+| APK | classes.dex (descomprimido) | res/ | resources.arsc | APK (zip) |
+|-----|------------------------------|------|----------------|-----------|
+| v0.1.1-hotfix (fase 1) | 40,7 MB — **11.400 classes só de ícones Compose** | 24 KB | 415 KB | 10,8 MB |
+| v0.1.13-fase2 | 2,50 MB | 1 KB | 91 KB | 1,4 MB |
+| v0.1.14-fase2-teste | 2,85 MB | 1 KB | 91 KB | 1,5 MB |
+
+- **Causa da queda 10,8 → 1,5 MB**: R8 + shrinkResources ATIVADOS na v0.1.3
+  (commit `perf(v0.1.3)`, proguard-rules.pro) — o dex cru de 40,7 MB era
+  biblioteca inteira não minificada (o pacote `androidx.compose.material.icons`
+  sozinho tinha 11.400 classes). A queda ACONTECEU na v0.1.3, não na v0.1.14;
+  o crescimento v0.1.13→v0.1.14 (+165 KB zip) é o código novo dos importadores
+  e do .KIMG — legítimo.
+- **Auditoria do dex da v0.1.14** (dexdump/apkanalyzer): 3.441 classes; TODAS
+  as 22 subpackages `com.kenkern.engine.*` presentes, por nome (GltfImporter,
+  FbxImporter, ModelImporter, KimgReader/Writer, Etc2, ScriptRuntime,
+  LuaJScriptRuntime, KenkernLog, telas Compose). LuaJ está no dex como `a2.*`
+  (141 classes — mapping.txt). ZERO reflexão na engine (grep: Class.forName,
+  getMethod, newInstance, ServiceLoader, Parcelable). **Nenhuma regra -keep
+  nova era necessária** — provas registradas no cabeçalho de proguard-rules.pro.
+- **Guarda contínua**: checagem "release" NOVA no Diagnóstico (14 checagens) —
+  `Class.forName` das 9 classes críticas + operação mínima de cada subsistema
+  (glTF, FBX, .KIMG, ETC2, Lua). A mesma lógica é teste JVM
+  (ChecagemReleaseTest). Se uma regra R8 futura remover classe que o release
+  usa, aparece FALHOU no aparelho.
+- Testes JVM: 3 novos (total 126 na V1).
+
+### V2 — Compressão medida em MODELOS REAIS (Khronos glTF-Sample-Assets; nada sintético)
+
+| Modelo (real, livre) | Origem | .KERN | .KIMG cru | .KIMG+Deflate | Total cru | Total+Deflate | Razão cru | Razão+Deflate | PSNR médio |
+|---|---|---|---|---|---|---|---|---|---|
+| DamagedHelmet (GLB) | 3,6 MB | 0,44 MB | 5,46 MB | 2,47 MB (−54,7%) | 5,8 MB | 2,8 MB | 0,62× | 1,26× | 39,2 dB |
+| FlightHelmet (glTF+bin+15 PNG) | 46,2 MB | 1,87 MB | 23,9 MB | 9,26 MB (−61,2%) | 25,2 MB | 10,9 MB | 1,83× | 4,25× | 35,3 dB |
+| Sponza (glTF+bin+68 JPEG/PNG) | 50,2 MB | 7,43 MB | 32,1 MB | 20,0 MB (−37,7%) | 38,6 MB | 26,8 MB | 1,30× | 1,88× | 30,6 dB |
+| BrainStem (GLB, esqueleto+animação) | 3,0 MB | 1,14 MB | 0 | 0 | 1,1 MB | 1,1 MB | 2,74× | 2,74× | — |
+
+- Geometria: DamagedHelmet 14.556→14.356 vértices (dedup), FlightHelmet
+  55.392→55.392, Sponza 192.496→184.402 (dedup). Triângulos: a contagem
+  "depois" do .KERN inclui os LODs 1 e 2 no MESMO buffer de índices
+  (DamagedHelmet 15.452→18.109, FlightHelmet 94.722→97.109, Sponza
+  262.267→264.856 — LOD0 fica fiel à origem). Erro máximo de quantização =
+  0,50 passo em TODOS (tolerância ≤ 1 passo — OK). Importação: 211–1.313 ms;
+  pico de memória 45–267 MB (medido pela própria pipeline).
+- **MEMÓRIA DE GPU (medido, é onde a compressão realmente melhora)**: ETC2
+  5,3 / 23,3 / 31,3 MB vs RGBA8 equivalente 42,7 / 181,3 / 234,7 MB —
+  **economia de 87% em todos** (soma da cadeia de mips). A compressão EM DISCO
+  é uma segunda vantagem, menor.
+- **Camada de compressão em disco do .KIMG ADOTADA por padrão** (V2.4,
+  DECISIONS #22): formato versionado (v1 sem camada, byte-idêntico; v2 com
+  flag bit3 no header), Deflate do JDK por ARQUIVO (só grava v2 se o total
+  ficar menor), nível 6 (nível 9 custa 1,6–2,7× o tempo por ≤0,5 pp; medido
+  nas texturas reais), inflar na carga = 8–16 ms por textura 2048², limite
+  HARD de inflação e erro claro em truncado/corrompido. 4 testes JVM novos.
+- **A meta 5× NÃO foi atingida** (razões reais: 1,26× / 4,25× / 1,88× / 2,74×).
+  A origem JPEG/PNG já é comprimida e o .KIMG guarda mais dados (mipmaps
+  completos + fallback RGBA8 + LODs). Alavancas que faltam (estimativa sobre
+  os números medidos): (1) manter JPEG de origem em disco e comprimir só na
+  carga — Sponza voltaria a >3×; (2) decimação do LOD0 — .KERN cai 40–60%;
+  (3) índices u16 com remap por parte — Sponza (184 mil vértices → u32 hoje)
+  economiza ~50% dos índices; (4) não guardar o fallback RGBA8 no arquivo
+  (regenerar na carga) — −33% no .KIMG quando presente.
+- Harness REPRODUTÍVEL: `ModeloRealMedicaoTest` (JVM) — roda com
+  `-Dkenkern.modelos.dir=<pasta>`; sem a pasta, o teste é IGNORADO no CI
+  (os modelos reais não vão para o git).
+
+### V3 — Honestidade do estado (Fase 2 CONTINUA ABERTA)
+
+- **A Fase 2 NÃO está fechada.** Faltam (BACKLOG): F2.11 streaming
+  progressivo anti-trave, F2.12 navegador de arquivos do projeto, F2.13
+  pré-visualização de assets, F2.14 prefabs, F2.15 registro de assets com ids
+  estáveis + referência quebrada. ROADMAP/PROGRESS/BACKLOG corrigidos; os
+  itens que dependem do aparelho permanecem **COMPILADO** (não VALIDADO).
+- **ASTC**: o Diagnóstico SÓ detecta a extensão (`astc`, informativo). O
+  encoder ASTC NÃO EXISTE — pendência registrada no BACKLOG (fase futura);
+  nenhum texto promete ASTC.
+- **Limitações dos importadores agora aparecem no ImportReport** (antes só no
+  logcat): glTF com `skins`/`animations` = aviso "ignoradas (Fase 8)";
+  `extensionsUsed` declaradas = aviso listando os nomes; `extensionsRequired`
+  = ERRO CLARO com o nome (spec glTF: leitor sem suporte não pode fingir
+  sucesso); texturas emissive/occlusion/metallicRoughness do glTF = aviso
+  (o .KERN v2 só leva baseColor + normal); FBX com Video sem Content
+  (procedural/externa) = aviso. Reconhecido: baseColorTexture e
+  normalTexture (glTF), DiffuseColor + Video embutido (FBX binário e ASCII).
+  3 testes JVM novos (total 134).
+- **Inconsistências corrigidas nos docs**: PROGRESS dizia "fechamento
+  CONCLUÍDO" e ainda listava F2.9 como "TAREFA ATUAL"; contagens de testes
+  divergentes (82 vs 123); v0.1.13 versionCode errado.
+
 ## ETAPA C — F2.9 formato .KIMG (imagem leve com compressão de GPU)
 
 - **.KIMG** (`assets/image/KimgFormat.kt`): magic "KIMG", versão, formato
