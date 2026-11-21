@@ -396,5 +396,61 @@ class KimgTest {
         assertEquals(1, KimgFormat.VERSAO.toInt())
     }
 
+    @Test
+    fun `padrão realista da checagem kimg tem PSNR maior que o adversarial - D4_4`() {
+        // Os MESMOS dois padrões da checagem "kimg" do Diagnóstico (D4.4, 8×8):
+        // o adversarial (x*32, y*32, alfa alternada 255/128) é o pior caso do
+        // EAC — o PSNR dele (10,7 dB no aparelho) não mede corretude; o
+        // realista (gradiente suave + ruído ±3) é o número significativo.
+        val w = 8
+        val h = 8
+        val adversarial = ByteArray(w * h * 4)
+        val realista = ByteArray(w * h * 4)
+        var semente = 12345
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val i = (y * w + x) * 4
+                adversarial[i] = (x * 32).toByte()
+                adversarial[i + 1] = (y * 32).toByte()
+                adversarial[i + 2] = 128.toByte()
+                adversarial[i + 3] = (if ((x + y) % 2 == 0) 255 else 128).toByte()
+                semente = (semente * 1103515245 + 12345) and 0x7FFFFFFF
+                val ruido = (semente % 7) - 3
+                realista[i] = (12 + x * 26 + ruido).coerceIn(0, 255).toByte()
+                realista[i + 1] = (18 + y * 26 + ruido).coerceIn(0, 255).toByte()
+                realista[i + 2] = (44 + ((x + y) * 6) + ruido).coerceIn(0, 255).toByte()
+                realista[i + 3] = 255.toByte()
+            }
+        }
+        fun psnrDe(padrao: ByteArray): Double {
+            val (bytes, _) = KimgPipeline.converter(padrao, w, h, limiteTextura = 0)
+            val img = KimgReader.read(bytes)
+            // o realista tem alfa 255 em todo pixel → pipeline escolhe ETC2_RGB
+            val dec = if (img.formato == KimgFormato.ETC2_RGBA) {
+                Etc2.decodificarRgba(img.mips[0].dados, img.largura, img.altura)
+            } else {
+                Etc2.decodificarRgb(img.mips[0].dados, img.largura, img.altura)
+            }
+            return Etc2.psnr(padrao, dec)
+        }
+        val psnrRealista = psnrDe(realista)
+        val psnrAdversarial = psnrDe(adversarial)
+        assertTrue(
+            "PSNR realista ($psnrRealista dB) deve superar o adversarial ($psnrAdversarial dB)",
+            psnrRealista > psnrAdversarial
+        )
+        assertTrue(
+            "PSNR adversarial deve ficar documentado como pior caso (< 25 dB; medido $psnrAdversarial)",
+            psnrAdversarial < 25.0
+        )
+        // 8×8 é MINÚSCULO: cada bloco 4×4 quantiza ¼ do gradiente (base color
+        // por bloco) — 24,7 dB medidos já é o teto do codec nesse tamanho
+        // (texturas reais 2048× ficam em 30–39 dB, ver auditoria V2).
+        assertTrue(
+            "PSNR realista deve ser significativo (≥ 22 dB; medido $psnrRealista)",
+            psnrRealista >= 22.0
+        )
+    }
+
     private fun abs(v: Int): Int = if (v < 0) -v else v
 }

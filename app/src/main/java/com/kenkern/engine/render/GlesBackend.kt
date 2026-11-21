@@ -965,6 +965,15 @@ class GlesBackend : RenderBackend {
         GLES30.glDeleteTextures(1, ids, 0)
     }
 
+    /**
+     * ID GL cru da textura registrada (0 se o handle não existe) — SÓ para a
+     * checagem "textura na cena" do Diagnóstico (D4.5, v0.1.16): ela amostra a
+     * textura criada pelo caminho REAL da engine (createTextureFromKimg, com o
+     * fallback RGBA8) num quad próprio e confere o pixel. Nenhum outro
+     * chamador deve usar isto.
+     */
+    fun idGlParaDiagnostico(handle: Int): Int = synchronized(this) { texturas[handle]?.id ?: 0 }
+
     override fun drawMeshOutline(handle: Int, model: Mat4, viewProj: Mat4, r: Float, g: Float, b: Float, a: Float) {
         if (!flatOk || flatProgram == 0) return
         val gpu = meshes[handle] ?: return

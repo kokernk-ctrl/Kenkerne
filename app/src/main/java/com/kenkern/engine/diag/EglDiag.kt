@@ -7,7 +7,14 @@ import android.opengl.EGLDisplay
 import android.opengl.EGLSurface
 
 /**
- * Contexto EGL OFFSCREEN (pbuffer 1×1) para as checagens GL do Diagnóstico.
+ * Contexto EGL OFFSCREEN (pbuffer 64×64) para as checagens GL do Diagnóstico.
+ *
+ * CAUSA RAIZ D4 (v0.1.16): era 1×1 e a checagem "etc2" desenhava num viewport
+ * 4×4 e lia o pixel (1,2) — LEITURA FORA DA SUPERFÍCIE = GL_INVALID_OPERATION
+ * e buffer zerado: no aparelho Mali-G57 o pixel saía (0,0,0) mesmo com o
+ * upload e o draw corretos. O pbuffer agora tem 64×64 (custo de memória
+ * desprezível, ainda offscreen e independente do viewport do editor) e a
+ * checagem etc2 usa framebuffer offscreen PRÓPRIO com status conferido.
  *
  * Cria display/config/superfície/contexto GLES 3.0 próprios, INDEPENDENTES do
  * viewport do editor (que continua intocado), executa as checagens NA MESMA
@@ -57,9 +64,11 @@ class EglDiag private constructor(
                 onErro("nenhuma EGLConfig com pbuffer + GLES 3"); return@runCatching null
             }
 
+            // 64×64 (D4): as checagens desenham em viewport ≤ 16×16 e leem
+            // pixels — 1×1 forçava leitura fora da superfície (pixel (0,0,0)).
             val surfaceAttribs = intArrayOf(
-                EGL14.EGL_WIDTH, 1,
-                EGL14.EGL_HEIGHT, 1,
+                EGL14.EGL_WIDTH, 64,
+                EGL14.EGL_HEIGHT, 64,
                 EGL14.EGL_NONE
             )
             val surface = EGL14.eglCreatePbufferSurface(display, config, surfaceAttribs, 0)
