@@ -9,13 +9,18 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Kenkern">
 
+        <!-- D5 (v0.1.16): screenOrientation era "fullUser" — o app abria em
+             VERTICAL no aparelho. sensorLandscape = paisagem automática girando
+             com o sensor, as duas laterais. ÚNICA Activity do app (Hub,
+             Diagnóstico e editor vivem nela via KenkernAppRoot); nenhum tema ou
+             código sobrescreve a orientação (setRequestedOrientation = vazio). -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density|uiMode"
             android:exported="true"
             android:hardwareAccelerated="true"
             android:launchMode="singleTask"
-            android:screenOrientation="fullUser">
+            android:screenOrientation="sensorLandscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

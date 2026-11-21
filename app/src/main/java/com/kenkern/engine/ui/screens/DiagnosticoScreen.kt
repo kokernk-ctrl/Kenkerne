@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kenkern.engine.diag.Diagnostico
@@ -101,13 +103,15 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
-        // ---------- Cabeçalho (56dp) ----------
+        // ---------- Cabeçalho (mínimo 48dp — D5: altura FIXA de 56dp cortava o
+        // subtítulo quando a fonte do sistema crescia; agora o cabeçalho CRESCE,
+        // título e subtítulo em 1 linha cada) ----------
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
-                .padding(horizontal = 8.dp)
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             IconButton(onClick = onVoltar, modifier = Modifier.size(48.dp)) {
                 Icon(
@@ -117,11 +121,20 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                 )
             }
             Column(Modifier.weight(1f)) {
-                Text("Diagnóstico", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = KenkernTextHigh)
+                Text(
+                    "Diagnóstico",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = KenkernTextHigh,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Text(
                     "checagens da engine neste aparelho",
-                    fontSize = 12.sp,
-                    color = KenkernTextLow
+                    fontSize = 11.sp,
+                    color = KenkernTextLow,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             Button(
