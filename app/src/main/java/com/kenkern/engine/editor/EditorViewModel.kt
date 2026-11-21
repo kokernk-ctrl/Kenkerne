@@ -625,6 +625,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                             val resultado = withContext(Dispatchers.IO) {
                                 com.kenkern.engine.assets.image.KimgConversor.converter(
                                     raiz, sha1, textura.bytes, limite,
+                                    comprimirEmDisco = true, // DECISIONS #22 (V2.4)
                                     cancelado = { importCancelado.get() }
                                 )
                             }

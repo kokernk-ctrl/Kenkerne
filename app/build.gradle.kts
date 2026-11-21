@@ -23,6 +23,14 @@ android {
     // "not mocked" — sem isso os testes da pinça quebrariam no Log.d.
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Medições em modelos REAIS (auditoria V2): a pasta vem da linha de
+        // comando (-Dkenkern.modelos.dir=<pasta>); sem ela o teste é IGNORADO.
+        unitTests.all { teste ->
+            teste.systemProperty(
+                "kenkern.modelos.dir",
+                System.getProperty("kenkern.modelos.dir") ?: ""
+            )
+        }
     }
 
     // Assinatura de release lida de variáveis de ambiente (mesma estratégia usada no CI).

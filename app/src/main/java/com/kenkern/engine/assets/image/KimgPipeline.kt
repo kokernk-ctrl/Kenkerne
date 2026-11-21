@@ -52,6 +52,7 @@ object KimgPipeline {
         srgb: Boolean = true,
         normalMap: Boolean = false,
         limiteTextura: Int = 0,
+        comprimirEmDisco: Boolean = false,
         cancelado: () -> Boolean = { false },
         onProgresso: (Float) -> Unit = {}
     ): Pair<ByteArray, RelatorioTextura> {
@@ -126,7 +127,10 @@ object KimgPipeline {
         val imagem = KimgImagem(
             formato, w, h, srgb, alfaUtil, normalMap, mips
         )
-        val bytes = KimgWriter.write(imagem)
+        // comprimirEmDisco (V2.4): camada Deflate OPCIONAL — o escritor decide
+        // por arquivo (só grava V2 se o total ficar menor); bytesKimg do
+        // relatório é o tamanho FINAL em disco (com ou sem camada).
+        val bytes = KimgWriter.write(imagem, comprimirEmDisco = comprimirEmDisco)
         val tempoMs = (System.nanoTime() - t0) / 1_000_000L
         return bytes to RelatorioTextura(
             bytesOrigem = largura * altura * 4,
@@ -144,7 +148,8 @@ object KimgPipeline {
     /** fallback RGBA8: recodifica como RGBA8_RAW (sem compressão; GPU recusou ETC2). */
     fun converterRgba8Raw(
         rgba: ByteArray, largura: Int, altura: Int,
-        srgb: Boolean = true, normalMap: Boolean = false
+        srgb: Boolean = true, normalMap: Boolean = false,
+        comprimirEmDisco: Boolean = false
     ): Pair<ByteArray, RelatorioTextura> {
         val t0 = System.nanoTime()
         val w = potenciaDeDoisMenor(largura, 0)
@@ -153,7 +158,7 @@ object KimgPipeline {
         val mips = ArrayList<KimgMip>(1)
         mips.add(KimgMip(w, h, 0, dados.copyOf()))
         val imagem = KimgImagem(KimgFormato.RGBA8_RAW, w, h, srgb, true, normalMap, mips)
-        val bytes = KimgWriter.write(imagem)
+        val bytes = KimgWriter.write(imagem, comprimirEmDisco = comprimirEmDisco)
         val tempoMs = (System.nanoTime() - t0) / 1_000_000L
         return bytes to RelatorioTextura(
             bytesOrigem = largura * altura * 4,

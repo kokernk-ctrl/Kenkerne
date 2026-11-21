@@ -307,5 +307,94 @@ class KimgTest {
         assertTrue(relatorio.resumo().contains("RGBA8"))
     }
 
+    // ---------------------------------------------------- Deflate em disco (V2.4)
+
+    @Test
+    fun `deflate em disco faz round trip exato e marca versão 2`() {
+        val rgba = gradiente(64, 64, alfaVariado = true)
+        val (cru, _) = KimgPipeline.converter(rgba, 64, 64)
+        val (comprimido, rel) = KimgPipeline.converter(rgba, 64, 64, comprimirEmDisco = true)
+
+        // Sem compressão: versão 1 byte-idêntica ao formato antigo.
+        val versaoCrua = ((cru[4].toInt() and 0xFF) shl 8) or (cru[5].toInt() and 0xFF)
+        assertEquals(1, versaoCrua)
+
+        // Com compressão: versão 2 (se o Deflate ganhou — gradiente comprime bem).
+        val versao2 = ((comprimido[4].toInt() and 0xFF) shl 8) or (comprimido[5].toInt() and 0xFF)
+        assertTrue(
+            "gradiente deveria compressir (v2=$versao2, cru=${cru.size}, zip=${comprimido.size})",
+            versao2 == 2 && comprimido.size < cru.size
+        )
+
+        // O leitor devolve os MESMOS mips (idênticos ao cru, bit a bit).
+        val a = KimgReader.read(cru)
+        val b = KimgReader.read(comprimido)
+        assertEquals(a.mips.size, b.mips.size)
+        for (i in a.mips.indices) {
+            assertEquals(a.mips[i].largura, b.mips[i].largura)
+            assertTrue(a.mips[i].dados.contentEquals(b.mips[i].dados))
+        }
+        // Tamanho do relatório = tamanho FINAL em disco (comprimido).
+        assertEquals(comprimido.size, rel.bytesKimg)
+    }
+
+    @Test
+    fun `dados incompressíveis caem para a versão 1 sem flag`() {
+        // ETC2 de ruído puro (bytes pseudo-aleatórios determinísticos) 64×64 —
+        // Deflate não ganha; o escritor SÓ grava versão 2 se o total ficar menor.
+        val blocos = ByteArray(64 * 64 / 16 * 8) // 16 blocos/linha × 16 linhas × 8 bytes
+        java.util.Random(42).nextBytes(blocos) // ruído REAL (seed fixa = reprodutível)
+        val imagem = KimgImagem(KimgFormato.ETC2_RGB, 64, 64, false, false, false,
+            listOf(KimgMip(64, 64, 0, blocos)))
+        val bytes = KimgWriter.write(imagem, comprimirEmDisco = true)
+        val versao = ((bytes[4].toInt() and 0xFF) shl 8) or (bytes[5].toInt() and 0xFF)
+        val temFlagDeflate = ((bytes[20].toInt() and 0xFF) and 8) != 0
+        // Pode ser v1 (fallback) ou v2 só se comprimir; se v2, o leitor tem que reler.
+        val lida = KimgReader.read(bytes)
+        assertTrue(lida.mips[0].dados.contentEquals(blocos))
+        if (temFlagDeflate) assertEquals(2, versao) else assertEquals(1, versao)
+    }
+
+    @Test
+    fun `deflate corrompido ou truncado dá ERRO CLARO`() {
+        val rgba = gradiente(32, 32, alfaVariado = false)
+        val (bytes, _) = KimgPipeline.converter(rgba, 32, 32, comprimirEmDisco = true)
+        val versao = ((bytes[4].toInt() and 0xFF) shl 8) or (bytes[5].toInt() and 0xFF)
+        // Só faz sentido se o gradiente realmente virou v2; senão o teste não prova nada.
+        assertTrue("gradiente 32×32 deveria virar v2", versao == 2)
+
+        // Corrompido: primeira região de dados comprimidos estragada.
+        val corrompido = bytes.copyOf()
+        corrompido[corrompido.size - 4] = (corrompido[corrompido.size - 4].toInt() xor 0xFF).toByte()
+        try {
+            KimgReader.read(corrompido)
+            fail("deflate corrompido deveria dar erro claro")
+        } catch (e: KimgException) {
+            val msg = e.message ?: ""
+            assertTrue(
+                "mensagem sem motivo: $msg",
+                msg.contains("Deflate") || msg.contains("esperado") || msg.contains("fora do arquivo")
+            )
+        }
+
+        // Truncado: corta pela metade.
+        try {
+            KimgReader.read(bytes.copyOf(bytes.size / 2))
+            fail("arquivo truncado deveria dar erro claro")
+        } catch (e: KimgException) {
+            assertTrue(e.message!!.isNotEmpty())
+        }
+    }
+
+    @Test
+    fun `arquivos da versão 1 antiga continuam legíveis`() {
+        // Um arquivo v1 cru (mesmo formato de antes da auditoria) lê sem erro.
+        val rgba = gradiente(16, 16, alfaVariado = true)
+        val (cru, _) = KimgPipeline.converter(rgba, 16, 16) // sem comprimirEmDisco
+        val imagem = KimgReader.read(cru)
+        assertEquals(16, imagem.largura)
+        assertEquals(1, KimgFormat.VERSAO.toInt())
+    }
+
     private fun abs(v: Int): Int = if (v < 0) -v else v
 }

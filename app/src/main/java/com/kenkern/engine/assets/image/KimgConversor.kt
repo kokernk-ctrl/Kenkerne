@@ -22,14 +22,18 @@ object KimgConversor {
 
     /**
      * Converte os bytes de origem (PNG/JPEG) para .KIMG em [raizProjeto]/assets/textures/.
-     * [sha1] vem do ImportSummary (hash do conteúdo). Retorna o relatório ou
-     * LANÇA erro claro (o chamador registra no Console e segue com cor sólida).
+     * [sha1] vem do ImportSummary (hash do conteúdo). [comprimirEmDisco] liga a
+     * camada Deflate do .KIMG (V2.4 — decisão POR ARQUIVO no escritor; ADOTADA
+     * por padrão: mediu 37–61% menos disco nos modelos reais, carga +8–16 ms
+     * por textura 2048² — DECISIONS #22). Retorna o relatório ou LANÇA erro
+     * claro (o chamador registra no Console e segue com cor sólida).
      */
     fun converter(
         raizProjeto: File,
         sha1: String,
         bytesOrigem: ByteArray,
         limiteTextura: Int,
+        comprimirEmDisco: Boolean = true,
         cancelado: () -> Boolean = { false },
         onProgresso: (Float) -> Unit = {}
     ): Resultado {
@@ -55,6 +59,7 @@ object KimgConversor {
             decodificada.bytes, decodificada.largura, decodificada.altura,
             srgb = true, normalMap = false,
             limiteTextura = limiteTextura,
+            comprimirEmDisco = comprimirEmDisco,
             cancelado = cancelado,
             onProgresso = onProgresso
         )
