@@ -541,6 +541,38 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             )
                             Text("Ajustar ao tamanho (~2 m)", fontSize = 12.sp, color = KenkernTextHigh)
                         }
+
+                        // B2a: LIMITE DE RESOLUÇÃO DE TEXTURA (padrão 1024; opções
+                        // 512/1024/2048). Reduz ANTES de gerar mipmaps — a importação
+                        // fica muito mais rápida e o .KIMG menor.
+                        Text("Limite de resolução de textura", fontSize = 12.sp, color = KenkernTextHigh)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            for (opcao in com.kenkern.engine.editor.EditorViewModel.OPCOES_LIMITE_TEXTURA) {
+                                androidx.compose.material3.FilterChip(
+                                    selected = vm.importLimiteTextura.intValue == opcao,
+                                    onClick = { vm.importLimiteTextura.intValue = opcao },
+                                    label = { Text("$opcao", fontSize = 11.sp) },
+                                    leadingIcon = null
+                                )
+                            }
+                        }
+
+                        // B2b: QUALIDADE do encoder ETC2 — rápida por padrão
+                        // (individual + diferencial + planar, paralelo); T/H só na alta.
+                        Text("Qualidade ETC2", fontSize = 12.sp, color = KenkernTextHigh)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            androidx.compose.material3.FilterChip(
+                                selected = vm.importQualidadeEtc2.value == com.kenkern.engine.assets.image.Etc2.Qualidade.RAPIDA,
+                                onClick = { vm.importQualidadeEtc2.value = com.kenkern.engine.assets.image.Etc2.Qualidade.RAPIDA },
+                                label = { Text("Rápida (padrão)", fontSize = 11.sp) }
+                            )
+                            androidx.compose.material3.FilterChip(
+                                selected = vm.importQualidadeEtc2.value == com.kenkern.engine.assets.image.Etc2.Qualidade.ALTA,
+                                onClick = { vm.importQualidadeEtc2.value = com.kenkern.engine.assets.image.Etc2.Qualidade.ALTA },
+                                label = { Text("Alta qualidade (T/H)", fontSize = 11.sp) }
+                            )
+                        }
+
                         Text(
                             "O modelo entra com escala 1 e Y para cima; a operação inteira é UM passo de desfazer.",
                             fontSize = 11.sp, color = KenkernTextLow

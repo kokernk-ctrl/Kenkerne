@@ -41,7 +41,8 @@ object KimgConversor {
         cancelado: () -> Boolean = { false },
         onProgresso: (Float) -> Unit = {},
         cronometro: CronometroImport? = null,
-        rotuloTextura: String = "textura"
+        rotuloTextura: String = "textura",
+        qualidadeEtc2: Etc2.Qualidade = Etc2.Qualidade.RAPIDA
     ): Resultado {
         val pasta = File(raizProjeto, "assets/textures")
         if (!pasta.exists() && !pasta.mkdirs()) {
@@ -76,7 +77,8 @@ object KimgConversor {
             onProgresso = onProgresso,
             cronometro = cronometro,
             rotuloTextura = rotuloTextura,
-            mimeOrigem = decodificada.mime
+            mimeOrigem = decodificada.mime,
+            qualidadeEtc2 = qualidadeEtc2
         )
         if (cronometro != null) {
             cronometro.medir("$rotuloTextura: gravação .KIMG", "${bytes.size} bytes") {

@@ -212,4 +212,21 @@ class PosProcessamentoTest {
         for (t in r.mesh.tangents) if (t != 0f) algumaTangente = true
         assertTrue("tangentes zeradas sem normal map (B.6)", !algumaTangente)
     }
+
+    @Test
+    fun cancelamento_no_meio_do_dedup_da_erro_claro_rapido() {
+        // B2d: o cancelamento é checado DENTRO do laço pesado — uma malha com
+        // duplicatas e cancelado=true desde o início falha em < 1 s com a
+        // mensagem CLARA (nunca fica preso no laço).
+        val mesh = meshQuadDuplicada()
+        val inicio = System.nanoTime()
+        try {
+            PosProcessamento.aplicar(mesh, cancelado = { true })
+            throw AssertionError("cancelamento deveria ter lançado ImportException")
+        } catch (e: ImportException) {
+            val ms = (System.nanoTime() - inicio) / 1_000_000L
+            assertTrue("cancelou em $ms ms (< 1000)", ms < 1000)
+            assertTrue("mensagem clara: ${e.message}", e.message!!.contains("cancelado"))
+        }
+    }
 }

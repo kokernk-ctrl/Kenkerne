@@ -29,19 +29,26 @@ object PosProcessamento {
      * Aplica dedup + LODs e devolve a malha final pronta para o KernWriter.
      * [cronometro] (B1, v0.1.17): mede dedup e LODs SEPARADAMENTE — a tabela
      * do ImportReport aponta o gargalo com número, não com achismo.
+     * [cancelado] (B2d): checado DENTRO dos laços pesados (a cada 8192 vértices
+     * no dedup e 4096 triângulos na decimação) — o cancelamento responde em
+     * menos de 1 s mesmo em malhas de centenas de milhares de vértices.
      */
-    fun aplicar(mesh: KernMesh, cronometro: CronometroImport? = null): KernMesh {
+    fun aplicar(
+        mesh: KernMesh,
+        cronometro: CronometroImport? = null,
+        cancelado: () -> Boolean = { false }
+    ): KernMesh {
         val dedup = cronometro?.medir("dedup de vértices", "${mesh.vertexCount} vértices") {
-            deduplicarVertices(mesh)
-        } ?: deduplicarVertices(mesh)
+            deduplicarVertices(mesh, cancelado)
+        } ?: deduplicarVertices(mesh, cancelado)
         return cronometro?.medir("LODs (simplificação por grade)", "${dedup.indices.size / 3} triângulos") {
-            gerarLods(dedup)
-        } ?: gerarLods(dedup)
+            gerarLods(dedup, cancelado)
+        } ?: gerarLods(dedup, cancelado)
     }
 
     // ---------------------------------------------------------------- dedup
 
-    fun deduplicarVertices(mesh: KernMesh): KernMesh {
+    fun deduplicarVertices(mesh: KernMesh, cancelado: () -> Boolean = { false }): KernMesh {
         val n = mesh.vertexCount
         if (n == 0) return mesh
         // Chave EXATA (8 floats por bits) — sem hash colidível: dois vértices
@@ -53,6 +60,9 @@ object PosProcessamento {
         val remap = IntArray(n)
         var unico = 0
         for (v in 0 until n) {
+            if ((v and 8191) == 0 && cancelado()) {
+                throw ImportException("pós-processamento cancelado pelo usuário (dedup em $v/$n)")
+            }
             val key = ChaveVertice(
                 mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2],
                 mesh.normals[v * 3], mesh.normals[v * 3 + 1], mesh.normals[v * 3 + 2],
@@ -134,13 +144,13 @@ object PosProcessamento {
     /** Segmentos da grade na maior extensão da AABB (LOD0 = célula de 1 vértice). */
     private const val SEGMENTOS_BASE = 64
 
-    fun gerarLods(mesh: KernMesh): KernMesh {
+    fun gerarLods(mesh: KernMesh, cancelado: () -> Boolean = { false }): KernMesh {
         if (mesh.indices.isEmpty()) return mesh
         val lod0 = mesh.lods.firstOrNull() ?: KernLod(0, mesh.indices.size, mesh.boundsMin, mesh.boundsMax)
         val indicesLod0 = mesh.indices.copyOfRange(lod0.indexOffset, lod0.indexOffset + lod0.indexCount)
 
-        val lod1Idx = decimar(mesh, indicesLod0, 4)
-        val lod2Idx = decimar(mesh, lod1Idx, 8)
+        val lod1Idx = decimar(mesh, indicesLod0, 4, cancelado)
+        val lod2Idx = decimar(mesh, lod1Idx, 8, cancelado)
 
         // só anexa o LOD se ele ficou MENOR (malhas pequenas já são o seu próprio LOD)
         val lods = ArrayList<KernLod>(3)
@@ -178,7 +188,7 @@ object PosProcessamento {
      * para o PRIMEIRO vértice que caiu nela; triângulo com 2+ cantos na mesma
      * célula é degenerado e cai fora. célula = maiorExtensão / (SEGMENTOS/fator).
      */
-    private fun decimar(mesh: KernMesh, indices: IntArray, fator: Int): IntArray {
+    private fun decimar(mesh: KernMesh, indices: IntArray, fator: Int, cancelado: () -> Boolean): IntArray {
         val dx = mesh.boundsMax.x - mesh.boundsMin.x
         val dy = mesh.boundsMax.y - mesh.boundsMin.y
         val dz = mesh.boundsMax.z - mesh.boundsMin.z
@@ -189,6 +199,9 @@ object PosProcessamento {
         val saida = ArrayList<Int>(indices.size / 4)
         var i = 0
         while (i + 2 < indices.size) {
+            if ((i and 12287) == 0 && cancelado()) {
+                throw ImportException("pós-processamento cancelado pelo usuário (LODs em ${i / 3}/${indices.size / 3} triângulos)")
+            }
             val a = representante(mesh, celulas, celula, indices[i])
             val b = representante(mesh, celulas, celula, indices[i + 1])
             val c = representante(mesh, celulas, celula, indices[i + 2])

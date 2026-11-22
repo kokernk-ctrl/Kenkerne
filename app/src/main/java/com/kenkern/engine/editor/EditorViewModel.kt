@@ -40,8 +40,10 @@ import com.kenkern.engine.projects.ProjectManager
 import com.kenkern.engine.render.AssetMeshLibrary
 import com.kenkern.engine.render.TextureLibrary
 import com.kenkern.engine.render.EngineControls
+import com.kenkern.engine.assets.image.Etc2
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -78,6 +80,22 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     val importPendenteGrande = mutableStateOf<PendenteGrande?>(null)
     /** Opção "Ajustar ao tamanho" escolhida no diálogo de opções (lembrada na sessão). */
     val importAjustarTamanho = mutableStateOf(false)
+
+    /**
+     * B2a (v0.1.17): LIMITE DE RESOLUÇÃO DE TEXTURA na importação — padrão 1024
+     * (opções 512/1024/2048 no diálogo). Reduz ANTES de gerar mipmaps: uma
+     * 4096×4096 vira 1024×1024 (16× menos texels nos mips e no ETC2). O valor
+     * efetivo ainda respeita o GL_MAX_TEXTURE_SIZE do aparelho.
+     */
+    val importLimiteTextura = mutableIntStateOf(LIMITE_TEXTURA_PADRAO)
+
+    /**
+     * B2b (v0.1.17): qualidade do encoder ETC2 — RAPIDA por padrão
+     * (individual + diferencial + planar por bloco, paralelo em N threads);
+     * ALTA acrescenta os modos T/H ("Alta qualidade" no diálogo).
+     */
+    val importQualidadeEtc2 = mutableStateOf(Etc2.Qualidade.RAPIDA)
+
     private val importCancelado = AtomicBoolean(false)
     private var importJob: Job? = null
 
@@ -626,32 +644,56 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 // falha de UMA textura não derruba a importação — vira AVISO no relatório.
                 // B1: cada textura é medida com rótulo próprio ("textura i/n") — decode,
                 // redimensionamento, mipmaps, ETC2 e gravação .KIMG separados.
+                // B2: texturas em PARALELO (Dispatchers.IO limitado a N−1), progresso
+                // por textura + estimativa de tempo restante; relatórios em ORDEM.
                 if (summary.texturasExtraidas.isNotEmpty()) {
                     importEtapa.value = "convertendo texturas"
-                    val limite = maxTexturaDoAparelho()
+                    val limite = limiteEfetivoTextura()
+                    val qualidade = importQualidadeEtc2.value
                     val totalTexturas = summary.texturasExtraidas.size
-                    for ((idx, textura) in summary.texturasExtraidas.withIndex()) {
-                        if (importCancelado.get()) throw ImportException("importação cancelada pelo usuário")
-                        val rotulo = "textura ${idx + 1}/$totalTexturas"
-                        try {
-                            val sha1 = com.kenkern.engine.assets.import.AssetLayout.sha1Hex(textura.bytes)
-                            val resultado = withContext(Dispatchers.IO) {
-                                com.kenkern.engine.assets.image.KimgConversor.converter(
-                                    raiz, sha1, textura.bytes, limite,
-                                    comprimirEmDisco = true, // DECISIONS #22 (V2.4)
-                                    cancelado = { importCancelado.get() },
-                                    cronometro = cronometro,
-                                    rotuloTextura = rotulo
-                                )
+                    val inicioTexturas = System.nanoTime()
+                    val concluidas = java.util.concurrent.atomic.AtomicInteger(0)
+                    val relatorios = arrayOfNulls<String>(totalTexturas)
+                    // Limita a concorrência ao MESMO N do encoder (availableProcessors − 1):
+                    // texturas em paralelo NÃO multiplicam as threads do ETC2.
+                    val despachante = Dispatchers.IO.limitedParallelism(
+                        com.kenkern.engine.assets.image.Etc2.threadsEncoder
+                    )
+                    coroutineScope {
+                        for ((idx, textura) in summary.texturasExtraidas.withIndex()) {
+                            launch(despachante) {
+                                if (importCancelado.get()) {
+                                    throw ImportException("importação cancelada pelo usuário")
+                                }
+                                val rotulo = "textura ${idx + 1}/$totalTexturas"
+                                try {
+                                    val sha1 = com.kenkern.engine.assets.import.AssetLayout.sha1Hex(textura.bytes)
+                                    val resultado = com.kenkern.engine.assets.image.KimgConversor.converter(
+                                        raiz, sha1, textura.bytes, limite,
+                                        comprimirEmDisco = true, // DECISIONS #22 (V2.4)
+                                        cancelado = { importCancelado.get() },
+                                        onProgresso = { frac ->
+                                            // B2e: "textura i/n · P%" + tempo restante estimado
+                                            importEtapa.value = "$rotulo · ${(frac * 100).toInt()}%" +
+                                                estimativaRestante(inicioTexturas, concluidas.get(), totalTexturas)
+                                        },
+                                        cronometro = cronometro,
+                                        rotuloTextura = rotulo,
+                                        qualidadeEtc2 = qualidade
+                                    )
+                                    relatorios[idx] = "$rotulo (${textura.nomeOrigem}): ${resultado.relatorio}"
+                                } catch (e: Exception) {
+                                    if (importCancelado.get()) throw e
+                                    KenkernLog.e(TAG, "conversão de textura falhou (${textura.nomeOrigem})", e)
+                                    relatorios[idx] = "$rotulo: textura '${textura.nomeOrigem}' NÃO convertida: " +
+                                        "${e.message ?: e.javaClass.simpleName} — material vira cor sólida"
+                                } finally {
+                                    concluidas.incrementAndGet()
+                                }
                             }
-                            summary.texturasRelatorio.add("$rotulo (${textura.nomeOrigem}): ${resultado.relatorio}")
-                        } catch (e: Exception) {
-                            KenkernLog.e(TAG, "conversão de textura falhou (${textura.nomeOrigem})", e)
-                            summary.texturasRelatorio.add(
-                                "$rotulo: textura '${textura.nomeOrigem}' NÃO convertida: ${e.message ?: e.javaClass.simpleName} — material vira cor sólida"
-                            )
                         }
                     }
+                    for (linha in relatorios) if (linha != null) summary.texturasRelatorio.add(linha)
                 }
 
                 if (importCancelado.get()) throw ImportException("importação cancelada pelo usuário")
@@ -682,6 +724,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 // Console — sem medição, nenhuma afirmação sobre o gargalo.
                 val tabela = cronometro.tabela()
                 summary.tabelaTempo = tabela
+                summary.opcoesImport = "limite de textura ${limiteEfetivoTextura()} px · ETC2 " +
+                    if (importQualidadeEtc2.value == Etc2.Qualidade.ALTA) "alta (T/H)" else "rápida"
                 KenkernLog.w(TAG, "ImportReport de '$nomeFonte' — tempo por etapa:\n${tabela.trimEnd()}")
                 val gargalo = cronometro.gargalo()
                 if (gargalo != null && gargalo.ms > 0) {
@@ -718,6 +762,30 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
      */
     private fun maxTexturaDoAparelho(): Int = engineControls?.maxTextureSize ?: 0
 
+    /**
+     * B2a: limite EFETIVO de textura da importação = opção do usuário (512/
+     * 1024/2048, padrão 1024) limitado pelo GL_MAX_TEXTURE_SIZE do aparelho
+     * (quando conhecido). A redução acontece ANTES de gerar mipmaps.
+     */
+    fun limiteEfetivoTextura(): Int {
+        val escolhido = importLimiteTextura.intValue.coerceAtLeast(64)
+        val doAparelho = maxTexturaDoAparelho()
+        return if (doAparelho > 0) minOf(escolhido, doAparelho) else escolhido
+    }
+
+    /**
+     * B2e: estimativa de tempo restante das texturas ("· ~12s") a partir do
+     * tempo médio por textura concluída. String vazia enquanto não há amostra.
+     */
+    private fun estimativaRestante(inicioNanos: Long, concluidas: Int, total: Int): String {
+        if (concluidas <= 0 || concluidas >= total) return ""
+        val decorridoMs = (System.nanoTime() - inicioNanos) / 1_000_000L
+        if (decorridoMs <= 0) return ""
+        val restanteMs = (decorridoMs / concluidas) * (total - concluidas)
+        val seg = (restanteMs + 999) / 1000
+        return if (seg >= 60) " · ~${seg / 60}min${seg % 60}s" else " · ~${seg}s"
+    }
+
     /** Caminho relativo da origem copiada (arquivo simples ou pasta inteira). */
     private fun caminhoOrigemRelativo(pasta: Boolean, nomeFonte: String): String {
         return if (pasta) {
@@ -729,5 +797,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     companion object {
         private const val TAG = "Kenkern/EditorVM"
+
+        /** B2a: limite de resolução de textura PADRÃO da importação (opções 512/1024/2048). */
+        const val LIMITE_TEXTURA_PADRAO = 1024
+
+        /** Opções de limite de textura oferecidas no diálogo de importação (B2a). */
+        val OPCOES_LIMITE_TEXTURA = intArrayOf(512, 1024, 2048)
     }
 }

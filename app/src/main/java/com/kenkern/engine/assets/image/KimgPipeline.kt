@@ -55,6 +55,8 @@ object KimgPipeline {
      * opaco). [limiteTextura] = GL_MAX_TEXTURE_SIZE do aparelho (0 = sem limite).
      * [cronometro]/[rotuloTextura] (B1): redimensionamento, mipmaps e ETC2 medidos
      * SEPARADAMENTE por textura — a tabela do ImportReport mostra ms e % do total.
+     * [qualidadeEtc2] (B2b): RAPIDA por padrão (individual + diferencial + planar;
+     * T/H só em ALTA). [onProgresso] recebe 0..1 da etapa ETC2 (B2e).
      */
     fun converter(
         rgba: ByteArray,
@@ -68,7 +70,8 @@ object KimgPipeline {
         onProgresso: (Float) -> Unit = {},
         cronometro: CronometroImport? = null,
         rotuloTextura: String = "textura",
-        mimeOrigem: String = ""
+        mimeOrigem: String = "",
+        qualidadeEtc2: Etc2.Qualidade = Etc2.Qualidade.RAPIDA
     ): Pair<ByteArray, RelatorioTextura> {
         val t0 = System.nanoTime()
         if (largura <= 0 || altura <= 0) {
@@ -134,9 +137,9 @@ object KimgPipeline {
                 val (mw, dadosNivel) = par
                 val mh = max(1, h shr i)
                 val bytes = if (formato == KimgFormato.ETC2_RGBA) {
-                    Etc2.codificarRgba(dadosNivel, mw, mh, cancelado)
+                    Etc2.codificarRgba(dadosNivel, mw, mh, cancelado, qualidadeEtc2)
                 } else {
-                    Etc2.codificarRgb(dadosNivel, mw, mh, cancelado)
+                    Etc2.codificarRgb(dadosNivel, mw, mh, cancelado, qualidadeEtc2)
                 }
                 mips.add(KimgMip(mw, mh, 0, bytes))
                 onProgresso((i + 1f) / totalNiveis)

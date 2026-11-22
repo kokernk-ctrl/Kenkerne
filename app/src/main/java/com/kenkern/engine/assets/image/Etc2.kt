@@ -28,10 +28,55 @@ import kotlin.math.roundToInt
  *    bit (y+x*4)+16 e LSB no bit (y+x*4); modificador = unscramble(valor).
  *
  * Decisão de qualidade (DECISIONS #21): encoder escolhe o modo de MENOR erro
- * por bloco (individual/diferencial/planar/T/H); PSNR medido por textura e
- * registrado no relatório. CANCELAMENTO checado a cada linha de blocos.
+ * por bloco; PSNR medido por textura e registrado no relatório. CANCELAMENTO
+ * checado a cada linha de blocos.
+ *
+ * B2 (v0.1.17):
+ *  - [Qualidade.RAPIDA] por padrão na importação: individual + diferencial +
+ *    planar por bloco (T/H só em [Qualidade.ALTA] — "Alta qualidade" no diálogo);
+ *  - BLOCOS paralelizados em N threads (availableProcessors − 1) — faixas de
+ *    LINHAS de blocos independentes, saída por faixas disjuntas; fallback
+ *    sequencial automático quando o pool não existe (1 thread/falha);
+ *  - cancelamento checado A CADA LINHA de blocos em cada worker (responde em
+ *    menos de 1 s em qualquer textura realista).
  */
 object Etc2 {
+
+    /**
+     * Modo do encoder (B2b): RAPIDA = individual + diferencial + planar
+     * (padrão da importação); ALTA = acrescenta os modos T e H por bloco
+     * (busca mais cara, PSNR maior em blocos complexos).
+     */
+    enum class Qualidade {
+        RAPIDA, ALTA
+    }
+
+    /** Threads do encoder (availableProcessors − 1, mínimo 1, teto 8). */
+    val threadsEncoder: Int =
+        (Runtime.getRuntime().availableProcessors() - 1).coerceIn(1, 8)
+
+    /**
+     * Pool fixo do encoder (daemon, prioridade abaixo da UI). Null = 1 thread
+     * ou falha ao criar (fallback sequencial AUTOMÁTICO, com registro).
+     */
+    private val pool: java.util.concurrent.ExecutorService? =
+        if (threadsEncoder > 1) {
+            runCatching {
+                java.util.concurrent.Executors.newFixedThreadPool(threadsEncoder) { r ->
+                    Thread(r, "kenkern-etc2").apply {
+                        isDaemon = true
+                        priority = Thread.NORM_PRIORITY - 1
+                    }
+                }
+            }.onFailure {
+                com.kenkern.engine.diag.KenkernLog.w(
+                    "Kenkern/Etc2", "pool do encoder não criou — blocos codificam em 1 thread", it
+                )
+            }.getOrNull()
+        } else null
+
+    /** True quando o encoder roda com mais de 1 thread (para o Diagnóstico). */
+    fun paralelo(): Boolean = pool != null
 
     // ------------------------------------------------------------- tabelas
 
@@ -123,7 +168,7 @@ object Etc2 {
     class BlocoEntrada(val r: IntArray, val g: IntArray, val b: IntArray, val a: IntArray)
 
     /** Codifica UM bloco RGB 4×4 → 8 bytes (escolhe o modo de menor erro). */
-    fun codificarBlocoRgb(bloco: BlocoEntrada): ByteArray {
+    fun codificarBlocoRgb(bloco: BlocoEntrada, qualidade: Qualidade = Qualidade.ALTA): ByteArray {
         val saida = ByteArray(8)
 
         var melhorErro = Long.MAX_VALUE
@@ -185,7 +230,8 @@ object Etc2 {
             }
         }
 
-        // ---- PLANAR (mínimos quadrados)
+        // ---- PLANAR (mínimos quadrados): fica no modo RÁPIDO (barato e ajuda
+        // blocos suaves — é um único candidato de mínimos quadrados)
         val planar = tentarPlanar(bloco)
         if (planar != null && planar.erro < melhorErro) {
             melhorErro = planar.erro
@@ -193,20 +239,23 @@ object Etc2 {
             melhorW2 = planar.w2
         }
 
-        // ---- T (59 bits)
-        val t = tentarT(bloco)
-        if (t != null && t.erro < melhorErro) {
-            melhorErro = t.erro
-            melhorW1 = t.w1
-            melhorW2 = t.w2
-        }
+        if (qualidade == Qualidade.ALTA) {
+            // ---- T (59 bits) e H (58 bits): SÓ em "Alta qualidade" (B2b) —
+            // a busca T/H é a parte cara do encoder por bloco.
+            val t = tentarT(bloco)
+            if (t != null && t.erro < melhorErro) {
+                melhorErro = t.erro
+                melhorW1 = t.w1
+                melhorW2 = t.w2
+            }
 
-        // ---- H (58 bits)
-        val h = tentarH(bloco)
-        if (h != null && h.erro < melhorErro) {
-            melhorErro = h.erro
-            melhorW1 = h.w1
-            melhorW2 = h.w2
+            // ---- H (58 bits)
+            val h = tentarH(bloco)
+            if (h != null && h.erro < melhorErro) {
+                melhorErro = h.erro
+                melhorW1 = h.w1
+                melhorW2 = h.w2
+            }
         }
 
         for (i in 0 until 4) saida[i] = ((melhorW1 ushr (24 - 8 * i)) and 0xFF).toByte()
@@ -280,41 +329,128 @@ object Etc2 {
         return saida
     }
 
-    /** Codifica RGBA8888 → blocos ETC2 RGBA8 (16 bytes/bloco). */
-    fun codificarRgba(rgba: ByteArray, largura: Int, altura: Int, cancelado: () -> Boolean = { false }): ByteArray {
+    /**
+     * Codifica RGBA8888 → blocos ETC2 RGBA8 (16 bytes/bloco).
+     *
+     * B2 (v0.1.17): LINHAS de blocos paralelizadas em até [threadsEncoder]
+     * threads (availableProcessors − 1) com fallback sequencial automático;
+     * cancelamento checado a cada linha (responde < 1 s); qualidade RÁPIDA
+     * por padrão (individual + diferencial + planar; T/H só em ALTA).
+     *
+     * CORREÇÃO DE ORDEM (v0.1.17): o laço antigo era bx-externo/by-interno
+     * (blocos em COLUNA-major) enquanto o decoder e o glCompressedTexImage2D
+     * esperam LINHA-major — texturas com alfa > 4 px saíam com os blocos
+     * TRANSPOSTOS na GPU. Agora codifica (by*blocosX + bx), igual ao decoder.
+     */
+    fun codificarRgba(
+        rgba: ByteArray,
+        largura: Int,
+        altura: Int,
+        cancelado: () -> Boolean = { false },
+        qualidade: Qualidade = Qualidade.RAPIDA
+    ): ByteArray {
         val blocosX = blocosDe(largura)
         val blocosY = blocosDe(altura)
         val saida = ByteArray(blocosX * blocosY * 16)
-        val bloco = BuffBloco()
-        var bi = 0
-        for (bx in 0 until blocosX) {
-            for (by in 0 until blocosY) {
-                if ((by and 15) == 0 && cancelado()) throw KimgException("compressão ETC2 cancelada pelo usuário")
-                preencherBloco(bloco, rgba, largura, altura, bx, by)
-                System.arraycopy(codificarBlocoAlfa(bloco.entrada()), 0, saida, bi, 8)
-                System.arraycopy(codificarBlocoRgb(bloco.entrada()), 0, saida, bi + 8, 8)
-                bi += 16
-            }
+        codificarLinhasEmParalelo(blocosY) { byIni, byFim ->
+            codificarFaixaRgba(rgba, largura, altura, blocosX, byIni, byFim, saida, cancelado, qualidade)
         }
         return saida
     }
 
-    /** Codifica RGBA8888 (4 bytes/texel; alfa ignorado) → blocos ETC2 RGB8 (8 bytes/bloco). */
-    fun codificarRgb(rgb: ByteArray, largura: Int, altura: Int, cancelado: () -> Boolean = { false }): ByteArray {
+    /** Uma faixa de LINHAS de blocos RGBA (bytes disjuntos de [saida] — sem trava). */
+    private fun codificarFaixaRgba(
+        rgba: ByteArray, largura: Int, altura: Int, blocosX: Int,
+        byIni: Int, byFim: Int, saida: ByteArray,
+        cancelado: () -> Boolean, qualidade: Qualidade
+    ) {
+        val bloco = BuffBloco()
+        for (by in byIni until byFim) {
+            if (cancelado()) throw KimgException("compressão ETC2 cancelada pelo usuário")
+            for (bx in 0 until blocosX) {
+                preencherBloco(bloco, rgba, largura, altura, bx, by)
+                val bi = (by * blocosX + bx) * 16
+                System.arraycopy(codificarBlocoAlfa(bloco.entrada()), 0, saida, bi, 8)
+                System.arraycopy(codificarBlocoRgb(bloco.entrada(), qualidade), 0, saida, bi + 8, 8)
+            }
+        }
+    }
+
+    /**
+     * Codifica RGBA8888 (4 bytes/texel; alfa ignorado) → blocos ETC2 RGB8
+     * (8 bytes/bloco, LINHA-MAJOR — padrão do hardware). Paralelo em faixas
+     * de linhas (B2c), cancelamento por linha (B2d), qualidade por parâmetro (B2b).
+     */
+    fun codificarRgb(
+        rgb: ByteArray,
+        largura: Int,
+        altura: Int,
+        cancelado: () -> Boolean = { false },
+        qualidade: Qualidade = Qualidade.RAPIDA
+    ): ByteArray {
         val blocosX = blocosDe(largura)
         val blocosY = blocosDe(altura)
         val saida = ByteArray(blocosX * blocosY * 8)
-        val bloco = BuffBloco()
-        // ORDEM LINHA-MAJOR (padrão do hardware)
-        for (by in 0 until blocosY) {
-            for (bx in 0 until blocosX) {
-                if ((bx and 15) == 0 && cancelado()) throw KimgException("compressão ETC2 cancelada pelo usuário")
-                preencherBlocoRgb(bloco, rgb, largura, altura, bx, by)
-                val bi = (by * blocosX + bx) * 8
-                System.arraycopy(codificarBlocoRgb(bloco.entrada()), 0, saida, bi, 8)
-            }
+        codificarLinhasEmParalelo(blocosY) { byIni, byFim ->
+            codificarFaixaRgb(rgb, largura, altura, blocosX, byIni, byFim, saida, cancelado, qualidade)
         }
         return saida
+    }
+
+    /** Uma faixa de LINHAS de blocos RGB (bytes disjuntos de [saida] — sem trava). */
+    private fun codificarFaixaRgb(
+        rgb: ByteArray, largura: Int, altura: Int, blocosX: Int,
+        byIni: Int, byFim: Int, saida: ByteArray,
+        cancelado: () -> Boolean, qualidade: Qualidade
+    ) {
+        val bloco = BuffBloco()
+        for (by in byIni until byFim) {
+            if (cancelado()) throw KimgException("compressão ETC2 cancelada pelo usuário")
+            for (bx in 0 until blocosX) {
+                preencherBlocoRgb(bloco, rgb, largura, altura, bx, by)
+                val bi = (by * blocosX + bx) * 8
+                System.arraycopy(codificarBlocoRgb(bloco.entrada(), qualidade), 0, saida, bi, 8)
+            }
+        }
+    }
+
+    /**
+     * Divide as [linhasTotais] linhas de blocos em até [threadsEncoder] faixas
+     * BALANCEADAS e roda [tarefa] em paralelo no pool (B2c). Cada faixa escreve
+     * bytes DISJUNTOS — nenhuma trava no caminho quente. Fallback sequencial
+     * AUTOMÁTICO: pool ausente, 1 thread ou textura pequena (< 8 linhas).
+     * A PRIMEIRA exceção de worker vence (cancelamento/erro claro); os demais
+     * workers saem no próximo cheque de linha.
+     */
+    private fun codificarLinhasEmParalelo(
+        linhasTotais: Int,
+        tarefa: (byIni: Int, byFim: Int) -> Unit
+    ) {
+        val executor = pool
+        val minimoPorFaixa = 4
+        if (executor == null || linhasTotais < minimoPorFaixa * 2) {
+            tarefa(0, linhasTotais)
+            return
+        }
+        val faixas = threadsEncoder.coerceAtMost(linhasTotais / minimoPorFaixa)
+        val porFaixa = (linhasTotais + faixas - 1) / faixas
+        val futuros = ArrayList<java.util.concurrent.Future<*>>(faixas)
+        var inicio = 0
+        while (inicio < linhasTotais) {
+            val fim = (inicio + porFaixa).coerceAtMost(linhasTotais)
+            val f0 = inicio
+            val f1 = fim
+            futuros.add(executor.submit { tarefa(f0, f1) })
+            inicio = fim
+        }
+        try {
+            for (f in futuros) f.get()
+        } catch (e: java.util.concurrent.ExecutionException) {
+            val causa = e.cause ?: e
+            if (causa is RuntimeException) throw causa
+            if (causa is Error) throw causa
+            throw KimgException("encoder ETC2 falhou em paralelo: ${causa.message ?: causa.javaClass.simpleName}")
+        }
     }
 
     // ------------------------------------------------------------- decoder API

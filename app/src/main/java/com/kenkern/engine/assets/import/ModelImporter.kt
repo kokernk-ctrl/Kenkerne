@@ -115,7 +115,9 @@ class ImportSummary(
      * [CronometroImport] durante TODA a importação — preenchida pelo chamador
      * ao concluir; entra no textoRelatorio() e no Console.
      */
-    var tabelaTempo: String = ""
+    var tabelaTempo: String = "",
+    /** B2 (v0.1.17): opções da importação (limite de textura, qualidade ETC2). */
+    var opcoesImport: String = ""
 ) {
     /** Razão origem/.KERN (ex.: 5.0 = 100 MB viraram 20 MB — meta do ROADMAP). */
     val razao: Float get() = if (bytesKern > 0) bytesOrigem / bytesKern.toFloat() else 0f
@@ -134,6 +136,7 @@ class ImportSummary(
             (if (problemasIntegridade.isNotEmpty()) " — " + problemasIntegridade.joinToString("; ") else "") +
             " · erro máx de quantização %.2f passo(s)".format(java.util.Locale.US, erroMaxQuantizacao))
         appendLine("Tempo: %d ms · pico de memória ≈ %.0f MB".format(java.util.Locale.US, tempoMs, picoMemoriaMb))
+        if (opcoesImport.isNotEmpty()) appendLine("Opções: $opcoesImport")
         if (tabelaTempo.isNotEmpty()) {
             appendLine()
             append(tabelaTempo.trimEnd())
@@ -269,7 +272,8 @@ object ModelImporter {
         onEtapa("triangulando: dedup + LODs")
         // PÓS-PROCESSAMENTO (B.4/B.5): dedup de vértices + LODs (3 níveis)
         // B1: PosProcessamento mede dedup e LODs SEPARADAMENTE no cronômetro.
-        val malhaFinal = PosProcessamento.aplicar(resultado.mesh, cronometro)
+        // B2d: cancelamento checado DENTRO dos laços pesados (dedup/decimação).
+        val malhaFinal = PosProcessamento.aplicar(resultado.mesh, cronometro, cancelado)
         val texturasFinais = resultado.texturas
         medirPico()
 
