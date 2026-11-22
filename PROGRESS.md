@@ -6,20 +6,34 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
-- **Ordem de execução (adendo v4, 2026-11-22)**: v0.1.17 FEITA (Release
-  publicada, aguardando aceite no aparelho) → **BLOCO 0**: T0.1 ✓COMPILADO
-  (idiomas en/pt + seletor no Hub + checagem de CI) → T0.2 ✓COMPILADO
-  (NickKindRegistry + CK2 + migração CK1, 17 tipos IMPLEMENTADOS no NICKS.md) →
-  T0.3 ✓COMPILADO (janela Adicionar Nick + cabeçalho de tipo + seletor de forma
-  do collider com wireframe) — **PARADA 1: aguardando teste do USUÁRIO**
-  (passo a passo no TESTES_PENDENTES.md) → T0.4 fidelidade de importação →
-  T0.5 Hub novo (**PARADA 2**) → M1 (marco jogável, M1.3 = input de
-  tela/joystick, DECISIONS #31) → resto da Fase 2 → Fase 3… (ROADMAP.md).
+- **Ordem de execução (adendo v4, 2026-11-22)**: v0.1.17 FEITA → **T0.1–T0.3
+  FEITAS + E1–E6 FEITAS (v0.1.18, campo do usuário)**: PARADA 1 respondida
+  com 6 bugs corrigidos (E1 símbolos JNI do handler nativo + prova no CI com
+  llvm-nm; E2 Diagnóstico com timeout 30 s/cancelar/tempo por checagem;
+  E3 janela Adicionar Nick alcançável até o fim + barreira de toque; E4
+  painéis flutuantes movem/redimensionam (era var comum sem recomposição),
+  clamp no viewport, 48dp, acoplar/resetar, por orientação; E5 auxiliares de
+  editor para Nicks sem malha (seta/esfera/cone/pirâmide com FOV real/caixa/
+  losango, cor por grupo, 24dp, somem em Play) + collider sobre o nick (era
+  no mini-viewport do canto) + luz NÃO ilumina (entra no LUME — NICKS.md);
+  E6 StatusBar "N nicks · M malhas") — Release `v0.1.18-fase2-teste`
+  publicada → **aguardando teste do USUÁRIO** (18 itens no
+  TESTES_PENDENTES.md) → T0.4 fidelidade de importação → T0.5 Hub novo
+  (**PARADA 2**) → M1 (marco jogável, M1.3 = input de tela/joystick,
+  DECISIONS #31) → resto da Fase 2 → Fase 3… (ROADMAP.md).
 - **Fase**: 2 (Projeto & Assets) — **EM CURSO (ABERTA)**. Faltam F2.11
   streaming, F2.12 navegador, F2.13 pré-visualização, F2.14 prefabs e F2.15
   registro de assets. A tag `fase-2-ok` permanece REMOVIDA (não criar até
   TODOS os itens + "aprovado" do usuário). Itens que dependem do aparelho
   estão **COMPILADO**, não VALIDADO (TESTES_PENDENTES.md).
+- **Tarefa concluída (v0.1.18)**: 6 bugs do aparelho E1–E6 (relatório por
+  bug com causa raiz arquivo/linha no CHANGELOG.md). CI: 222 testes JVM,
+  assembleRelease, **E1: llvm-nm confere TODA external fun × a .so do APK**,
+  i18n en/pt; lint sem erros novos (2 pré-existentes). Correção do próprio
+  E1 no CI: teste instalava handlers de sinal na JVM (HotSpot usa SIGSEGV
+  para NPE implícito → exit 139); restaurarSinaisNativo devolve as ações
+  originais e o teste restaura em finally — no app o handler segue ativo.
+
 - **Tarefa concluída (v0.1.17)**: BUGS A/B do aparelho + núcleo nativo C++.
   **A**: regra "cena = tela" (MalhaNick.desenhavel no render/picking/foco),
   torus fora do viewport (só no Diagnóstico offscreen), StatusBar "N nicks ·
@@ -34,16 +48,18 @@ de tarefas do BACKLOG sem refazer o que está pronto.
   (host: nativo 17 ms × Kotlin 5.508 ms em 1024²). **B6**: meshoptimizer
   (MIT) vendorizado — dedup/cache/LOD com erro reportado, checagem "malha
   nativa". **20 checagens no Diagnóstico**; third_party/ com LICENSES.md.
-- **Suíte JVM**: 184 testes, verde (testes nativo×Kotlin rodam com a MESMA
-  fonte C++ compilada para o host pela task compilarNativoHost).
+- **Suíte JVM**: 222 testes, verde (testes nativo×Kotlin rodam com a MESMA
+  fonte C++ compilada para o host pela task compilarNativoHost; o teste do
+  handler RESTAURA os sinais da JVM no finally — bug do CI, exit 139).
 - **Lua congelada**: o LuaJ existente é o F5.1, trabalho ANTECIPADO —
   proibido crescer código Lua antes da Fase 5. Fase 3 = LENTE/LUME/colliders/input.
 - **Regras** (ROADMAP.md, Regras de fase): (1) tag `fase-N-ok` só com TODOS os
   itens de aceite implementados; (2) nenhum `runCatching` engole erro em
   silêncio — Log + Console (`KenkernLog`) + tela Diagnóstico; auditoria em
   `docs/RUNCATCHING_AUDIT.md`.
-- **App**: v0.1.17 (versionCode 18) — release `v0.1.17-fase2-teste` com APK
-  assinado (2.094.813 B; libkenkern.so 463 KB arm64-v8a).
+- **App**: v0.1.18 (versionCode 19) — release de pré-lançamento
+  `v0.1.18-fase2-teste` com APK assinado (CI: 222 testes + assembleRelease +
+  llvm-nm E1 sobre a .so do APK).
 
 ## O que existe (Fases 1–2, validado por CI)
 
