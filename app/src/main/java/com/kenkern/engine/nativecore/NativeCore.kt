@@ -118,6 +118,56 @@ object NativeCore {
         }
     }
 
+    /**
+     * Resultado individual de UMA função JNI externa (checagem "nativo", E1):
+     * [nome] é a `external fun` do Kotlin, [ok] diz se a chamada resolveu e
+     * [motivoFalha] traz o erro LITERAL do JNI ("No implementation found…")
+     * quando o símbolo não existe na .so — nada de diagnóstico genérico.
+     */
+    class ResultadoExterna(val nome: String, val ok: Boolean, val motivoFalha: String? = null)
+
+    /**
+     * TESTA cada função JNI uma a uma (E1, v0.1.18) — a checagem "nativo" do
+     * Diagnóstico LISTA cada função testada e as que faltam. [caminhoCrash] é
+     * o caminho REAL de crash_logs/native_crash.txt (instalar de novo é
+     * idempotente; o Application já instala no boot com o mesmo caminho).
+     * NUNCA provoca crash de propósito: só chama as funções e registra os
+     * erros que elas próprias devolverem.
+     */
+    fun testarExternas(caminhoCrash: String?): List<ResultadoExterna> {
+        if (!isAvailable) {
+            return listOf(ResultadoExterna("biblioteca", false, "libkenkern.so não carregou (isAvailable=false)"))
+        }
+        val resultados = ArrayList<ResultadoExterna>(4)
+
+        resultados += testarUma("versaoNativa") {
+            val v = versaoNativa()
+            if (v != VERSAO_ESPERADA) throw IllegalStateException("versão nativa $v ≠ esperada $VERSAO_ESPERADA")
+        }
+        resultados += testarUma("ecoNativo") {
+            if (ecoNativo(21) != 43) throw IllegalStateException("eco(21) ≠ 43 — ponte JNI quebrada")
+        }
+        resultados += testarUma("instalarHandlerSinaisNativo") {
+            if (caminhoCrash == null) throw IllegalStateException("sem caminho de crash_logs para instalar")
+            if (!instalarHandlerSinaisNativo(caminhoCrash)) throw IllegalStateException("sigaction/caminho recusado (ver CONSOLE)")
+        }
+        resultados += testarUma("handlerInstaladoNativo") {
+            if (!handlerInstaladoNativo()) throw IllegalStateException("consulta devolveu false (ver CONSOLE)")
+        }
+        return resultados
+    }
+
+    /** Chama UMA externa capturando o erro literal (UnsatisfiedLinkError/Throwable) — motivo visível no relatório. */
+    private inline fun testarUma(nome: String, bloco: () -> Unit): ResultadoExterna {
+        return try {
+            bloco()
+            ResultadoExterna(nome, true)
+        } catch (e: Throwable) {
+            KenkernLog.e(TAG, "externa '$nome' falhou na checagem do Diagnóstico", e)
+            ResultadoExterna(nome, false, e.message ?: e.javaClass.simpleName)
+        }
+    }
+
     // ------------------------------------------------- externos (JNI)
 
     private external fun ecoNativo(valor: Int): Int

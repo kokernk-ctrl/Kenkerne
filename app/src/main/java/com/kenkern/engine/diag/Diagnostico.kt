@@ -196,7 +196,9 @@ class Diagnostico(private val appContext: Context) {
      * Checagem "nativo" (B3d, v0.1.17) — NÚCLEO C++ NO APARELHO:
      *  - biblioteca carregada (isAvailable) + versão devolvida PELO NATIVO;
      *  - ABI do aparelho (arm64-v8a é a única compilada);
-     *  - CHAMADA DE ECO: eco(21) == 43 prova a ponte JNI funcionando;
+     *  - CADA função JNI testada INDIVIDUALMENTE (E1, v0.1.18): o detalhe
+     *    lista versão/eco/instalar-handler/consultar-handler com ✓ ou com o
+     *    motivo LITERAL ("No implementation found…" = símbolo ausente na .so);
      *  - HANDLER DE SINAIS instalado (SIGSEGV/SIGABRT/SIGBUS/SIGFPE gravam
      *    crash_logs/native_crash.txt com sinal, endereço e backtrace).
      * NUNCA provoca crash de propósito: a checagem SÓ consulta estado — o
@@ -204,32 +206,29 @@ class Diagnostico(private val appContext: Context) {
      */
     private fun checarNativo(c: Checagem) {
         val carregada = com.kenkern.engine.nativecore.NativeCore.carregar()
+        val abi = com.kenkern.engine.nativecore.NativeCore.abi
         if (!carregada) {
             c.falhou(
                 "libkenkern.so NÃO carregou (ver CONSOLE) — módulos nativos seguem em fallback Kotlin; " +
-                    "esperado arm64-v8a, aparelho é ${com.kenkern.engine.nativecore.NativeCore.abi}"
+                    "esperado arm64-v8a, aparelho é $abi"
             )
             return
         }
-        val versao = com.kenkern.engine.nativecore.NativeCore.versao ?: "?"
-        val abi = com.kenkern.engine.nativecore.NativeCore.abi
-        val eco = com.kenkern.engine.nativecore.NativeCore.eco(21)
-        val handler = com.kenkern.engine.nativecore.NativeCore.handlerInstalado()
-
-        val problemas = ArrayList<String>(2)
-        if (eco != 43) problemas.add("eco(21) devolveu $eco (esperado 43) — ponte JNI quebrada")
-        if (!handler) problemas.add("handler de sinais nativo NÃO instalado (crash nativo não gera native_crash.txt)")
-        if (versao != com.kenkern.engine.nativecore.NativeCore.VERSAO_ESPERADA) {
-            problemas.add("versão nativa $versao ≠ esperada ${com.kenkern.engine.nativecore.NativeCore.VERSAO_ESPERADA}")
+        val caminhoCrash = java.io.File(java.io.File(appContext.filesDir, "crash_logs"), "native_crash.txt").absolutePath
+        val externas = com.kenkern.engine.nativecore.NativeCore.testarExternas(caminhoCrash)
+        val okLista = externas.joinToString(" · ") { r ->
+            if (r.ok) "${r.nome} ✓" else "${r.nome} FALTA (${r.motivoFalha})"
         }
+        val faltando = externas.filter { !it.ok }
 
-        if (problemas.isEmpty()) {
+        if (faltando.isEmpty()) {
+            val versao = com.kenkern.engine.nativecore.NativeCore.versao ?: "?"
             c.aprovado(
-                "libkenkern.so carregada · versão $versao · ABI $abi · eco(21)=$eco ✓ · " +
+                "libkenkern.so carregada · versão $versao · ABI $abi · funções JNI: $okLista · " +
                     "handler de sinais instalado (SIGSEGV/SIGABRT/SIGBUS/SIGFPE → crash_logs/native_crash.txt)"
             )
         } else {
-            c.falhou(problemas.joinToString("; "))
+            c.falhou("$okLista — ${faltando.size} de ${externas.size} funções JNI não resolveu")
         }
     }
 

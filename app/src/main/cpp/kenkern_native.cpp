@@ -200,9 +200,14 @@ Java_com_kenkern_engine_nativecore_NativeCore_versaoNativa(JNIEnv* env, jobject 
  * de crash_logs/native_crash.txt (o Kotlin garante que a pasta existe).
  * Retorna false se o caminho não couber no buffer ou algum sigaction falhar
  * (o app segue SEM handler nativo — nada derruba o boot).
+ *
+ * E1 (v0.1.18): o símbolo leva o SUFIXO "Nativo" — o nome anterior
+ * (…_instalarHandlerSinais) não casava com a `external fun
+ * instalarHandlerSinaisNativo` do Kotlin e o JNI devolvia "No implementation
+ * found". TODO símbolo é conferido no CI (scripts/check_jni_symbols.sh).
  */
 JNIEXPORT jboolean JNICALL
-Java_com_kenkern_engine_nativecore_NativeCore_instalarHandlerSinais(JNIEnv* env, jobject /*thiz*/, jstring caminhoArquivo) {
+Java_com_kenkern_engine_nativecore_NativeCore_instalarHandlerSinaisNativo(JNIEnv* env, jobject /*thiz*/, jstring caminhoArquivo) {
     const char* c = env->GetStringUTFChars(caminhoArquivo, nullptr);
     if (c == nullptr) return JNI_FALSE;
     size_t n = strlen(c);
@@ -231,9 +236,12 @@ Java_com_kenkern_engine_nativecore_NativeCore_instalarHandlerSinais(JNIEnv* env,
     return ok ? JNI_TRUE : JNI_FALSE;
 }
 
-/** True quando os 4 handlers estão instalados (checagem do Diagnóstico). */
+/**
+ * True quando os 4 handlers estão instalados (checagem do Diagnóstico).
+ * E1 (v0.1.18): mesmo bug de nome — o Kotlin declara `handlerInstaladoNativo`.
+ */
 JNIEXPORT jboolean JNICALL
-Java_com_kenkern_engine_nativecore_NativeCore_handlerInstalado(JNIEnv* /*env*/, jobject /*thiz*/) {
+Java_com_kenkern_engine_nativecore_NativeCore_handlerInstaladoNativo(JNIEnv* /*env*/, jobject /*thiz*/) {
     return g_handlerInstalado ? JNI_TRUE : JNI_FALSE;
 }
 
