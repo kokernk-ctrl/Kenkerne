@@ -55,6 +55,9 @@ import androidx.compose.ui.unit.sp
 import com.kenkern.engine.R
 import com.kenkern.engine.core.Nick
 import com.kenkern.engine.editor.EditorViewModel
+import com.kenkern.engine.ui.nickDisplayName
+import com.kenkern.engine.ui.nickKindIcon
+import com.kenkern.engine.ui.renameHint
 import com.kenkern.engine.ui.theme.KenkernAmber
 import com.kenkern.engine.ui.theme.KenkernOutline
 import com.kenkern.engine.ui.theme.KenkernSelection
@@ -64,10 +67,12 @@ import com.kenkern.engine.ui.theme.KenkernTextMid
 
 private class RowEntry(val nick: Nick, val depth: Int, val hasChildren: Boolean, val expanded: Boolean)
 
-/** Ícone por tipo de Nick: pasta/mundo (com filhos), cubo (com classe/geom.), vazio. */
+/** Ícone por TIPO do Nick (T0.2): o kind manda; sem tipo registrado, o velho
+ *  critério (pasta com filhos / cubo com classe / vazio) decide. */
 private fun nickIcon(nick: Nick): ImageVector = when {
+    com.kenkern.engine.core.NickKindRegistry.find(nick.kind) != null -> nickKindIcon(nick.kind)
     nick.children.isNotEmpty() -> Icons.Filled.Folder
-    nick.classes.isNotEmpty() || nick.name.contains("Cubo", ignoreCase = true) -> Icons.Filled.ViewInAr
+    nick.classes.isNotEmpty() || nick.name?.contains("Cubo", ignoreCase = true) == true -> Icons.Filled.ViewInAr
     else -> Icons.Filled.Adjust
 }
 
@@ -166,11 +171,16 @@ fun HierarchyPanel(vm: EditorViewModel) {
             onDismissRequest = { showRename = false },
             title = { Text(stringResource(R.string.hierarchy_rename_title)) },
             text = {
-                OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true)
+                Column {
+                    OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true)
+                    Spacer(Modifier.height(4.dp))
+                    Text(renameHint(), fontSize = 11.sp, color = KenkernTextMid)
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (text.isNotBlank()) vm.renameSelected(text.trim())
+                    // VAZIO = name null = volta a exibir o rótulo do TIPO (DECISIONS #26).
+                    vm.renameSelected(text.trim())
                     showRename = false
                 }) { Text(stringResource(R.string.hub_ok)) }
             },
@@ -187,7 +197,10 @@ fun HierarchyPanel(vm: EditorViewModel) {
             title = { Text(stringResource(R.string.hierarchy_delete_title)) },
             text = {
                 Text(
-                    stringResource(R.string.hierarchy_delete_text, nick?.name ?: ""),
+                    stringResource(
+                        R.string.hierarchy_delete_text,
+                        nick?.let { nickDisplayName(it) } ?: ""
+                    ),
                     fontSize = 13.sp
                 )
             },
@@ -235,7 +248,7 @@ fun HierarchyPanel(vm: EditorViewModel) {
                                     .clickable { chosen = cand }
                             ) {
                                 RadioButton(selected = chosen == cand, onClick = { chosen = cand })
-                                Text(cand.name, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(cand.let { nickDisplayName(it) }, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
@@ -318,7 +331,7 @@ private fun HierarchyRow(
         Spacer(Modifier.width(4.dp))
 
         Text(
-            nick.name + (if (nick.children.isNotEmpty()) "  " + stringResource(R.string.hierarchy_children, nick.children.size) else ""),
+            nickDisplayName(nick) + (if (nick.children.isNotEmpty()) "  " + stringResource(R.string.hierarchy_children, nick.children.size) else ""),
             fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

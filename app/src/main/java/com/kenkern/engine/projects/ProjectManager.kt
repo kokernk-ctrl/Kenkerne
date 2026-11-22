@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.kenkern.engine.BuildConfig
 import com.kenkern.engine.core.NickClassRegistry
+import com.kenkern.engine.core.NickKindRegistry
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.serialization.CkFormat
 import com.kenkern.engine.diag.KenkernLog
@@ -106,10 +107,17 @@ object ProjectManager {
             return null
         }
 
-        // Cena padrão: raiz + cubo com a classe Spin (mostra o loop de funções em Play).
+        // Cena padrão (T0.2, adendo v4): TIPOS com name NULO — a Hierarquia
+        // exibe o RÓTULO do tipo no idioma do app ("Group Nick"/"Nick de Grupo"
+        // + "Mesh Nick"/"Nick de Malha"); o usuário renomeia se quiser. O cubo
+        // mantém a classe Spin (mostra o loop de funções em Play).
         val scene = Scene(projectName.trim())
-        val world = scene.createRootNick("Mundo")
-        val cube = scene.createNick("Cubo", world)
+        val world = scene.createRootNick(
+            null, kind = NickKindRegistry.NICK_GROUP
+        )
+        val cube = scene.createNick(
+            null, world, kind = NickKindRegistry.NICK_MESH
+        )
         cube.transform.setLocalPosition(0f, 0.5f, 0f)
         NickClassRegistry.createInstance("Spin")?.let { cube.addClassInstance(it) }
         writeFileAtomic(

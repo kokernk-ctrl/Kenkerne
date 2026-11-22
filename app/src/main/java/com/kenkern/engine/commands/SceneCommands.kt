@@ -3,22 +3,27 @@ package com.kenkern.engine.commands
 import com.kenkern.engine.core.Nick
 import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickClassRegistry
+import com.kenkern.engine.core.NickKindRegistry
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.TransformSnapshot
 
-/** Cria um Nick (filho do pai informado ou raiz). */
+/** Cria um Nick do TIPO (kind) informado (filho do pai informado ou raiz). */
 class CreateNickCommand(
     private val scene: Scene,
     val parentId: ReferenceId?,
-    private val name: String,
+    private val kind: String,
+    private val name: String? = null,
     private val newId: ReferenceId = ReferenceId.generate()
 ) : Command {
-    override val label: String get() = "Criar $name"
+    override val label: String get() = "Criar ${NickKindRegistry.labelOf(kind, "pt")}"
     private var created: Nick? = null
     private var storedParent: Nick? = null
     private var storedIndex: Int = 0
+
+    /** Id do nick criado (para selecionar após o execute); null se ainda não rodou. */
+    fun createdNickId(): ReferenceId? = created?.id
 
     override fun execute() {
         val existing = created
@@ -28,7 +33,7 @@ class CreateNickCommand(
             return
         }
         val parent = parentId?.let { scene.findNick(it) }
-        val nick = scene.createNick(name, parent, newId)
+        val nick = scene.createNick(name, parent, newId, kind = kind)
         created = nick
         storedParent = nick.parent
         storedIndex = nick.indexInParent().coerceAtLeast(0)
@@ -65,7 +70,7 @@ class DeleteNickCommand(
     }
 }
 
-/** Renomeia um Nick. */
+/** Renomeia um Nick (texto VAZIO = volta a exibir o rótulo do tipo, DECISIONS #26). */
 class RenameCommand(
     private val scene: Scene,
     private val nickId: ReferenceId,
@@ -77,12 +82,12 @@ class RenameCommand(
     override fun execute() {
         val nick = scene.findNick(nickId) ?: return
         if (oldName == null) oldName = nick.name
-        nick.name = newName
+        nick.name = newName.trim().ifEmpty { null }
     }
 
     override fun undo() {
         val nick = scene.findNick(nickId) ?: return
-        nick.name = oldName ?: return
+        nick.name = oldName
     }
 }
 

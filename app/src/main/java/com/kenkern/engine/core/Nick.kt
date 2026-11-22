@@ -2,15 +2,23 @@ package com.kenkern.engine.core
 
 /**
  * NICK: unidade básica da cena da KENKERN.
- * Tem id estável (ReferenceId), nome, ativo/inativo, pai e filhos,
- * transform e uma lista de CLASSES (dados + funções).
+ * Tem id estável (ReferenceId), TIPO (chave estável do NickKindRegistry —
+ * DECISIONS #24/#25), nome OPCIONAL (null = exibe o rótulo do tipo no idioma
+ * atual — DECISIONS #26; renomeação do usuário nunca é traduzida),
+ * ativo/inativo, pai e filhos, transform e uma lista de CLASSES (dados + funções).
  */
 class Nick(
     val id: ReferenceId = ReferenceId.generate(),
-    name: String = "Nick",
-    active: Boolean = true
+    name: String? = null,
+    active: Boolean = true,
+    kind: String = NickKindRegistry.NICK_EMPTY
 ) {
-    var name: String = name
+    /** Nome do USUÁRIO (null = rótulo do tipo no idioma atual). */
+    var name: String? = name
+
+    /** Chave estável do tipo (ex.: "body.player"); o .ck CK2 guarda isto. */
+    var kind: String = kind
+
     var active: Boolean = active
     var visible: Boolean = true
 
@@ -20,6 +28,14 @@ class Nick(
     val children = ArrayList<Nick>()
     val transform = Transform()
     val classes = ArrayList<NickClassInstance>()
+
+    /**
+     * Nome EXIBIDO: texto do usuário se houver; senão o rótulo do TIPO no
+     * idioma pedido ("en"/"pt"). Tipo desconhecido devolve a própria chave
+     * (projeto de versão mais nova nunca mostra "???").
+     */
+    fun displayName(language: String): String =
+        name ?: NickKindRegistry.labelOf(kind, language)
 
     /** Índice deste nick entre os filhos do pai (para reordenação). */
     fun indexInParent(): Int {
@@ -63,5 +79,5 @@ class Nick(
         return null
     }
 
-    override fun toString(): String = name
+    override fun toString(): String = displayName("en")
 }

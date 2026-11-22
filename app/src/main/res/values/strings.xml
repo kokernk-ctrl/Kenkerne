@@ -123,6 +123,7 @@
     <string name="hierarchy_hide">Hide</string>
     <string name="hierarchy_show">Show</string>
     <string name="hierarchy_children">(%1$d)</string>
+    <string name="hierarchy_rename_hint">Leave empty to use the type label</string>
 
     <!-- ===================== Inspector panel ===================== -->
     <string name="inspector_select_hint">Select a Nick in the Hierarchy</string>

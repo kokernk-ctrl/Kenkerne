@@ -708,7 +708,9 @@ class KenkernSurfaceView(
                 pickStack[top++] = children[ci]
             }
         }
-        val name = bestId?.let { scene.findNick(it)?.name }
+        // T0.2: nome de diagnóstico do picking = texto do usuário OU a chave do
+        // tipo (overlay técnico — o rótulo localizado mora na UI, não no render).
+        val name = bestId?.let { id -> scene.findNick(id)?.let { it.name ?: it.kind } }
         val screenOut = when {
             bestId != null && bestScreen.isFinite() -> bestScreen
             nearestOverall.isFinite() -> nearestOverall // nada dentro da tolerância: mostra a mais próxima

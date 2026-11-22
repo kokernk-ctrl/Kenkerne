@@ -29,6 +29,7 @@ import com.kenkern.engine.commands.SetClassFieldCommand
 import com.kenkern.engine.commands.SetFlagCommand
 import com.kenkern.engine.commands.TransformCommand
 import com.kenkern.engine.commands.TransformDragCommand
+import com.kenkern.engine.core.NickKindRegistry
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
@@ -414,16 +415,20 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     // ---------- Ações de alto nível ----------
 
     /**
-     * Cria um Nick como filho do Nick SELECIONADO; sem seleção, filho do
-     * "Mundo" (primeiro nick raiz da cena). Nunca fora da raiz.
+     * Cria um Nick VAZIO como filho do Nick selecionado; sem seleção, filho do
+     * primeiro nick raiz da cena. T0.2: nasce com kind=nick.empty e name NULO
+     * (a Hierarquia exibe o rótulo do tipo no idioma — DECISIONS #26). A
+     * janela "Adicionar Nick" com o catálogo de tipos entra na T0.3.
      */
     fun addNick() {
         val s = sceneRef ?: return
         val parent = selection.value?.let { s.findNick(it) }
             ?: s.roots.firstOrNull()
-        val name = s.nextNickName()
-        run(CreateNickCommand(s, parent?.id, name))
-        sceneRef?.findNickByNameAnywhere(name)?.let { select(it.id) }
+        val cmd = CreateNickCommand(s, parent?.id, NickKindRegistry.NICK_EMPTY)
+        run(cmd)
+        // O novo nick é o último filho do pai (ou última raiz): seleciona direto.
+        val criado = cmd.createdNickId()?.let { s.findNick(it) }
+        if (criado != null) select(criado.id)
     }
 
     fun renameSelected(newName: String) {

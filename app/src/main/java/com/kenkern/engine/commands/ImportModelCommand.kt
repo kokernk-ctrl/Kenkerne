@@ -66,7 +66,12 @@ class ImportModelCommand(
             return
         }
         val parent = parentId?.let { scene.findNick(it) }
-        val nick = scene.createNick(nickName, parent, novoId)
+        // T0.2: modelo importado nasce como Mesh Nick (kind) com o nome do
+        // arquivo como texto do USUÁRIO (identifica o modelo na Hierarquia).
+        val nick = scene.createNick(
+            nickName, parent, novoId,
+            kind = com.kenkern.engine.core.NickKindRegistry.NICK_MESH
+        )
         nick.addClassInstance(classeMalha)
         created = nick
         storedParent = nick.parent

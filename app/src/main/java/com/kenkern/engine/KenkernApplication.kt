@@ -3,6 +3,7 @@ package com.kenkern.engine
 import android.app.Application
 import android.util.Log
 import com.kenkern.engine.core.KenkernBuiltInClasses
+import com.kenkern.engine.core.NickKindCatalog
 import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.nativecore.NativeCore
@@ -24,6 +25,7 @@ class KenkernApplication : Application() {
         // captura o contexto de app para gravação com flush a partir de qualquer thread.
         BootTrace.init(this)
         KenkernBuiltInClasses.registerAll()
+        NickKindCatalog.registerAll()
         instalarHandlerNativo()
         installCrashLogger()
     }

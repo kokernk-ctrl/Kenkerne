@@ -123,6 +123,7 @@
     <string name="hierarchy_hide">Ocultar</string>
     <string name="hierarchy_show">Mostrar</string>
     <string name="hierarchy_children">(%1$d)</string>
+    <string name="hierarchy_rename_hint">Deixe vazio para usar o rótulo do tipo</string>
 
     <!-- ===================== Inspector panel ===================== -->
     <string name="inspector_select_hint">Selecione um Nick na Hierarquia</string>

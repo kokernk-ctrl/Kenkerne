@@ -13,17 +13,26 @@ class Scene(var name: String = "Cena") {
     val references = ReferenceSystem()
     val linkerf = LinkerfGraph()
 
-    private var nickCounter = 0
-
-    fun createRootNick(name: String, id: ReferenceId = ReferenceId.generate(), active: Boolean = true): Nick {
-        val nick = Nick(id, name, active)
+    fun createRootNick(
+        name: String?,
+        id: ReferenceId = ReferenceId.generate(),
+        active: Boolean = true,
+        kind: String = NickKindRegistry.NICK_EMPTY
+    ): Nick {
+        val nick = Nick(id, name, active, kind)
         roots.add(nick)
         references.registerNick(nick)
         return nick
     }
 
-    fun createNick(name: String, parent: Nick?, id: ReferenceId = ReferenceId.generate(), active: Boolean = true): Nick {
-        val nick = Nick(id, name, active)
+    fun createNick(
+        name: String?,
+        parent: Nick?,
+        id: ReferenceId = ReferenceId.generate(),
+        active: Boolean = true,
+        kind: String = NickKindRegistry.NICK_EMPTY
+    ): Nick {
+        val nick = Nick(id, name, active, kind)
         if (parent == null) {
             roots.add(nick)
         } else {
@@ -32,17 +41,6 @@ class Scene(var name: String = "Cena") {
         }
         references.registerNick(nick)
         return nick
-    }
-
-    /** Nome único automático para novos nicks. */
-    fun nextNickName(): String {
-        nickCounter++
-        var candidate = "Nick $nickCounter"
-        while (findNickByNameAnywhere(candidate) != null) {
-            nickCounter++
-            candidate = "Nick $nickCounter"
-        }
-        return candidate
     }
 
     fun findNickByNameAnywhere(target: String): Nick? {

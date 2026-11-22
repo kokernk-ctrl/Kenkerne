@@ -45,6 +45,8 @@ import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.editor.EditorViewModel
+import com.kenkern.engine.ui.nickDisplayName
+import com.kenkern.engine.ui.renameHint
 import com.kenkern.engine.ui.common.AxisNumberField
 import com.kenkern.engine.ui.common.CollapsibleSection
 import com.kenkern.engine.ui.common.FloatField
@@ -91,18 +93,19 @@ fun InspectorPanel(vm: EditorViewModel) {
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Nome
-        var nameText by remember(nick.id) { mutableStateOf(nick.name) }
+        // Nome (T0.2: VAZIO = rótulo do tipo no idioma atual — DECISIONS #26)
+        var nameText by remember(nick.id) { mutableStateOf(nick.name ?: "") }
         OutlinedTextField(
             value = nameText,
             onValueChange = { nameText = it },
             label = { Text(stringResource(R.string.inspector_name), fontSize = 12.sp) },
+            supportingText = { Text(renameHint(), fontSize = 11.sp) },
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.fillMaxWidth()
         )
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(onClick = { if (nameText.isNotBlank() && nameText != nick.name) {
+            TextButton(onClick = { if (nameText.trim() != (nick.name ?: "")) {
                 vm.renameSelected(nameText.trim())
             } }) { Text(stringResource(R.string.inspector_apply_name), fontSize = 12.sp) }
             TextButton(onClick = { vm.select(nick.id) }) { Text(stringResource(R.string.inspector_revert), fontSize = 12.sp) }

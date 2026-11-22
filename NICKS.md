@@ -20,25 +20,25 @@ Regras (DECISIONS #24–#28):
 
 | Chave | Inglês | Português | Grupo | Status | Entra em |
 |-------|--------|-----------|-------|--------|----------|
-| nick.empty | Empty Nick | Nick Vazio | Base | PLANEJADO | T0.2 |
-| nick.group | Group Nick | Nick de Grupo | Base | PLANEJADO | T0.2 |
-| nick.mesh | Mesh Nick | Nick de Malha | Base | PLANEJADO | T0.2 |
+| nick.empty | Empty Nick | Nick Vazio | Base | IMPLEMENTADO (T0.2) | T0.2 |
+| nick.group | Group Nick | Nick de Grupo | Base | IMPLEMENTADO (T0.2) | T0.2 |
+| nick.mesh | Mesh Nick | Nick de Malha | Base | IMPLEMENTADO (T0.2) | T0.2 |
 | nick.prefab | Prefab Nick | Nick de Prefab | Base | PLANEJADO | F2.14 (prefabs) |
 
 ## LUZ (LUME)
 
 | Chave | Inglês | Português | Grupo | Status | Entra em |
 |-------|--------|-----------|-------|--------|----------|
-| light.directional | Directional Light Nick | Nick de Luz Direcional | Luz | PLANEJADO | T0.2 (dados) |
-| light.point | Point Light Nick | Nick de Luz Pontual | Luz | PLANEJADO | T0.2 (dados) |
-| light.spot | Spot Light Nick | Nick de Luz de Foco | Luz | PLANEJADO | T0.2 (dados) |
+| light.directional | Directional Light Nick | Nick de Luz Direcional | Luz | IMPLEMENTADO (T0.2) | T0.2 |
+| light.point | Point Light Nick | Nick de Luz Pontual | Luz | IMPLEMENTADO (T0.2) | T0.2 |
+| light.spot | Spot Light Nick | Nick de Luz de Foco | Luz | IMPLEMENTADO (T0.2) | T0.2 |
 | light.probe | Light Probe Nick | Nick de Sonda de Luz | Luz | PLANEJADO | KELU |
 
 ## CÂMERA (LENTE; modos como propriedade: primeira/segunda/terceira pessoa, perspectiva, ortogonal, topo)
 
 | Chave | Inglês | Português | Grupo | Status | Entra em |
 |-------|--------|-----------|-------|--------|----------|
-| camera.basic | Camera Nick | Nick de Câmera | Câmera | PLANEJADO | T0.2 (dados) |
+| camera.basic | Camera Nick | Nick de Câmera | Câmera | IMPLEMENTADO (T0.2) | T0.2 |
 | camera.follow | Follow Camera Nick | Nick de Câmera Seguidora | Câmera | PLANEJADO | M1 |
 | camera.cinematic | Cinematic Camera Nick | Nick de Câmera Cinemática | Câmera | PLANEJADO | anim.timeline |
 
@@ -46,14 +46,14 @@ Regras (DECISIONS #24–#28):
 
 | Chave | Inglês | Português | Grupo | Status | Entra em |
 |-------|--------|-----------|-------|--------|----------|
-| body.static | Static Body Nick | Nick de Corpo Estático | Corpos | PLANEJADO | T0.2 (dados) |
-| body.rigid | Rigid Body Nick | Nick de Corpo Rígido | Corpos | PLANEJADO | T0.2 (dados) |
+| body.static | Static Body Nick | Nick de Corpo Estático | Corpos | IMPLEMENTADO (T0.2) | T0.2 |
+| body.rigid | Rigid Body Nick | Nick de Corpo Rígido | Corpos | IMPLEMENTADO (T0.2) | T0.2 |
 | body.kinematic | Kinematic Body Nick | Nick de Corpo Cinemático | Corpos | PLANEJADO | M1 |
-| body.collider | Collider Body Nick | Nick de Corpo Colisor | Corpos | PLANEJADO | T0.2 (dados) |
-| body.character | Character Body Nick | Nick de Corpo de Personagem (andar, pular, rampas) | Corpos | PLANEJADO | T0.2 (dados) |
-| body.player | Player Body Nick | Nick de Corpo de Jogador (Character + input + câmera seguidora) | Corpos | PLANEJADO | T0.2 (dados) |
-| body.enemy | Enemy Body Nick | Nick de Corpo Inimigo (Character + comportamento + vida e dano) | Corpos | PLANEJADO | T0.2 (dados) |
-| body.npc | NPC Body Nick | Nick de Corpo NPC (Character + diálogo + rotinas) | Corpos | PLANEJADO | T0.2 (dados) |
+| body.collider | Collider Body Nick | Nick de Corpo Colisor | Corpos | IMPLEMENTADO (T0.2) | T0.2 |
+| body.character | Character Body Nick | Nick de Corpo de Personagem (andar, pular, rampas) | Corpos | IMPLEMENTADO (T0.2) | T0.2 |
+| body.player | Player Body Nick | Nick de Corpo de Jogador (Character + input + câmera seguidora) | Corpos | IMPLEMENTADO (T0.2) | T0.2 |
+| body.enemy | Enemy Body Nick | Nick de Corpo Inimigo (Character + comportamento + vida e dano) | Corpos | IMPLEMENTADO (T0.2) | T0.2 |
+| body.npc | NPC Body Nick | Nick de Corpo NPC (Character + diálogo + rotinas) | Corpos | IMPLEMENTADO (T0.2) | T0.2 |
 | body.car | Car Body Nick | Nick de Corpo de Carro | Corpos | PLANEJADO | RODANTE |
 | body.bike | Bike Body Nick | Nick de Corpo de Moto | Corpos | PLANEJADO | RODANTE |
 | body.ragdoll | Ragdoll Body Nick | Nick de Corpo de Boneco Físico | Corpos | PLANEJADO | OSSATURA |
@@ -62,9 +62,9 @@ Regras (DECISIONS #24–#28):
 
 | Chave | Inglês | Português | Grupo | Status | Entra em |
 |-------|--------|-----------|-------|--------|----------|
-| area.volume | Area Nick | Nick de Área (volume 3D de detecção) | Áreas | PLANEJADO | T0.2 (dados) |
-| area.signal | Signal Nick | Nick de Sinal (emite e recebe eventos nomeados, liga no LINKERF) | Áreas | PLANEJADO | T0.2 (dados) |
-| area.spawn | Spawn Point Nick | Nick de Ponto de Surgimento | Áreas | PLANEJADO | T0.2 (dados) |
+| area.volume | Area Nick | Nick de Área (volume 3D de detecção) | Áreas | IMPLEMENTADO (T0.2) | T0.2 |
+| area.signal | Signal Nick | Nick de Sinal (emite e recebe eventos nomeados, liga no LINKERF) | Áreas | IMPLEMENTADO (T0.2) | T0.2 |
+| area.spawn | Spawn Point Nick | Nick de Ponto de Surgimento | Áreas | IMPLEMENTADO (T0.2) | T0.2 |
 | area.checkpoint | Checkpoint Nick | Nick de Ponto de Controle | Áreas | PLANEJADO | M1 |
 | area.navigation | Navigation Area Nick | Nick de Área de Navegação | Áreas | PLANEJADO | MUNDO |
 

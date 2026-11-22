@@ -69,7 +69,7 @@ object BobFunction : NickFunction {
     }
 }
 
-/** Registro das classes nativas da Fase 1. */
+/** Registro das classes nativas da Fase 1 (+ Colisor da T0.2). */
 object KenkernBuiltInClasses {
     fun registerAll() {
         NickClassRegistry.register(
@@ -89,6 +89,21 @@ object KenkernBuiltInClasses {
                 listOf(
                     NickFieldDefinition("amplitude", "FLOAT", NickValue.FloatValue(0.5f)),
                     NickFieldDefinition("speed", "FLOAT", NickValue.FloatValue(1.5f))
+                )
+            )
+        )
+        // T0.2 (adendo v4): classe COLISOR do Collider Body Nick — a forma é
+        // CHAVE ESTÁVEL em inglês (box/sphere/capsule/cylinder/convex/mesh;
+        // rótulos localizados no seletor do Inspetor na T0.3); centro/tamanho
+        // em espaço LOCAL (o ajuste à AABB da malha entra na T0.3).
+        NickClassRegistry.register(
+            NickClassDefinition(
+                "Colisor",
+                "Volume de colisão do Nick",
+                listOf(
+                    NickFieldDefinition("forma", "STRING", NickValue.StringValue("box")),
+                    NickFieldDefinition("centro", "VEC3", NickValue.Vec3Value(0f, 0f, 0f)),
+                    NickFieldDefinition("tamanho", "VEC3", NickValue.Vec3Value(1f, 1f, 1f))
                 )
             )
         )
