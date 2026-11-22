@@ -23,6 +23,7 @@ import com.kenkern.engine.commands.ImportModelCommand
 import com.kenkern.engine.assets.mesh.KernReader
 import com.kenkern.engine.assets.mesh.KernWriter
 import com.kenkern.engine.assets.mesh.MeshData
+import com.kenkern.engine.core.MalhaNick
 import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.Scene
@@ -33,6 +34,7 @@ import com.kenkern.engine.core.linkerf.LinkerfPortType
 import com.kenkern.engine.core.math.Vec3
 import com.kenkern.engine.core.serialization.CkFormat
 import com.kenkern.engine.render.CameraMode
+import com.kenkern.engine.render.EngineRenderer
 import com.kenkern.engine.render.GlesBackend
 import com.kenkern.engine.render.OrbitCamera
 import com.kenkern.engine.render.PickingMath
@@ -61,6 +63,10 @@ import kotlin.math.max
  *  - release  — fumaça do APK minificado: classes críticas por nome + uma
  *               operação mínima de cada subsistema (guarda anti-R8, V1 da
  *               auditoria 0.1.15).
+ *  - cena     — REGRA "CENA = TELA" (Bug A, v0.1.17): o viewport desenha SÓ
+ *               Nicks desenhaveis (malha importada ou folha); containers
+ *               (raiz "Mundo") não desenham nem são pegáveis; o torus .KERN
+ *               de teste renderiza SÓ AQUI (offscreen, nunca no viewport).
  *
  * Regras: nada aqui derruba o app (toda checagem é blindada); sem GL no
  * construtor (só quando [executar] roda numa thread de fundo com o [EglDiag]);
@@ -779,6 +785,148 @@ class Diagnostico(private val appContext: Context) {
             backend.destroyTexture(handle)
             GLES30.glGetError()
         }
+    }
+
+    /**
+     * Checagem "cena = tela" (Bug A, v0.1.17) — O VIEWPORT DESENHA SÓ NICKS:
+     *
+     *  (a) CONTAGEM: renderiza OFFSCREEN uma cena de referência (Mundo >
+     *      Cubo + Oculto(invisível) + Grupo > Cubo3) e exige que o M medido
+     *      pelo renderer (nicksDesenhados) seja IGUAL ao esperado pela regra
+     *      MalhaNick.contarDesenhaveisVisiveis — containers ("Mundo", "Grupo")
+     *      não desenham; desligar visible tira o Nick da contagem;
+     *  (b) PIXEL: com o Cubo visível × invisível, os pixels da região central
+     *      MUDAM — o Nick desenhado é o que aparece na tela (não só na contagem);
+     *  (c) TORUS .KERN OFFSCREEN: o torus de teste da Fase 1 agora mora SÓ
+     *      aqui — gerado, serializado, relido, subido à GPU e RENDERIZADO
+     *      offscreen (drawMesh direto, A/B de pixel). NUNCA no viewport.
+     *
+     * Contexto: EglDiag pbuffer 64×64; backend/renderer inicializados SEM
+     * marcar boot_trace (armadilha 12 do PROGRESS).
+     */
+    private fun checarCenaTela(c: Checagem, egl: EglDiag?) {
+        if (egl == null) {
+            c.falhou("contexto EGL pbuffer não disponível")
+            return
+        }
+        // ---------- cena de referência: 5 Nicks, 2 desenhaveis visíveis
+        val scene = Scene("cena=tela")
+        val mundo = scene.createRootNick("Mundo")
+        val cubo = scene.createNick("Cubo", mundo)
+        cubo.transform.setLocalPosition(0f, 0.5f, 0f)
+        val oculto = scene.createNick("Oculto", mundo)
+        oculto.visible = false
+        val grupo = scene.createNick("Grupo", mundo)
+        val cubo3 = scene.createNick("Cubo3", grupo)
+        cubo3.transform.setLocalPosition(3f, 0.5f, 0f)
+        scene.updateWorldTransforms()
+        val totalNicks = MalhaNick.contarNicks(scene)
+        val esperado = MalhaNick.contarDesenhaveisVisiveis(scene)
+
+        val backend = GlesBackend()
+        val renderer = EngineRenderer()
+        var handleTorus = 0
+        try {
+            if (!backend.initialize(registrarBootTrace = false)) {
+                c.falhou("backend GLES não inicializou no contexto offscreen")
+                return
+            }
+            backend.resize(64, 64)
+            renderer.initialize(backend, null, registrarBootTrace = false)
+            if (!renderer.isInitialized()) {
+                c.falhou("renderer não inicializou no contexto offscreen")
+                return
+            }
+            if (!renderer.isKernRoundtripOk()) {
+                c.falhou("validação do roundtrip .KERN falhou no initialize (ver CONSOLE)")
+                return
+            }
+            val camera = OrbitCamera()
+
+            // ---------- (a) contagem: M medido == M esperado ----------
+            renderer.renderFrame(backend, scene, camera, 0f, null, null)
+            val mCena = renderer.nicksDesenhados
+            cubo3.visible = false
+            scene.updateWorldTransforms()
+            renderer.renderFrame(backend, scene, camera, 0f, null, null)
+            val mSemCubo3 = renderer.nicksDesenhados
+            cubo.visible = false
+            scene.updateWorldTransforms()
+            renderer.renderFrame(backend, scene, camera, 0f, null, null)
+            val mNenhum = renderer.nicksDesenhados
+
+            // ---------- (b) pixel: Cubo visível × invisível muda a tela ----------
+            cubo.visible = true
+            cubo3.visible = false
+            oculto.visible = false
+            scene.updateWorldTransforms()
+            renderer.renderFrame(backend, scene, camera, 0f, null, null)
+            val comCubo = lerRegiao(32, 34, 5)
+            cubo.visible = false
+            scene.updateWorldTransforms()
+            renderer.renderFrame(backend, scene, camera, 0f, null, null)
+            val semCubo = lerRegiao(32, 34, 5)
+            val pixelsMudaram = comCubo != null && semCubo != null && comCubo != semCubo
+
+            // ---------- (c) torus .KERN OFFSCREEN (nunca no viewport) ----------
+            val torusKern = EngineRenderer.gerarTorusKern()
+            val torusBytes = KernWriter.write(torusKern)
+            val torusRelido = KernReader.read(torusBytes)
+            handleTorus = backend.createMesh(MeshData.fromKern(torusRelido))
+            camera.target.set(0f, 0f, 0f)
+            camera.yawDegrees = 0f
+            camera.pitchDegrees = 0f
+            camera.distance = 6f
+            val proj = Mat4(); val view = Mat4(); val vp = Mat4()
+            camera.projection(proj, 1f)
+            camera.view(view)
+            vp.multiply(proj, view)
+            val model = Mat4(); model.setIdentity()
+            backend.beginFrame(0.075f, 0.075f, 0.105f, 1f)
+            backend.setLighting(-0.5f, -1f, -0.35f, 0.3f, 0.3f, 0.32f, 1f, 0.97f, 0.9f, 1f)
+            backend.endFrame()
+            val semTorus = lerPixel(32, 32)
+            backend.beginFrame(0.075f, 0.075f, 0.105f, 1f)
+            backend.setLighting(-0.5f, -1f, -0.35f, 0.3f, 0.3f, 0.32f, 1f, 0.97f, 0.9f, 1f)
+            backend.drawMesh(handleTorus, model, vp, 0.6039f, 0.6039f, 0.6039f, 1f)
+            backend.endFrame()
+            val comTorus = lerPixel(32, 32)
+            val torusDesenhou = comTorus != null && semTorus != null && comTorus != semTorus
+
+            // ---------- veredito ----------
+            val problemas = ArrayList<String>(3)
+            if (mCena != esperado) problemas.add("M=${mCena} ≠ esperado $esperado (containers não podem desenhar)")
+            if (mSemCubo3 != esperado - 1) problemas.add("visible=false não tirou o Nick da tela (M=${mSemCubo3}, esperado ${esperado - 1})")
+            if (mNenhum != 0) problemas.add("com tudo invisível M=${mNenhum} ≠ 0")
+            if (!pixelsMudaram) problemas.add("pixel central não mudou com Cubo visível × invisível")
+            if (handleTorus == 0) problemas.add("createMesh do torus devolveu 0")
+            else if (!torusDesenhou) problemas.add("torus .KERN não renderizou offscreen (${fmtCor(comTorus)} vs ${fmtCor(semTorus)})")
+
+            if (problemas.isEmpty()) {
+                c.aprovado(
+                    "N=$totalNicks · M medido=$mCena == $esperado visíveis com malha · visible=false remove da tela " +
+                        "(M ${mCena}→${mSemCubo3}→${mNenhum}) · torus .KERN (${torusRelido.vertexCount} vértices) renderiza SÓ offscreen — viewport sem geometria de demonstração"
+                )
+            } else {
+                c.falhou(problemas.joinToString("; "))
+            }
+        } finally {
+            if (handleTorus != 0) backend.destroyMesh(handleTorus)
+            backend.destroy()
+        }
+    }
+
+    /** Lê uma região raio [raio] ao rededor de (cx,cy) como lista RGB (compara A/B). */
+    private fun lerRegiao(cx: Int, cy: Int, raio: Int): List<IntArray>? {
+        val saida = ArrayList<IntArray>((raio * 2 + 1) * (raio * 2 + 1))
+        for (y in cy - raio..cy + raio) {
+            for (x in cx - raio..cx + raio) {
+                if (x < 0 || y < 0 || x >= 64 || y >= 64) continue
+                val px = lerPixel(x, y) ?: return null
+                saida.add(intArrayOf(px[0], px[1], px[2]))
+            }
+        }
+        return saida
     }
 
     /**

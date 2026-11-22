@@ -20,8 +20,12 @@ interface RenderBackend {
     /** GL_MAX_TEXTURE_SIZE do backend (0 = desconhecido antes do initialize). */
     val maxTextureSize: Int get() = 0
 
-    /** Inicializa recursos da API gráfica. NUNCA lança: false = sem recursos de render. */
-    fun initialize(): Boolean
+    /**
+     * Inicializa recursos da API gráfica. NUNCA lança: false = sem recursos de render.
+     * [registrarBootTrace] = false SOMENTE no Diagnóstico offscreen (não marca a
+     * etapa "shader compilado" do boot_trace — o marcador pertence ao boot do editor).
+     */
+    fun initialize(registrarBootTrace: Boolean = true): Boolean
     fun resize(width: Int, height: Int)
 
     fun beginFrame(clearR: Float, clearG: Float, clearB: Float, clearA: Float)

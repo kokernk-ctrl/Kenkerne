@@ -1250,7 +1250,7 @@ private fun FlightHoldButton(
 
 // ============================== StatusBar (24dp) ==============================
 
-/** Estado de play, FPS, métricas de frame (update/draw/draw calls) e integridade GL/.KERN. */
+/** Estado de play, FPS, N nicks · M desenhados, métricas de frame e integridade GL/.KERN. */
 @Composable
 private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView?, fpsTick: Int) {
     val playing = vm.playState.value == PlayState.PLAYING
@@ -1259,6 +1259,11 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
     val updMs = surfaceView?.rendererUpdateMs(fpsTick) ?: 0f
     val drawTimeMs = surfaceView?.rendererDrawMs(fpsTick) ?: 0f
     val draws = surfaceView?.rendererDrawCalls(fpsTick) ?: 0
+    // REGRA "CENA = TELA" (A4): N = total de Nicks da cena, M = Nicks DESENHADOS
+    // pelo renderer no último frame (containers como "Mundo" não contam em M).
+    val sceneAtual = vm.scene.value
+    val totalNicks = sceneAtual?.let { com.kenkern.engine.core.MalhaNick.contarNicks(it) } ?: 0
+    val nicksDesenhados = surfaceView?.rendererNicksDesenhados(fpsTick) ?: 0
     val healthy = surfaceView?.isEngineHealthy ?: true
     val gizmoDegraded = surfaceView?.isGizmoDegraded ?: false
 
@@ -1300,6 +1305,15 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
                 }
             )
             Text("$fps FPS", fontSize = 12.sp, color = KenkernTextMid)
+
+            // REGRA "CENA = TELA" (A4): contagem de Nicks da cena × Nicks desenhados
+            // — M precisa bater com os Nicks visíveis com malha (checagem "cena = tela"
+            // do Diagnóstico; a Hierarquia e o viewport mostram os mesmos objetos).
+            Text(
+                "$totalNicks nicks · $nicksDesenhados desenhados",
+                fontSize = 12.sp,
+                color = KenkernTextMid
+            )
 
             // Métricas de frame: atualizadas apenas 2x/s (fpsTick), formatadas fora do thread GL.
             Text(

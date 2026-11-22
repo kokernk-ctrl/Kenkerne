@@ -60,6 +60,51 @@ object MalhaNick {
         return f(inst, "escalaFit", 1f)
     }
 
+    /**
+     * REGRA "CENA = TELA" (Bug A, v0.1.17): o viewport desenha SOMENTE
+     * Nicks que REPRESENTAM GEOMETRIA:
+     *  - Nick com malha importada (classe Malha com path) → desenha a malha;
+     *  - Nick FOLHA sem filhos → desenha o cubo padrão de 1 m (Fase 1).
+     * CONTAINERS (Nick sem malha e COM filhos, ex.: a raiz "Mundo") NÃO são
+     * desenhados nem pegáveis — hierarquia e tela ficam coerentes: todo objeto
+     * visível no viewport aparece na Hierarquia e pode ser selecionado por toque.
+     * Puro Kotlin (mesma função no render, no picking e nos testes JVM).
+     */
+    fun desenhavel(nick: Nick): Boolean =
+        temMalha(nick) || nick.children.isEmpty()
+
+    /** Total de Nicks da cena (N da StatusBar "N nicks · M desenhados"). */
+    fun contarNicks(scene: Scene): Int {
+        var total = 0
+        val pilha = ArrayList<Nick>(16)
+        for (r in scene.roots) pilha.add(r)
+        var head = 0
+        while (head < pilha.size) {
+            val nick = pilha[head++]
+            total++
+            for (c in nick.children) pilha.add(c)
+        }
+        return total
+    }
+
+    /**
+     * Nicks VISÍVEIS com malha (M esperado da StatusBar): ativos, visíveis e
+     * desenhaveis. O "M desenhados" medido pelo renderer precisa ser IGUAL a
+     * este número quando todas as malhas estão na GPU (checagem "cena = tela").
+     */
+    fun contarDesenhaveisVisiveis(scene: Scene): Int {
+        var total = 0
+        val pilha = ArrayList<Nick>(16)
+        for (r in scene.roots) pilha.add(r)
+        var head = 0
+        while (head < pilha.size) {
+            val nick = pilha[head++]
+            if (nick.active && nick.visible && desenhavel(nick)) total++
+            for (c in nick.children) pilha.add(c)
+        }
+        return total
+    }
+
     private fun f(inst: NickClassInstance, campo: String, def: Float): Float =
         (inst.fields[campo] as? NickValue.FloatValue)?.value ?: def
 }

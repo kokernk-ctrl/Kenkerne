@@ -320,6 +320,9 @@ class KenkernSurfaceView(
     /** Draw calls do último frame (grade + malhas); [tick] só força recomposição a 2 Hz. */
     fun rendererDrawCalls(tick: Int): Int = glRenderer.currentDrawCalls()
 
+    /** Nicks da cena DESENHADOS no último frame (M da StatusBar "N nicks · M desenhados"). */
+    fun rendererNicksDesenhados(tick: Int): Int = glRenderer.currentNicksDesenhados()
+
     /** True se o roundtrip .KERN (gravar/ler malha) passou nesta sessão de render. */
     fun isKernOk(): Boolean = glRenderer.isKernRoundtripOk()
 
@@ -633,6 +636,9 @@ class KenkernSurfaceView(
      *     até [PICK_TOLERANCE_DP]dp da AABB PROJETADA na tela (cubo pequeno ou
      *     longe não pode ser impossível de tocar). Empate de distância de tela
      *     vale o menor t.
+     * REGRA "CENA = TELA" (Bug A): só Nicks DESSENHAVEIS (malha importada ou
+     * folha) são pegáveis — containers (raiz "Mundo") não aparecem no viewport
+     * e portanto não podem ser selecionados por toque.
      * O toque é normalizado pela VIEW (requestPick) e comparado em px da view:
      * os cantos projetados (px do framebuffer) são convertidos por bufToView.
      * Publica raio e resultado no [debugState] (overlay de diagnóstico).
@@ -663,7 +669,9 @@ class KenkernSurfaceView(
         var tested = 0
         while (top > 0) {
             val nick = pickStack[--top] ?: continue
-            if (nick.active && nick.visible) {
+            // REGRA "CENA = TELA": container sem malha não é desenhado — não é
+            // pegável por toque (senão o tap selecionaria objetos invisíveis).
+            if (nick.active && nick.visible && MalhaNick.desenhavel(nick)) {
                 tested++
                 // AABB em MUNDO REAL (malha importada: AABB do .KERN transformada;
                 // Nick padrão: cubo de 1 m) — 8 cantos × matriz de mundo.
@@ -732,7 +740,9 @@ class KenkernSurfaceView(
         }
         while (top > 0) {
             val nick = focusStack[--top] ?: continue
-            if (nick.active && nick.visible && (focusAllNicks || nick.id == selected)) {
+            // REGRA "CENA = TELA": o foco "tudo" enquadra o que está DESENHADO —
+            // containers não desenhados não esticam a AABB da cena (Bug A).
+            if (nick.active && nick.visible && MalhaNick.desenhavel(nick) && (focusAllNicks || nick.id == selected)) {
                 // AABB em MUNDO REAL (malha importada incluída — foco enquadra o
                 // modelo inteiro, não só o cubo de 1 m).
                 nickWorldAabb(nick, focusMinTmp, focusMaxTmp)
@@ -863,6 +873,8 @@ class KenkernSurfaceView(
         fun currentDrawMs(): Float = engineRenderer.drawMs
 
         fun currentDrawCalls(): Int = engineRenderer.drawCount
+
+        fun currentNicksDesenhados(): Int = engineRenderer.nicksDesenhados
 
         fun isKernRoundtripOk(): Boolean = engineRenderer.isKernRoundtripOk()
 

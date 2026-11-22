@@ -399,7 +399,7 @@ class GlesBackend : RenderBackend {
         }
     """.trimIndent()
 
-    override fun initialize(): Boolean {
+    override fun initialize(registrarBootTrace: Boolean): Boolean {
         GLES30.glDisable(GLES30.GL_DITHER)
         GLES30.glEnable(GLES30.GL_DEPTH_TEST)
         GLES30.glEnable(GLES30.GL_CULL_FACE)
@@ -419,7 +419,8 @@ class GlesBackend : RenderBackend {
         }
 
         // Marcador de progresso: o programa principal (ou fallback) linkou.
-        BootTrace.mark("shader compilado")
+        // O Diagnóstico offscreen inicializa SEM marcar (armadilha 12 do PROGRESS).
+        if (registrarBootTrace) BootTrace.mark("shader compilado")
 
         uMvp = GLES30.glGetUniformLocation(program, "uMVP")
         uModel = GLES30.glGetUniformLocation(program, "uModel")

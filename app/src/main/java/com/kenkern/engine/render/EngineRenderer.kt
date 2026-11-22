@@ -21,11 +21,14 @@ import kotlin.math.sin
  *  - céu (gradiente zênite→horizonte + sol discreto na direção da luz);
  *  - GRADE INFINITA (1 draw call): raio contra o plano Y=0 no fragment shader,
  *    anti-moiré por fwidth, fade por distância, dupla face (câmera abaixo do chão);
- *  - cubo por Nick ativo/visível (material #9A9A9A, Lambert + ambiente hemisférico);
+ *  - REGRA "CENA = TELA" (Bug A, v0.1.17): desenha SOMENTE Nicks da cena com
+ *    malha (classe Malha) ou folhas sem filhos (cubo padrão #9A9A9A, Lambert +
+ *    ambiente hemisférico); containers (raiz "Mundo") NÃO são desenhados;
+ *    NENHUMA geometria de demonstração existe no caminho de render — o torus
+ *    .KERN de teste mora SÓ no Diagnóstico (offscreen);
  *  - contorno laranja #FFA940 (inverted hull) no Nick selecionado;
  *  - gizmo de eixos no canto superior direito, girando com a câmera;
- *  - gizmo de transformação como MALHA (alça sob o dedo amarela, demais apagados);
- *  - malha de teste (torus) gerada, salva em .KERN e recarregada (roundtrip).
+ *  - gizmo de transformação como MALHA (alça sob o dedo amarela, demais apagados).
  *
  * PERF: a fila de geometria é RESETADA a cada frame (sem isso ela acumula
  * submissões até saturar e redesenha a cena centenas de vezes por frame).
@@ -41,7 +44,6 @@ class EngineRenderer {
 
     private var initialized = false
     private var cubeHandle = 0
-    private var testMeshHandle = 0
     private var gizmoHandle = 0
     private var gizmoVertexCount = 0
     private var kernRoundtripOk = false
@@ -71,6 +73,16 @@ class EngineRenderer {
     var drawMs: Float = 0f
         private set
 
+    /**
+     * Nicks da cena DESENHADOS no último frame (M da StatusBar "N nicks ·
+     * M desenhados"). Conta apenas submissões de Nicks (malha importada ou
+     * cubo padrão) — contorno/gizmos/grade/céu não entram. Containers não
+     * desenhaveis e malhas ainda carregando não contam (não desenharam).
+     */
+    @Volatile
+    var nicksDesenhados: Int = 0
+        private set
+
     private var framesThisSecond = 0
     private var fpsWindowStartNanos = 0L
 
@@ -82,11 +94,6 @@ class EngineRenderer {
     private val proj = Mat4()
     private val view = Mat4()
     private val viewProj = Mat4()
-
-    private val torusModel = Mat4()
-    private val torusPos = Vec3(0f, 1.4f, 0f)
-    private val torusRot = Quaternion()
-    private val unitScale = Vec3(1f, 1f, 1f)
 
     // Scratches do frame (pré-alocados; nada é criado no loop).
     private val scratchDir = FloatArray(3)
@@ -122,20 +129,28 @@ class EngineRenderer {
     private val outlineG = 0.6627f       // #FFA940
     private val outlineB = 0.2510f
 
-    /** Inicialização segura: céu/grade infinita/cubo/gizmos/malha .KERN; falha = viewport limpo. */
-    fun initialize(backend: RenderBackend, transformGizmo: TransformGizmo? = null) {
+    /**
+     * Inicialização segura: céu/grade infinita/cubo/gizmos; falha = viewport limpo.
+     * [registrarBootTrace] = false SOMENTE no Diagnóstico offscreen (a checagem
+     * "cena = tela" inicializa o backend sem marcar o boot_trace — armadilha 12).
+     */
+    fun initialize(
+        backend: RenderBackend,
+        transformGizmo: TransformGizmo? = null,
+        registrarBootTrace: Boolean = true
+    ) {
         initialized = false
         cubeHandle = 0
-        testMeshHandle = 0
         gizmoHandle = 0
         tgTrisMove = 0; tgTrisRotate = 0; tgTrisScale = 0
         tGizmo = transformGizmo
         kernRoundtripOk = false
+        nicksDesenhados = 0
         outlineInflation.setIdentity()
         outlineInflation.m[0] = 1.06f; outlineInflation.m[5] = 1.06f; outlineInflation.m[10] = 1.06f
         gizmoScale.setIdentity()
         gizmoScale.m[0] = 0.62f; gizmoScale.m[5] = 0.62f; gizmoScale.m[10] = 0.62f
-        if (!backend.initialize()) {
+        if (!backend.initialize(registrarBootTrace)) {
             Log.e(TAG, "Backend não inicializou; viewport em modo seguro")
             return
         }
@@ -144,7 +159,10 @@ class EngineRenderer {
         runCatching { buildCube(backend) }.onFailure { KenkernLog.w(TAG, "cube não construído (viewport segue sem cubo)", it) }
         runCatching { buildGizmo(backend) }.onFailure { KenkernLog.w(TAG, "gizmo de eixos não construído", it) }
         runCatching { buildTransformGizmoBuffers(backend) }.onFailure { KenkernLog.w(TAG, "buffers do gizmo de transformação não construídos", it) }
-        runCatching { buildTestMeshViaKern(backend) }.onFailure { KenkernLog.w(TAG, "malha de teste .KERN não construída", it) }
+        // Validação do formato .KERN (torus gerado → serializado → relido), SEM
+        // upload de GPU e SEM desenho: geometria de demonstração NÃO existe mais
+        // no caminho de render (Bug A). O torus renderiza SÓ no Diagnóstico.
+        runCatching { validarKernRoundtrip() }.onFailure { KenkernLog.w(TAG, "roundtrip .KERN do torus de teste falhou", it) }
         initialized = true
     }
 
@@ -206,49 +224,21 @@ class EngineRenderer {
     }
 
     /**
-     * Malha de teste: torus gerado proceduralmente, serializado em .KERN,
-     * lido de volta com o KernReader e enviado à GPU — valida o formato completo.
+     * VALIDAÇÃO do formato .KERN (Bug A, v0.1.17): torus gerado proceduralmente,
+     * serializado em .KERN e lido de volta com o KernReader. SEM upload de GPU e
+     * SEM desenho — o viewport não tem mais geometria de demonstração; o torus
+     * renderiza SÓ na checagem "cena = tela" do Diagnóstico (offscreen).
      */
-    private fun buildTestMeshViaKern(backend: RenderBackend) {
-        val builder = KernWriter.Builder()
-        val segU = 48
-        val segV = 24
-        val bigR = 1.7f
-        val smallR = 0.6f
-        for (iu in 0 until segU) {
-            val u = (iu.toFloat() / segU) * 2f * Math.PI.toFloat()
-            val cu = cos(u); val su = sin(u)
-            for (iv in 0 until segV) {
-                val v = (iv.toFloat() / segV) * 2f * Math.PI.toFloat()
-                val cv = cos(v); val sv = sin(v)
-                val ringR = bigR + smallR * cv
-                val px = ringR * cu
-                val py = smallR * sv
-                val pz = ringR * su
-                // normal analítica
-                val nx = cv * cu; val ny = sv; val nz = cv * su
-                // tangente ao longo de u
-                val tx = -su; val ty = 0f; val tz = cu
-                builder.vertex(px, py, pz, nx, ny, nz, iu.toFloat() / segU, iv.toFloat() / segV, tx, ty, tz)
-            }
-        }
-        for (iu in 0 until segU) {
-            val iu2 = (iu + 1) % segU
-            for (iv in 0 until segV) {
-                val iv2 = (iv + 1) % segV
-                val a = iu * segV + iv
-                val b = iu2 * segV + iv
-                val c = iu2 * segV + iv2
-                val d = iu * segV + iv2
-                builder.triangle(a, b, c)
-                builder.triangle(a, c, d)
-            }
-        }
-        val kernMesh = builder.build()
+    private fun validarKernRoundtrip() {
+        val kernMesh = gerarTorusKern()
         val bytes = KernWriter.write(kernMesh)
         val reloaded = KernReader.read(bytes)
+        if (reloaded.vertexCount != kernMesh.vertexCount) {
+            throw IllegalStateException(
+                "roundtrip .KERN divergiu: ${kernMesh.vertexCount} → ${reloaded.vertexCount} vértices"
+            )
+        }
         kernRoundtripOk = true
-        testMeshHandle = backend.createMesh(MeshData.fromKern(reloaded))
     }
 
     fun isKernRoundtripOk(): Boolean = kernRoundtripOk
@@ -301,6 +291,9 @@ class EngineRenderer {
         var skyDrawn = 0
         var gridDrawn = 0
         var gizmoDrawn = 0
+        // M da StatusBar "N nicks · M desenhados": conta NICKS desenhados
+        // (malha importada OU cubo padrão) — contornos e overlays não contam.
+        var nicksDrawnThisFrame = 0
 
         val aspect = backend.viewportWidth.toFloat() / backend.viewportHeight.toFloat()
         camera.projection(proj, aspect)
@@ -337,15 +330,9 @@ class EngineRenderer {
             intensity
         )
 
-        // Malha de teste (torus .KERN), girando com o tempo da engine
-        if (testMeshHandle != 0) {
-            val spin = Math.toRadians((engineTime * 18f).toDouble()).toFloat()
-            torusRot.setFromAxisAngle(0f, 1f, 0f, spin)
-            torusModel.setTRS(torusPos, torusRot, unitScale)
-            geometry.submit(testMeshHandle, torusModel, materialGray, materialGray, materialGray, 1f)
-        }
-
-        // Cubo por Nick (travessia indexada: Iterator de ArrayList aloca por frame)
+        // NICKS DA CENA (regra "cena = tela"): travessia indexada (Iterator de
+        // ArrayList aloca por frame). Containers sem malha (raiz "Mundo") NÃO
+        // desenham — só Nicks com malha importada ou folhas (cubo padrão).
         if (scene != null) {
             val roots = scene.roots
             var top = 0
@@ -355,7 +342,9 @@ class EngineRenderer {
             }
             while (top > 0) {
                 val nick = nickStack[--top] ?: continue
-                if (nick.active && nick.visible) {
+                // REGRA "CENA = TELA": container sem malha (ex.: "Mundo") não
+                // desenha — tudo que aparece no viewport é Nick selecionável.
+                if (nick.active && nick.visible && MalhaNick.desenhavel(nick)) {
                     val caminhoMalha = MalhaNick.path(nick)
                     if (caminhoMalha != null) {
                         // Nick importado (ETAPA A): desenha a MALHA do .KERN em vez do cubo.
@@ -385,6 +374,7 @@ class EngineRenderer {
                                         h, g.indexOffset, g.indexCount, texHandle,
                                         nick.transform.worldMatrix, mr, mg, mb, ma
                                     )
+                                    nicksDrawnThisFrame++
                                 }
                             } else {
                                 geometry.submit(
@@ -392,6 +382,7 @@ class EngineRenderer {
                                     nick.transform.worldMatrix,
                                     materialGray, materialGray, materialGray, 1f
                                 )
+                                nicksDrawnThisFrame++
                             }
                             if (nick.id == selectedId) {
                                 outlineScratch.multiply(nick.transform.worldMatrix, outlineInflation)
@@ -410,6 +401,7 @@ class EngineRenderer {
                             nick.transform.worldMatrix,
                             materialGray, materialGray, materialGray, 1f
                         )
+                        nicksDrawnThisFrame++
                         if (nick.id == selectedId) {
                             // Contorno #FFA940 (inverted hull): world × inflação 1.06.
                             outlineScratch.multiply(nick.transform.worldMatrix, outlineInflation)
@@ -501,6 +493,7 @@ class EngineRenderer {
         drawCount = skyDrawn + gridDrawn +
             ((geometry as? DefaultGeometryPipeline)?.lastFlushCount ?: 0) +
             gizmoDrawn + tGizmoDc
+        nicksDesenhados = nicksDrawnThisFrame
     }
 
     private fun extractWorldRotation(m: Mat4, out: Quaternion) {
@@ -557,5 +550,50 @@ class EngineRenderer {
             1f, 0f, 0f,
             -1f, 0f, 0f
         )
+
+        /**
+         * TORUS DE TESTE (48×24 segmentos, anel 1,7, tubo 0,6): a MESMA malha
+         * que validava o formato .KERN no viewport da Fase 1. Desde a v0.1.17
+         * (Bug A) ela NÃO é desenhada no viewport — o Diagnóstico (checagem
+         * "cena = tela") usa esta função para gerar, serializar, reler e
+         * renderizar o torus OFFSCREEN. Pública para o Diagnóstico.
+         */
+        fun gerarTorusKern(): com.kenkern.engine.assets.mesh.KernMesh {
+            val builder = KernWriter.Builder()
+            val segU = 48
+            val segV = 24
+            val bigR = 1.7f
+            val smallR = 0.6f
+            for (iu in 0 until segU) {
+                val u = (iu.toFloat() / segU) * 2f * Math.PI.toFloat()
+                val cu = cos(u); val su = sin(u)
+                for (iv in 0 until segV) {
+                    val v = (iv.toFloat() / segV) * 2f * Math.PI.toFloat()
+                    val cv = cos(v); val sv = sin(v)
+                    val ringR = bigR + smallR * cv
+                    val px = ringR * cu
+                    val py = smallR * sv
+                    val pz = ringR * su
+                    // normal analítica
+                    val nx = cv * cu; val ny = sv; val nz = cv * su
+                    // tangente ao longo de u
+                    val tx = -su; val ty = 0f; val tz = cu
+                    builder.vertex(px, py, pz, nx, ny, nz, iu.toFloat() / segU, iv.toFloat() / segV, tx, ty, tz)
+                }
+            }
+            for (iu in 0 until segU) {
+                val iu2 = (iu + 1) % segU
+                for (iv in 0 until segV) {
+                    val iv2 = (iv + 1) % segV
+                    val a = iu * segV + iv
+                    val b = iu2 * segV + iv
+                    val c = iu2 * segV + iv2
+                    val d = iu * segV + iv2
+                    builder.triangle(a, b, c)
+                    builder.triangle(a, c, d)
+                }
+            }
+            return builder.build()
+        }
     }
 }
