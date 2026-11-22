@@ -1,5 +1,75 @@
 # KENKERN — CHANGELOG
 
+## v0.1.17 — 2 BUGS DO APARELHO + NÚCLEO NATIVO C++ (etcpak + meshoptimizer)
+
+> Bug A: viewport desenhava objetos fora da cena (torus + cubo do "Mundo").
+> Bug B: importação lenta (modelo de 2 MB cancelado por demora). B1 mede TODA
+> etapa; B2 acelera o Kotlin; B3/B4/B6 levam o pesado para C++17 via NDK.
+> Fase 2 CONTINUA ABERTA (faltam F2.11–F2.15); NENHUMA tag `fase-2-ok`.
+
+### BUG A — viewport desenhava geometria fora da cena
+
+- **Auditoria A1** (todas as chamadas de draw/submit do caminho de render):
+  drawSky EngineRenderer:323 (overlay) · **submit do torus EngineRenderer:345
+  (buildTestMeshViaKern:212-252 — FORA da cena)** · submitGroup/submit/outline
+  :384-416 (Nicks) · **submit(cubeHandle) EngineRenderer:408 — TODO Nick sem
+  malha virava cubo, INCLUSIVE a raiz "Mundo"** · flush:430 · grade:434 ·
+  gizmos:475-494 · clear emergencial KenkernSurfaceView:966.
+- **Causas raiz**: (1) torus de teste submetido TODO frame girando em
+  (0,1.4,0), sem Nick = impossível selecionar; (2) "Mundo" (container) desenhado
+  como cubo na origem — 2 cubos sobrepostos + torus = 3 objetos, 1 na
+  Hierarquia selecionável.
+- **Correção (regra "cena = tela")**: `MalhaNick.desenhavel()` é a FONTE ÚNICA
+  (tem malha OU é folha) usada pelo render, picking e foco; containers não
+  desenham nem são pegáveis; torus removido do render (validarKernRoundtrip sem
+  GPU) e passa a renderizar SÓ na checagem "cena = tela" do Diagnóstico
+  (offscreen). StatusBar "N nicks · M desenhados" (M = nicksDesenhados do
+  renderer); checagem "cena = tela" exige M medido == visíveis com malha +
+  pixel A/B com visible + torus offscreen. 9 testes JVM (MalhaNickDesenhavelTest).
+
+### BUG B — importação lenta (B1 medição + B2 Kotlin + B4/B6 nativo)
+
+- **B1 MEDIR PRIMEIRO**: `CronometroImport` mede leitura, parse, dedup, LODs,
+  decodificação/redimensionamento/mipmaps/ETC2/gravação POR TEXTURA, .KERN,
+  criação do Nick — tabela com ms e % do total no ImportReport E no Console;
+  resolução e formato de cada textura (origem→final + PNG/JPEG) no relatório.
+- **B2 Kotlin**: limite de textura 1024 padrão (512/1024/2048 no diálogo,
+  reduz ANTES dos mipmaps); ETC2 rápido por padrão (individual+diferencial+
+  planar; T/H só em "Alta qualidade"); blocos em N threads (cores−1) + texturas
+  em paralelo; cancelamento dentro dos laços (< 1 s, testado); progresso
+  "textura 2/5 · 43% · ~12s". **Correção incluída**: codificarRgba gravava
+  blocos em COLUNA-major contra o decoder/GL linha-major (texturas com alfa
+  transpostas na GPU).
+- **B3 núcleo C++**: NDK 27.3.13750724 + CMake 3.22.1 FIXADOS (Gradle e CI),
+  arm64-v8a; `NativeCore` (isAvailable/versão/ABI, carga registrada, fallback
+  Kotlin automático em TODO módulo); handler de sinais SIGSEGV/SIGABRT/SIGBUS/
+  SIGFPE gravando `crash_logs/native_crash.txt` (sinal, endereço, backtrace) —
+  o diálogo de crash do Hub mostra esse arquivo também; checagem "nativo"
+  (biblioteca, versão, ABI, eco(21)=43, handler instalado — NUNCA crash de
+  propósito); -keep R8 para JNI/NativeCore.
+- **B4 ETC2 nativo (etcpak BSD-3-Clause, third_party/etcpak + LICENSES.md)**:
+  JNI com ByteBuffer DIRETO, multithread em C++, TODOS os limites validados
+  (256 Mpx/512 MB, buffers conferidos), conversão RGBA→BGRA + padding de borda
+  no C++; fallback Kotlin com motivo no Console; checagem "etc2 nativo"
+  (1024²: ms · MP/s · PSNR × Kotlin). **Medido no host (mesma fonte do APK):
+  nativo 17 ms × Kotlin 5.508 ms = 324×**; o número do APARELHO vem da checagem.
+- **B6 meshoptimizer (MIT, third_party/meshoptimizer + LICENSES.md)**: dedup
+  (generateVertexRemap — MESMA contagem de únicos que o Kotlin, registro de
+  32 B = os 8 floats da ChaveVertice), cache de vértices POR GRUPO
+  (optimizeVertexCache) e LODs por simplificação (simplify com ERRO reportado);
+  ByteBuffer direto + limites validados; PosProcessamento usa o nativo com
+  fallback Kotlin; checagem "malha nativa" (grade 20.000 tris: ms × Kotlin).
+- **Testes nativo × Kotlin SEM aparelho**: a MESMA fonte C++ compila para o
+  HOST (task compilarNativoHost, g++) e os testes JVM carregam via seam
+  documentado — PSNR nativo ≥ Kotlin−1 dB, tamanhos idênticos, 4×4, 6×6/7×3,
+  layout RGBA, determinismo, contagem de únicos, LODs coerentes, entradas
+  inválidas → null.
+- **20 checagens no Diagnóstico** (novas: nativo, etc2-nativo, malha-nativa,
+  cena). APK: 1.663.853 B (v0.1.16) → 2.094.813 B (+431 KB = libkenkern.so
+  463 KB com etcpak+meshoptimizer+handler). 184 testes JVM verdes.
+
+# KENKERN — CHANGELOG
+
 ## v0.1.16 — CORREÇÃO das 4 falhas do Diagnóstico no aparelho (nenhuma funcionalidade nova)
 
 > Aparelho do usuário: Mali-G57, GLES 3.2, v0.1.15 — 9 aprovadas, 4 falharam

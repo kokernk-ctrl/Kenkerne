@@ -6,30 +6,35 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
-- **Fase**: 2 (Projeto & Assets) — **EM CURSO (ABERTA)**. A auditoria v0.1.15
-  (2026-11-21) CONFIRMOU que a fase NÃO está fechada: faltam F2.11 streaming,
-  F2.12 navegador, F2.13 pré-visualização, F2.14 prefabs e F2.15 registro de
-  assets. A tag `fase-2-ok` permanece REMOVIDA (não criar até TODOS os itens
-  + "aprovado" do usuário). Itens que dependem do aparelho estão **COMPILADO**,
-  não VALIDADO (TESTES_PENDENTES.md).
-- **Tarefa atual**: AUDITORIA E CORREÇÃO da v0.1.14 (V1–V4, cada etapa com CI
-  verde + commit): **V1** — APK 1,5 MB provado LEGÍTIMO (R8 desde a v0.1.3;
-  dexdump: nada removido — 22 subpackages + 141 classes LuaJ presentes) +
-  checagem `release` no Diagnóstico como guarda anti-R8; **V2** — medição em
-  4 modelos REAIS Khronos (razões reais 1,26×–4,25×; meta 5× NÃO atingida) +
-  camada Deflate em disco do .KIMG adotada por padrão (DECISIONS #22);
-  **V3** — honestidade dos docs e avisos das limitações no ImportReport;
-  **V4** — release única `v0.1.15-fase2-teste`.
-- **Suíte JVM**: 134 testes, verde. **Diagnóstico**: 14 checagens (a nova é
-  `release` — fumaça do APK minificado).
-- **Lua congelada**: o LuaJ existente é o F5.1 (antes F3.1), trabalho ANTECIPADO —
+- **Fase**: 2 (Projeto & Assets) — **EM CURSO (ABERTA)**. Faltam F2.11
+  streaming, F2.12 navegador, F2.13 pré-visualização, F2.14 prefabs e F2.15
+  registro de assets. A tag `fase-2-ok` permanece REMOVIDA (não criar até
+  TODOS os itens + "aprovado" do usuário). Itens que dependem do aparelho
+  estão **COMPILADO**, não VALIDADO (TESTES_PENDENTES.md).
+- **Tarefa concluída (v0.1.17)**: BUGS A/B do aparelho + núcleo nativo C++.
+  **A**: regra "cena = tela" (MalhaNick.desenhavel no render/picking/foco),
+  torus fora do viewport (só no Diagnóstico offscreen), StatusBar "N nicks ·
+  M desenhados", checagem "cena = tela". **B1**: CronometroImport com tabela
+  de ms e % por etapa no ImportReport/Console. **B2**: limite de textura
+  1024 padrão (512/1024/2048 no diálogo), ETC2 rápido padrão (T/H só alta),
+  blocos+texturas paralelos, cancelamento < 1 s, progresso por textura; +
+  correção da ordem de blocos do RGBA. **B3**: NDK/CMake fixados (27.3.13750724
+  / 3.22.1), NativeCore + handler de sinais (native_crash.txt no diálogo de
+  crash), checagem "nativo", R8 keeps. **B4**: etcpak (BSD-3) vendorizado,
+  JNI ByteBuffer direto multithread, fallback Kotlin, checagem "etc2 nativo"
+  (host: nativo 17 ms × Kotlin 5.508 ms em 1024²). **B6**: meshoptimizer
+  (MIT) vendorizado — dedup/cache/LOD com erro reportado, checagem "malha
+  nativa". **20 checagens no Diagnóstico**; third_party/ com LICENSES.md.
+- **Suíte JVM**: 184 testes, verde (testes nativo×Kotlin rodam com a MESMA
+  fonte C++ compilada para o host pela task compilarNativoHost).
+- **Lua congelada**: o LuaJ existente é o F5.1, trabalho ANTECIPADO —
   proibido crescer código Lua antes da Fase 5. Fase 3 = LENTE/LUME/colliders/input.
 - **Regras** (ROADMAP.md, Regras de fase): (1) tag `fase-N-ok` só com TODOS os
   itens de aceite implementados; (2) nenhum `runCatching` engole erro em
   silêncio — Log + Console (`KenkernLog`) + tela Diagnóstico; auditoria em
   `docs/RUNCATCHING_AUDIT.md`.
-- **App**: v0.1.15 (versionCode 16) — auditoria; a v0.1.14 (versionCode 15) foi
-  a release anterior.
+- **App**: v0.1.17 (versionCode 18) — release `v0.1.17-fase2-teste` com APK
+  assinado (2.094.813 B; libkenkern.so 463 KB arm64-v8a).
 
 ## O que existe (Fases 1–2, validado por CI)
 

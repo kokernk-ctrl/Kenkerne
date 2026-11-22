@@ -1,5 +1,39 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## Aceite v0.1.17 — BUGS A/B + NÚCLEO NATIVO — Release `v0.1.17-fase2-teste`
+
+> Bug A: viewport desenhava objetos fora da cena. Bug B: importação lenta.
+> Núcleo C++: etcpak (ETC2) + meshoptimizer (dedup/cache/LOD) + handler de
+> sinais. Fase 2 CONTINUA ABERTA (F2.11–F2.15); tag `fase-2-ok` NÃO criada.
+
+1. Instalar a v0.1.17 pela Release e abrir um PROJETO NOVO: o viewport mostra
+   SOMENTE 1 cubo (o "Cubo" da Hierarquia) — sem torus girando e sem cubo
+   extra na origem (Bug A).
+2. No editor, conferir a StatusBar: "N nicks · M desenhados" — em um projeto
+   novo tem que ler "2 nicks · 1 desenhado" (Mundo é container, não desenha).
+   Cada objeto visível no viewport aparece na Hierarquia e TOQUE seleciona.
+3. Hub → ícone do INSETO → Diagnóstico → "Rodar tudo": **20 checagens, 0
+   falhas**, incluindo as novas **"nativo"** (libkenkern.so, versão, ABI,
+   eco(21)=43, handler de sinais), **"etc2 nativo"** (1024² com ms · MP/s ·
+   PSNR do etcpak × Kotlin) e **"malha nativa"** (grade 20.000 tris: ms nativo
+   × Kotlin, únicos iguais) e **"cena = tela"** (M medido == visíveis com
+   malha; torus .KERN renderiza SÓ offscreen). Enviar o print.
+4. IMPORTAR um modelo de ~2 MB com 1 textura: acompanhar o progresso
+   ("textura 1/1 · P% · ~Ns") e, ao fim, abrir o RELATÓRIO e LER A TABELA DE
+   TEMPO POR ETAPA (ms e % do total: leitura, parse, dedup, LODs, decodificação,
+   redimensionamento, mipmaps, ETC2, gravação, criação do Nick) — conferir se
+   ficou abaixo de 10 s e onde ficou o maior tempo. A tabela também vai para o
+   Console (Diagnóstico → CONSOLE). Enviar o print do relatório.
+5. No diálogo de importação, conferir as opções NOVAS: "Limite de resolução
+   de textura" (512/1024/2048, padrão 1024) e "Qualidade ETC2" (Rápida padrão /
+   Alta qualidade T/H).
+6. Opcional (prova do handler nativo): se acontecer crash nativo algum dia, o
+   diálogo de crash do Hub passa a mostrar a seção "— crash nativo (handler de
+   sinais C++) —" com sinal, endereço e backtrace (crash_logs/native_crash.txt).
+
+## Aceite das CORREÇÕES D1–D5 — Release `v0.1.16-fase2-teste`
+
+
 ## Aceite das CORREÇÕES D1–D5 — Release `v0.1.16-fase2-teste`
 
 > Valida as correções das 4 falhas do Diagnóstico da v0.1.15 no aparelho
