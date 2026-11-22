@@ -110,13 +110,14 @@ class EngineRenderer {
         private set
 
     /**
-     * Nicks da cena DESENHADOS no último frame (M da StatusBar "N nicks ·
-     * M desenhados"). Conta apenas submissões de Nicks (malha importada ou
-     * cubo padrão) — contorno/gizmos/grade/céu não entram. Containers não
+     * M da StatusBar "N nicks · M malhas" (E6): GRUPOS DE MATERIAL desenhados
+     * no último frame — 1 por submitGroup (grupo do .KERN) e 1 por submit
+     * (malha sem grupos/cubo padrão = grupo implícito). Contornos, gizmos,
+     * grade, céu e AUXILIARES DE EDITOR (E5) não entram. Containers não
      * desenhaveis e malhas ainda carregando não contam (não desenharam).
      */
     @Volatile
-    var nicksDesenhados: Int = 0
+    var malhasDesenhadas: Int = 0
         private set
 
     private var framesThisSecond = 0
@@ -181,7 +182,7 @@ class EngineRenderer {
         tgTrisMove = 0; tgTrisRotate = 0; tgTrisScale = 0
         tGizmo = transformGizmo
         kernRoundtripOk = false
-        nicksDesenhados = 0
+        malhasDesenhadas = 0
         for (i in helperHandles.indices) {
             if (helperHandles[i] != 0) backend.destroyLineBuffer(helperHandles[i])
             if (helperHandlesSel[i] != 0) backend.destroyLineBuffer(helperHandlesSel[i])
@@ -379,9 +380,10 @@ class EngineRenderer {
         var skyDrawn = 0
         var gridDrawn = 0
         var gizmoDrawn = 0
-        // M da StatusBar "N nicks · M desenhados": conta NICKS desenhados
-        // (malha importada OU cubo padrão) — contornos e overlays não contam.
-        var nicksDrawnThisFrame = 0
+        // M da StatusBar "N nicks · M malhas" (E6): conta GRUPOS DE MATERIAL
+        // desenhados (malha importada por grupo OU cubo padrão = 1 grupo
+        // implícito) — contornos e overlays (incl. auxiliares E5) não contam.
+        var malhasDrawnThisFrame = 0
 
         val aspect = backend.viewportWidth.toFloat() / backend.viewportHeight.toFloat()
         camera.projection(proj, aspect)
@@ -465,7 +467,7 @@ class EngineRenderer {
                                         h, g.indexOffset, g.indexCount, texHandle,
                                         nick.transform.worldMatrix, mr, mg, mb, ma
                                     )
-                                    nicksDrawnThisFrame++
+                                    malhasDrawnThisFrame++
                                 }
                             } else {
                                 geometry.submit(
@@ -473,7 +475,7 @@ class EngineRenderer {
                                     nick.transform.worldMatrix,
                                     materialGray, materialGray, materialGray, 1f
                                 )
-                                nicksDrawnThisFrame++
+                                malhasDrawnThisFrame++
                             }
                             if (nick.id == selectedId) {
                                 outlineScratch.multiply(nick.transform.worldMatrix, outlineInflation)
@@ -492,7 +494,7 @@ class EngineRenderer {
                             nick.transform.worldMatrix,
                             materialGray, materialGray, materialGray, 1f
                         )
-                        nicksDrawnThisFrame++
+                        malhasDrawnThisFrame++
                         if (nick.id == selectedId) {
                             // Contorno #FFA940 (inverted hull): world × inflação 1.06.
                             outlineScratch.multiply(nick.transform.worldMatrix, outlineInflation)
@@ -668,7 +670,7 @@ class EngineRenderer {
         drawCount = skyDrawn + gridDrawn + colliderDc + helperDc +
             ((geometry as? DefaultGeometryPipeline)?.lastFlushCount ?: 0) +
             gizmoDrawn + tGizmoDc
-        nicksDesenhados = nicksDrawnThisFrame
+        malhasDesenhadas = malhasDrawnThisFrame
     }
 
     /**

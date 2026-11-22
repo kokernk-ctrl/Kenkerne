@@ -1372,7 +1372,7 @@ private fun FlightHoldButton(
 
 // ============================== StatusBar (24dp) ==============================
 
-/** Estado de play, FPS, N nicks · M desenhados, métricas de frame e integridade GL/.KERN. */
+/** Estado de play, FPS, N nicks · M malhas, métricas de frame e integridade GL/.KERN. */
 @Composable
 private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView?, fpsTick: Int) {
     val playing = vm.playState.value == PlayState.PLAYING
@@ -1381,11 +1381,11 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
     val updMs = surfaceView?.rendererUpdateMs(fpsTick) ?: 0f
     val drawTimeMs = surfaceView?.rendererDrawMs(fpsTick) ?: 0f
     val draws = surfaceView?.rendererDrawCalls(fpsTick) ?: 0
-    // REGRA "CENA = TELA" (A4): N = total de Nicks da cena, M = Nicks DESENHADOS
-    // pelo renderer no último frame (containers como "Mundo" não contam em M).
+    // REGRA "CENA = TELA" (E6): N = total de Nicks da cena; M = GRUPOS DE
+    // MATERIAL desenhados pelo renderer no último frame ("malhas").
     val sceneAtual = vm.scene.value
     val totalNicks = sceneAtual?.let { com.kenkern.engine.core.MalhaNick.contarNicks(it) } ?: 0
-    val nicksDesenhados = surfaceView?.rendererNicksDesenhados(fpsTick) ?: 0
+    val malhasDesenhadas = surfaceView?.rendererMalhasDesenhadas(fpsTick) ?: 0
     val healthy = surfaceView?.isEngineHealthy ?: true
     val gizmoDegraded = surfaceView?.isGizmoDegraded ?: false
 
@@ -1428,11 +1428,11 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
             )
             Text(stringResource(R.string.editor_fps, fps), fontSize = 12.sp, color = KenkernTextMid)
 
-            // REGRA "CENA = TELA" (A4): contagem de Nicks da cena × Nicks desenhados
-            // — M precisa bater com os Nicks visíveis com malha (checagem "cena = tela"
-            // do Diagnóstico; a Hierarquia e o viewport mostram os mesmos objetos).
+            // REGRA "CENA = TELA" (E6): N = Nicks da cena × M = malhas desenhadas
+            // (grupos de material). Na cena padrão cada malha tem 1 grupo: M bate
+            // com os Nicks visíveis com malha (checagem "cena = tela" do Diagnóstico).
             Text(
-                stringResource(R.string.editor_nicks_drawn, totalNicks, nicksDesenhados),
+                stringResource(R.string.editor_nicks_meshes, totalNicks, malhasDesenhadas),
                 fontSize = 12.sp,
                 color = KenkernTextMid
             )

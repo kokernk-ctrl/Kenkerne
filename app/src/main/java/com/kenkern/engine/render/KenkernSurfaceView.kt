@@ -328,8 +328,8 @@ class KenkernSurfaceView(
     /** Draw calls do último frame (grade + malhas); [tick] só força recomposição a 2 Hz. */
     fun rendererDrawCalls(tick: Int): Int = glRenderer.currentDrawCalls()
 
-    /** Nicks da cena DESENHADOS no último frame (M da StatusBar "N nicks · M desenhados"). */
-    fun rendererNicksDesenhados(tick: Int): Int = glRenderer.currentNicksDesenhados()
+    /** MALHAS desenhadas no último frame (M da StatusBar "N nicks · M malhas", E6). */
+    fun rendererMalhasDesenhadas(tick: Int): Int = glRenderer.currentMalhasDesenhadas()
 
     /** True se o roundtrip .KERN (gravar/ler malha) passou nesta sessão de render. */
     fun isKernOk(): Boolean = glRenderer.isKernRoundtripOk()
@@ -950,7 +950,7 @@ class KenkernSurfaceView(
 
         fun currentDrawCalls(): Int = engineRenderer.drawCount
 
-        fun currentNicksDesenhados(): Int = engineRenderer.nicksDesenhados
+        fun currentMalhasDesenhadas(): Int = engineRenderer.malhasDesenhadas
 
         fun isKernRoundtripOk(): Boolean = engineRenderer.isKernRoundtripOk()
 

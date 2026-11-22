@@ -74,7 +74,7 @@
     <string name="editor_status_pause">PAUSED</string>
     <string name="editor_status_ready">READY</string>
     <string name="editor_fps">%1$d FPS</string>
-    <string name="editor_nicks_drawn">%1$d nicks · %2$d drawn</string>
+    <string name="editor_nicks_meshes">%1$d nicks · %2$d meshes</string>
     <string name="editor_frame_metrics">%1$.1f ms upd · %2$.1f ms draw · %3$d dc</string>
     <string name="editor_gl_limited">GL limited (safe mode)</string>
     <string name="editor_gizmo_unavailable">Gizmo unavailable (empty mode)</string>
@@ -202,7 +202,7 @@
     <string name="diag_check_kimg">.KIMG — roundtrip + mipmaps + limits</string>
     <string name="diag_check_etc2">ETC2 — upload and pixel read (offscreen GL)</string>
     <string name="diag_check_tex_cena">Texture in scene — quad with .KIMG (non-black pixel)</string>
-    <string name="diag_check_cena">Scene = screen — viewport draws only Nicks (M measured)</string>
+    <string name="diag_check_cena">Scene = screen — viewport draws only Nicks (M meshes measured)</string>
     <string name="diag_check_astc">ASTC — device extension (informational)</string>
     <string name="diag_check_picking">Picking math (screen ray)</string>
     <string name="diag_check_toque">Tap on cube — real TouchController API</string>

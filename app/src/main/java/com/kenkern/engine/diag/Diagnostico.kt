@@ -137,7 +137,7 @@ class Diagnostico(private val appContext: Context) {
         Checagem("kimg", ".KIMG — ida e volta + mipmaps + limites"),
         Checagem("etc2", "ETC2 — upload e leitura de pixel (GL offscreen)"),
         Checagem("tex-cena", "Textura na cena — quad com .KIMG (pixel não-preto)"),
-        Checagem("cena", "Cena = tela — viewport desenha só Nicks (M medido)"),
+        Checagem("cena", "Cena = tela — viewport desenha só Nicks; M malhas medido"),
         Checagem("astc", "ASTC — extensão do aparelho (informativo)"),
         Checagem("picking", "Matemática de picking (raio de tela)"),
         Checagem("toque", "Toque no cubo — API real do TouchController"),
@@ -1136,7 +1136,7 @@ class Diagnostico(private val appContext: Context) {
      *
      *  (a) CONTAGEM: renderiza OFFSCREEN uma cena de referência (Mundo >
      *      Cubo + Oculto(invisível) + Grupo > Cubo3) e exige que o M medido
-     *      pelo renderer (nicksDesenhados) seja IGUAL ao esperado pela regra
+     *      pelo renderer (malhasDesenhadas, E6) seja IGUAL ao esperado pela regra
      *      MalhaNick.contarDesenhaveisVisiveis — containers ("Mundo", "Grupo")
      *      não desenham; desligar visible tira o Nick da contagem;
      *  (b) PIXEL: com o Cubo visível × invisível, os pixels da região central
@@ -1191,15 +1191,15 @@ class Diagnostico(private val appContext: Context) {
 
             // ---------- (a) contagem: M medido == M esperado ----------
             renderer.renderFrame(backend, scene, camera, 0f, null, null)
-            val mCena = renderer.nicksDesenhados
+            val mCena = renderer.malhasDesenhadas
             cubo3.visible = false
             scene.updateWorldTransforms()
             renderer.renderFrame(backend, scene, camera, 0f, null, null)
-            val mSemCubo3 = renderer.nicksDesenhados
+            val mSemCubo3 = renderer.malhasDesenhadas
             cubo.visible = false
             scene.updateWorldTransforms()
             renderer.renderFrame(backend, scene, camera, 0f, null, null)
-            val mNenhum = renderer.nicksDesenhados
+            val mNenhum = renderer.malhasDesenhadas
 
             // ---------- (b) pixel: Cubo visível × invisível muda a tela ----------
             cubo.visible = true
@@ -1241,17 +1241,17 @@ class Diagnostico(private val appContext: Context) {
 
             // ---------- veredito ----------
             val problemas = ArrayList<String>(3)
-            if (mCena != esperado) problemas.add("M=${mCena} ≠ esperado $esperado (containers não podem desenhar)")
-            if (mSemCubo3 != esperado - 1) problemas.add("visible=false não tirou o Nick da tela (M=${mSemCubo3}, esperado ${esperado - 1})")
-            if (mNenhum != 0) problemas.add("com tudo invisível M=${mNenhum} ≠ 0")
+            if (mCena != esperado) problemas.add("M malhas=${mCena} ≠ esperado $esperado (containers não desenham; cada malha da cena de referência tem 1 grupo)")
+            if (mSemCubo3 != esperado - 1) problemas.add("visible=false não tirou a malha da tela (M=${mSemCubo3}, esperado ${esperado - 1})")
+            if (mNenhum != 0) problemas.add("com tudo invisível M malhas=${mNenhum} ≠ 0")
             if (!pixelsMudaram) problemas.add("pixel central não mudou com Cubo visível × invisível")
             if (handleTorus == 0) problemas.add("createMesh do torus devolveu 0")
             else if (!torusDesenhou) problemas.add("torus .KERN não renderizou offscreen (${fmtCor(comTorus)} vs ${fmtCor(semTorus)})")
 
             if (problemas.isEmpty()) {
                 c.aprovado(
-                    "N=$totalNicks · M medido=$mCena == $esperado visíveis com malha · visible=false remove da tela " +
-                        "(M ${mCena}→${mSemCubo3}→${mNenhum}) · torus .KERN (${torusRelido.vertexCount} vértices) renderiza SÓ offscreen — viewport sem geometria de demonstração"
+                    "N=$totalNicks nicks · M malhas=$mCena == $esperado visíveis com malha (1 grupo cada) · visible=false remove da tela " +
+                        "(M ${mCena}→${mSemCubo3}→${mNenhum}) · auxiliares de editor não contam (E5) · torus .KERN (${torusRelido.vertexCount} vértices) renderiza SÓ offscreen"
                 )
             } else {
                 c.falhou(problemas.joinToString("; "))

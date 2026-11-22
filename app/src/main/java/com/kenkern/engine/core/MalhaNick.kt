@@ -100,7 +100,7 @@ object MalhaNick {
         kind == "nick.empty" || kind.startsWith("light.") ||
             kind.startsWith("camera.") || kind.startsWith("area.")
 
-    /** Total de Nicks da cena (N da StatusBar "N nicks · M desenhados"). */
+    /** Total de Nicks da cena (N da StatusBar "N nicks · M malhas", E6). */
     fun contarNicks(scene: Scene): Int {
         var total = 0
         val pilha = ArrayList<Nick>(16)
@@ -116,8 +116,10 @@ object MalhaNick {
 
     /**
      * Nicks VISÍVEIS com malha (M esperado da StatusBar): ativos, visíveis e
-     * desenhaveis. O "M desenhados" medido pelo renderer precisa ser IGUAL a
-     * este número quando todas as malhas estão na GPU (checagem "cena = tela").
+     * desenhaveis. O "M malhas" medido pelo renderer é IGUAL a este número na
+     * cena padrão (1 grupo de material por malha/cubo); malhas importadas com
+     * vários grupos contam os grupos (E6). Checagem "cena = tela" compara os
+     * DOIS na mesma cena de referência.
      */
     fun contarDesenhaveisVisiveis(scene: Scene): Int {
         var total = 0

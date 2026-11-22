@@ -74,7 +74,7 @@
     <string name="editor_status_pause">PAUSA</string>
     <string name="editor_status_ready">PRONTO</string>
     <string name="editor_fps">%1$d FPS</string>
-    <string name="editor_nicks_drawn">%1$d nicks · %2$d desenhados</string>
+    <string name="editor_nicks_meshes">%1$d nicks · %2$d malhas</string>
     <string name="editor_frame_metrics">%1$.1f ms upd · %2$.1f ms draw · %3$d dc</string>
     <string name="editor_gl_limited">GL limitado (modo seguro)</string>
     <string name="editor_gizmo_unavailable">Gizmo indisponível (modo vazio)</string>
@@ -202,7 +202,7 @@
     <string name="diag_check_kimg">.KIMG — ida e volta + mipmaps + limites</string>
     <string name="diag_check_etc2">ETC2 — upload e leitura de pixel (GL offscreen)</string>
     <string name="diag_check_tex_cena">Textura na cena — quad com .KIMG (pixel não-preto)</string>
-    <string name="diag_check_cena">Cena = tela — viewport desenha só Nicks (M medido)</string>
+    <string name="diag_check_cena">Cena = tela — viewport desenha só Nicks (M malhas medido)</string>
     <string name="diag_check_astc">ASTC — extensão do aparelho (informativo)</string>
     <string name="diag_check_picking">Matemática de picking (raio de tela)</string>
     <string name="diag_check_toque">Toque no cubo — API real do TouchController</string>
