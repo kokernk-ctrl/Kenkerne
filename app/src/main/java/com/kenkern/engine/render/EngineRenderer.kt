@@ -56,6 +56,34 @@ class EngineRenderer {
     private val colliderMvp = Mat4()
     private var kernRoundtripOk = false
 
+    // E5 (v0.1.18): AUXILIARES DE EDITOR — ícones/formas dos Nicks SEM malha
+    // (luz/câmera/área/sinal/surgimento/vazio). Um buffer de LINHAS por forma
+    // (cor por grupo) + um equivalente em ÂMBAR para o SELECIONADO (contorno de
+    // seleção). A PIRÂMIDE da câmera usa o FOV REAL e é reconstruída quando
+    // fov/aspect mudam (chave). Desenham só no editor (nunca em Play), NÃO
+    // contam como malha na StatusBar (E6) e são pegáveis com 24dp de tolerância.
+    private val helperHandles = IntArray(6)
+    private val helperHandlesSel = IntArray(6)
+    private val helperVertexCount = IntArray(6)
+    private var helperPiramideKey = ""
+    private val helperCor = FloatArray(3)
+    private val helperMvp = Mat4()
+    private val helperModel = Mat4()
+    private val helperPos = Vec3()
+    private val helperRot = Quaternion()
+    private val helperScaleVec = Vec3()
+    private val helperRotExtractor = RotationFromMatrix()
+    private val auxNicks = arrayOfNulls<Nick>(256)
+    private var auxCount = 0
+
+    /** E5: botão 'Mostrar auxiliares' da TopBar (padrão LIGADO). */
+    @Volatile
+    var mostrarAuxiliares: Boolean = true
+
+    /** E5: em Play os auxiliares SOMEM (nunca no jogo exportado). */
+    @Volatile
+    var emJogo: Boolean = false
+
     // Buffers GL do gizmo de transformação (MALHA de triângulos, 1 VBO por modo)
     private var tgTrisMove = 0
     private var tgTrisRotate = 0
@@ -154,6 +182,13 @@ class EngineRenderer {
         tGizmo = transformGizmo
         kernRoundtripOk = false
         nicksDesenhados = 0
+        for (i in helperHandles.indices) {
+            if (helperHandles[i] != 0) backend.destroyLineBuffer(helperHandles[i])
+            if (helperHandlesSel[i] != 0) backend.destroyLineBuffer(helperHandlesSel[i])
+            helperHandles[i] = 0; helperHandlesSel[i] = 0; helperVertexCount[i] = 0
+        }
+        helperPiramideKey = ""
+        auxCount = 0
         outlineInflation.setIdentity()
         outlineInflation.m[0] = 1.06f; outlineInflation.m[5] = 1.06f; outlineInflation.m[10] = 1.06f
         gizmoScale.setIdentity()
@@ -167,6 +202,7 @@ class EngineRenderer {
         runCatching { buildCube(backend) }.onFailure { KenkernLog.w(TAG, "cube não construído (viewport segue sem cubo)", it) }
         runCatching { buildGizmo(backend) }.onFailure { KenkernLog.w(TAG, "gizmo de eixos não construído", it) }
         runCatching { buildTransformGizmoBuffers(backend) }.onFailure { KenkernLog.w(TAG, "buffers do gizmo de transformação não construídos", it) }
+        runCatching { buildEditorHelpers(backend) }.onFailure { KenkernLog.w(TAG, "auxiliares de editor não construídos (luz/câmera/área ficam invisíveis)", it) }
         // Validação do formato .KERN (torus gerado → serializado → relido), SEM
         // upload de GPU e SEM desenho: geometria de demonstração NÃO existe mais
         // no caminho de render (Bug A). O torus renderiza SÓ no Diagnóstico.
@@ -180,6 +216,50 @@ class EngineRenderer {
         if (g.moveData.tris.isNotEmpty()) tgTrisMove = backend.createGizmoBuffer(g.moveData.tris)
         if (g.rotateData.tris.isNotEmpty()) tgTrisRotate = backend.createGizmoBuffer(g.rotateData.tris)
         if (g.scaleData.tris.isNotEmpty()) tgTrisScale = backend.createGizmoBuffer(g.scaleData.tris)
+    }
+
+    /**
+     * E5: geometria estática dos AUXILIARES DE EDITOR — um buffer de linhas por
+     * forma na cor do GRUPO + um equivalente em ÂMBAR (selecionado). A pirâmide
+     * da câmera (FOV real) é construída por chave no draw (fov/aspect mudam).
+     */
+    private fun buildEditorHelpers(backend: RenderBackend) {
+        val corAmbar = floatArrayOf(outlineR, outlineG, outlineB)
+        // LUZ (seta/esfera/cone) · CÂMERA (pirâmide: aqui versão padrão 60°/1,33
+        // — o draw refaz com o FOV/aspect reais quando a chave muda) · ÁREAS
+        // (caixa) · BASE (losango genérico).
+        val formas = arrayOf(
+            EditorHelpers.buildSeta(corDe(EditorHelpers.FORMA_SETA)),
+            EditorHelpers.buildEsfera(corDe(EditorHelpers.FORMA_ESFERA)),
+            EditorHelpers.buildCone(corDe(EditorHelpers.FORMA_CONE)),
+            EditorHelpers.buildPiramide(corDe(EditorHelpers.FORMA_PIRAMIDE), 60f, 4f / 3f),
+            EditorHelpers.buildCaixa(corDe(EditorHelpers.FORMA_CAIXA)),
+            EditorHelpers.buildDiamante(corDe(EditorHelpers.FORMA_DIAMANTE))
+        )
+        val ambar = arrayOf(
+            EditorHelpers.buildSeta(corAmbar),
+            EditorHelpers.buildEsfera(corAmbar),
+            EditorHelpers.buildCone(corAmbar),
+            EditorHelpers.buildPiramide(corAmbar, 60f, 4f / 3f),
+            EditorHelpers.buildCaixa(corAmbar),
+            EditorHelpers.buildDiamante(corAmbar)
+        )
+        for (f in 0 until 6) {
+            helperVertexCount[f] = formas[f].size / 6
+            helperHandles[f] = backend.createColoredLineBuffer(formas[f])
+            helperHandlesSel[f] = backend.createColoredLineBuffer(ambar[f])
+        }
+    }
+
+    /** Cor de GRUPO da forma do auxiliar (mesma paleta do EditorHelpers). */
+    private fun corDe(forma: Int): FloatArray {
+        return when (forma) {
+            EditorHelpers.FORMA_SETA, EditorHelpers.FORMA_ESFERA, EditorHelpers.FORMA_CONE ->
+                floatArrayOf(1.00f, 0.835f, 0.310f)
+            EditorHelpers.FORMA_PIRAMIDE -> floatArrayOf(0.310f, 0.765f, 0.969f)
+            EditorHelpers.FORMA_CAIXA -> floatArrayOf(0.400f, 0.733f, 0.416f)
+            else -> floatArrayOf(0.690f, 0.745f, 0.773f)
+        }
     }
 
     fun isInitialized(): Boolean = initialized
@@ -341,6 +421,9 @@ class EngineRenderer {
         // NICKS DA CENA (regra "cena = tela"): travessia indexada (Iterator de
         // ArrayList aloca por frame). Containers sem malha (raiz "Mundo") NÃO
         // desenham — só Nicks com malha importada ou folhas (cubo padrão).
+        // E5: Nicks AUXILIARES (luz/câmera/área/sinal/surgimento/vazio) são
+        // COLETADOS aqui e desenhados DEPOIS como auxiliares de editor.
+        auxCount = 0
         if (scene != null) {
             val roots = scene.roots
             var top = 0
@@ -418,6 +501,10 @@ class EngineRenderer {
                             )
                         }
                     }
+                } else if (nick.active && nick.visible && MalhaNick.ehAuxiliar(nick) && auxCount < auxNicks.size) {
+                    // E5: auxiliar de editor (luz/câmera/área/ícone) — desenhado
+                    // DEPOIS, com tamanho constante na tela; NÃO conta como malha.
+                    auxNicks[auxCount++] = nick
                 }
                 val children = nick.children
                 for (ci in children.indices) {
@@ -462,12 +549,61 @@ class EngineRenderer {
                 }
                 if (colliderWireHandle != 0 && colliderWireCount > 0) {
                     colliderMvp.multiply(viewProj, selNick.transform.worldMatrix)
-                    backend.drawGizmo(colliderWireHandle, colliderWireCount, colliderMvp)
+                    // E5: drawWorldLines — linhas no ESPAÇO DO MUNDO (viewport
+                    // completo + depth). O drawGizmo antigo desenhava o collider
+                    // no MINI-VIEWPORT do canto (gizmo de eixos): errado desde T0.3.
+                    backend.drawWorldLines(colliderWireHandle, colliderWireCount, colliderMvp)
                     colliderDc = 1
                 }
             } else if (colliderWireHandle != 0) {
                 backend.destroyLineBuffer(colliderWireHandle)
                 colliderWireHandle = 0; colliderWireCount = 0; colliderWireKey = ""
+            }
+        }
+
+        // E5 (v0.1.18): AUXILIARES DE EDITOR — luz/câmera/área/ícone dos Nicks
+        // SEM malha. SÓ no editor (nunca em Play, nunca no jogo exportado), com
+        // tamanho CONSTANTE na tela (escala pela distância, como o gizmo), cor
+        // por grupo e ÂMBAR quando selecionado. NÃO contam como malha (E6):
+        // cada auxiliar = 1 draw de linhas no espaço do mundo.
+        var helperDc = 0
+        if (mostrarAuxiliares && !emJogo && auxCount > 0) {
+            // Pirâmide da câmera: reconstruída SÓ quando o FOV REAL/aspect mudam.
+            val chavePiramide = "${camera.fovDegrees}|${aspect}"
+            if (chavePiramide != helperPiramideKey) {
+                if (helperHandles[EditorHelpers.FORMA_PIRAMIDE] != 0) {
+                    backend.destroyLineBuffer(helperHandles[EditorHelpers.FORMA_PIRAMIDE])
+                }
+                if (helperHandlesSel[EditorHelpers.FORMA_PIRAMIDE] != 0) {
+                    backend.destroyLineBuffer(helperHandlesSel[EditorHelpers.FORMA_PIRAMIDE])
+                }
+                EditorHelpers.corDoGrupo("camera.basic", helperCor)
+                val p = EditorHelpers.buildPiramide(helperCor, camera.fovDegrees, aspect)
+                helperVertexCount[EditorHelpers.FORMA_PIRAMIDE] = p.size / 6
+                helperHandles[EditorHelpers.FORMA_PIRAMIDE] = backend.createColoredLineBuffer(p)
+                val ps = EditorHelpers.buildPiramide(
+                    floatArrayOf(outlineR, outlineG, outlineB), camera.fovDegrees, aspect
+                )
+                helperHandlesSel[EditorHelpers.FORMA_PIRAMIDE] = backend.createColoredLineBuffer(ps)
+                helperPiramideKey = chavePiramide
+            }
+            val meiaFovTan = tanHalfFov(camera.fovDegrees)
+            for (ai in 0 until auxCount) {
+                val nick = auxNicks[ai] ?: continue
+                val forma = EditorHelpers.formaDo(nick.kind)
+                val selecionado = nick.id == selectedId
+                val handle = if (selecionado) helperHandlesSel[forma] else helperHandles[forma]
+                if (handle == 0 || helperVertexCount[forma] == 0) continue
+                val wm = nick.transform.worldMatrix
+                helperPos.set(wm.m[12], wm.m[13], wm.m[14])
+                val dist = camEye.distanceTo(helperPos).coerceAtLeast(0.5f)
+                val escala = dist * meiaFovTan * 2f * EditorHelpers.FRACAO_TELA
+                extractWorldRotationTo(wm, helperRot, helperRotExtractor)
+                helperScaleVec.set(escala, escala, escala)
+                helperModel.setTRS(helperPos, helperRot, helperScaleVec)
+                helperMvp.multiply(viewProj, helperModel)
+                backend.drawWorldLines(handle, helperVertexCount[forma], helperMvp)
+                helperDc++
             }
         }
 
@@ -529,7 +665,7 @@ class EngineRenderer {
         backend.endFrame()
 
         // Total real de draw calls do frame (estatística da StatusBar).
-        drawCount = skyDrawn + gridDrawn + colliderDc +
+        drawCount = skyDrawn + gridDrawn + colliderDc + helperDc +
             ((geometry as? DefaultGeometryPipeline)?.lastFlushCount ?: 0) +
             gizmoDrawn + tGizmoDc
         nicksDesenhados = nicksDrawnThisFrame
@@ -685,6 +821,28 @@ class EngineRenderer {
                 mm[2] / sx, mm[6] / sy, mm[10] / sz
             )
             tgRotExtractor.toMatrixComponents(out)
+        } else {
+            out.setIdentity()
+        }
+    }
+
+    /**
+     * E5: extração de rotação com EXTRACTOR PRÓPRIO (auxiliares de editor) —
+     * mesma matemática do [extractWorldRotation] sem disputar a instância do
+     * gizmo de transformação no mesmo frame.
+     */
+    private fun extractWorldRotationTo(m: Mat4, out: Quaternion, extractor: RotationFromMatrix) {
+        val mm = m.m
+        val sx = kotlin.math.sqrt(mm[0] * mm[0] + mm[1] * mm[1] + mm[2] * mm[2])
+        val sy = kotlin.math.sqrt(mm[4] * mm[4] + mm[5] * mm[5] + mm[6] * mm[6])
+        val sz = kotlin.math.sqrt(mm[8] * mm[8] + mm[9] * mm[9] + mm[10] * mm[10])
+        if (sx > 1e-9f && sy > 1e-9f && sz > 1e-9f) {
+            extractor.set(
+                mm[0] / sx, mm[4] / sy, mm[8] / sz,
+                mm[1] / sx, mm[5] / sy, mm[9] / sz,
+                mm[2] / sx, mm[6] / sy, mm[10] / sz
+            )
+            extractor.toMatrixComponents(out)
         } else {
             out.setIdentity()
         }

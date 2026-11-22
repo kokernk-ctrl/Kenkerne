@@ -1005,6 +1005,21 @@ class GlesBackend : RenderBackend {
     }
 
     /**
+     * E5 (v0.1.18): linhas NO ESPAÇO DO MUNDO — viewport COMPLETO, COM teste
+     * de profundidade (a cena oclui o auxiliar). Auxiliares de editor
+     * (luz/câmera/área/ícones) e wireframe do colisor usam AQUI; o drawGizmo
+     * de cima é o mini-viewport do gizmo de eixos do canto.
+     */
+    override fun drawWorldLines(handle: Int, vertexCount: Int, mvp: Mat4) {
+        if (!lineOk || lineProgram == 0 || vertexCount <= 0) return
+        val gpu = coloredLineBuffers[handle] ?: return
+        useProgram(lineProgram)
+        GLES30.glBindVertexArray(gpu.vao)
+        GLES30.glUniformMatrix4fv(uLineMvp, 1, false, mvp.m, 0)
+        GLES30.glDrawArrays(GLES30.GL_LINES, 0, vertexCount)
+    }
+
+    /**
      * Desenha um sub-range do buffer do gizmo de transformação (GL_TRIANGLES,
      * sem depth, com blend; cull OFF — alças visíveis de todos os ângulos).
      * [alphaMul] escurece os eixos não ativos; [overrideRgba] pinta a alça em AMARELO.

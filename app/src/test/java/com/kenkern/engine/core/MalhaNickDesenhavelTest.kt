@@ -13,11 +13,11 @@ import org.junit.Test
  * (nicksDesenhados) com a mesma regra; M precisa ser igual ao número de
  * Nicks visíveis com malha.
  *
- * Causas raiz do Bug A cobertas aqui:
- *  1. torus de teste fora da cena (removido do render — a checagem GL
- *     "cena" desenha o torus SÓ offscreen);
- *  2. TODO Nick visível sem malha virava cubo — INCLUSIVE a raiz "Mundo"
- *     (container): agora containers não desenham nem são pegáveis.
+ * E5 (v0.1.18) — AUXILIARES DE EDITOR: Nicks de luz/câmera/área/sinal/
+ * surgimento/vazio (SEM malha) NÃO desenham o cubo — desenham o auxiliar de
+ * editor (ícone, cor por grupo, tamanho constante, só no editor) e NÃO contam
+ * em M. Nicks COM malha (classe Malha com path) são SEMPRE geometria, mesmo
+ * com kind=nick.empty (projetos antigos/importados continuam desenhando).
  */
 class MalhaNickDesenhavelTest {
 
@@ -30,18 +30,57 @@ class MalhaNickDesenhavelTest {
     }
 
     @Test
-    fun folhaSemMalhaEDesenhavelComoCuboPadrao() {
+    fun folhaMeshEDesenhavelComoCuboPadrao() {
         val scene = Scene("t")
         val mundo = scene.createRootNick("Mundo")
-        val cubo = scene.createNick("Cubo", mundo)
-        assertTrue("folha sem filhos desenha (cubo padrão da Fase 1)", MalhaNick.desenhavel(cubo))
+        val cubo = scene.createNick("Cubo", mundo, kind = NickKindRegistry.NICK_MESH)
+        assertTrue("folha nick.mesh desenha (cubo padrão da Fase 1)", MalhaNick.desenhavel(cubo))
+    }
+
+    @Test
+    fun luzEhAuxiliarNaoDesenhaCubo() {
+        val scene = Scene("t")
+        val mundo = scene.createRootNick("Mundo")
+        val luz = scene.createNick("Luz", mundo, kind = "light.directional")
+        assertTrue("luz é AUXILIAR de editor (ícone, não cubo)", MalhaNick.ehAuxiliar(luz))
+        assertFalse("auxiliar NÃO conta como malha (M da StatusBar)", MalhaNick.desenhavel(luz))
+    }
+
+    @Test
+    fun tiposSemMalhaSaoAuxiliaresEOutrosNao() {
+        // E5: classificação PURA por chave — luz/câmera/área/vazio = auxiliares.
+        for (k in listOf(
+            "nick.empty", "light.directional", "light.point", "light.spot",
+            "camera.basic", "area.volume", "area.signal", "area.spawn"
+        )) {
+            assertTrue("'$k' é auxiliar de editor", MalhaNick.ehKindAuxiliar(k))
+        }
+        // corpos/containers/malha NÃO são auxiliares: body.* é geometria
+        // placeholder (cubo) até o M1/FORJA darem forma própria.
+        for (k in listOf("nick.group", "nick.mesh", "body.static", "body.rigid",
+            "body.collider", "body.character", "body.player", "body.enemy", "body.npc")) {
+            assertFalse("'$k' NÃO é auxiliar", MalhaNick.ehKindAuxiliar(k))
+        }
+    }
+
+    @Test
+    fun malhaImportadaVenceOTipoVazio() {
+        // Projeto antigo/CK1: nick.empty COM classe Malha+path continua desenhando.
+        val scene = Scene("t")
+        val mundo = scene.createRootNick("Mundo")
+        val modelo = scene.createNick("Modelo", mundo) // kind=nick.empty por padrão
+        modelo.addClassInstance(NickClassInstance(MalhaNick.CLASSE).also {
+            it.fields["path"] = NickValue.StringValue("assets/models/velho.KERN")
+        })
+        assertFalse("temMalha vence: não é auxiliar", MalhaNick.ehAuxiliar(modelo))
+        assertTrue("nick.empty COM malha importada desenha", MalhaNick.desenhavel(modelo))
     }
 
     @Test
     fun containerSemMalhaNaoEDesenhavel() {
         val scene = Scene("t")
         val mundo = scene.createRootNick("Mundo")
-        scene.createNick("Cubo", mundo)
+        scene.createNick("Cubo", mundo, kind = NickKindRegistry.NICK_MESH)
         assertFalse(
             "raiz 'Mundo' (container com filhos, sem malha) NÃO pode desenhar — era o cubo fantasma do Bug A",
             MalhaNick.desenhavel(mundo)
@@ -58,16 +97,17 @@ class MalhaNickDesenhavelTest {
     }
 
     @Test
-    fun nickComClasseMalhaSemPathNaoEDesenhavelComoMalhaMasFolhaEhCubo() {
+    fun classeMalhaComPathVazioNoMeshFolhaAindaDesenhaCubo() {
         val scene = Scene("t")
         val mundo = scene.createRootNick("Mundo")
-        val semPath = scene.createNick("SemPath", mundo)
+        // classe Malha PRESENTE mas path vazio: leitura defensiva do formato —
+        // nick.mesh folha volta a ser cubo (E5: nick.empty folha seria auxiliar).
+        val semPath = scene.createNick("SemPath", mundo, kind = NickKindRegistry.NICK_MESH)
         val inst = NickClassInstance(MalhaNick.CLASSE)
-        // classe Malha PRESENTE mas path vazio: MalhaNick.path devolve null —
-        // o Nick volta a ser folha-cubo (leitura defensiva do formato).
         inst.fields["path"] = NickValue.StringValue("")
         semPath.addClassInstance(inst)
-        assertTrue("classe Malha com path vazio = folha → cubo padrão", MalhaNick.desenhavel(semPath))
+        assertFalse(MalhaNick.ehAuxiliar(semPath))
+        assertTrue("classe Malha com path vazio em nick.mesh = folha → cubo padrão", MalhaNick.desenhavel(semPath))
     }
 
     @Test
@@ -76,12 +116,12 @@ class MalhaNickDesenhavelTest {
         // [Cubo, Oculto(invisível), Grupo > Cubo3] → N=5, M esperado=2.
         val scene = Scene("cena=tela")
         val mundo = scene.createRootNick("Mundo")
-        val cubo = scene.createNick("Cubo", mundo)
+        val cubo = scene.createNick("Cubo", mundo, kind = NickKindRegistry.NICK_MESH)
         cubo.transform.setLocalPosition(0f, 0.5f, 0f)
-        val oculto = scene.createNick("Oculto", mundo)
+        val oculto = scene.createNick("Oculto", mundo, kind = NickKindRegistry.NICK_MESH)
         oculto.visible = false
-        val grupo = scene.createNick("Grupo", mundo)
-        val cubo3 = scene.createNick("Cubo3", grupo)
+        val grupo = scene.createNick("Grupo", mundo, kind = NickKindRegistry.NICK_GROUP)
+        val cubo3 = scene.createNick("Cubo3", grupo, kind = NickKindRegistry.NICK_MESH)
         cubo3.transform.setLocalPosition(3f, 0.5f, 0f)
 
         assertEquals(5, MalhaNick.contarNicks(scene))
@@ -92,8 +132,8 @@ class MalhaNickDesenhavelTest {
     fun contagemReageAVisibleEActive() {
         val scene = Scene("t")
         val mundo = scene.createRootNick("Mundo")
-        val a = scene.createNick("A", mundo)
-        val b = scene.createNick("B", mundo)
+        val a = scene.createNick("A", mundo, kind = NickKindRegistry.NICK_MESH)
+        val b = scene.createNick("B", mundo, kind = NickKindRegistry.NICK_MESH)
         assertEquals(2, MalhaNick.contarDesenhaveisVisiveis(scene))
 
         b.visible = false
@@ -104,6 +144,19 @@ class MalhaNickDesenhavelTest {
     }
 
     @Test
+    fun auxiliarNaoContaEmM() {
+        val scene = Scene("t")
+        val mundo = scene.createRootNick("Mundo")
+        scene.createNick("Cubo", mundo, kind = NickKindRegistry.NICK_MESH)
+        scene.createNick("Luz", mundo, kind = "light.point")
+        scene.createNick("Cam", mundo, kind = "camera.basic")
+        scene.createNick("Area", mundo, kind = "area.volume")
+        // E5/E6: M = MALHAS (2 auxiliares visíveis não entram na contagem).
+        assertEquals(5, MalhaNick.contarNicks(scene))
+        assertEquals(1, MalhaNick.contarDesenhaveisVisiveis(scene))
+    }
+
+    @Test
     fun contagemMalhasImportadasVisiveis() {
         val scene = Scene("t")
         val mundo = scene.createRootNick("Mundo")
@@ -111,7 +164,7 @@ class MalhaNickDesenhavelTest {
         val m2 = nickComMalha(scene, m1, "M2", "assets/models/b.KERN") // filho de malha: desenha
         m2.visible = false
         val grupo = scene.createNick("Grupo", mundo)
-        scene.createNick("Cubo", grupo)
+        scene.createNick("Cubo", grupo, kind = NickKindRegistry.NICK_MESH)
         // desenhaveis visíveis: M1 (malha) + Cubo (folha) = 2; M2 invisível não conta.
         assertEquals(2, MalhaNick.contarDesenhaveisVisiveis(scene))
         assertEquals(5, MalhaNick.contarNicks(scene))
@@ -119,10 +172,11 @@ class MalhaNickDesenhavelTest {
 
     @Test
     fun projetoNovoEMundoMaisCuboComUmDesenhavel() {
-        // A3: projeto novo = Mundo + Cubo — o viewport mostra SÓ o Cubo.
+        // A3: projeto novo = Mundo (nick.group) + Cubo (nick.mesh) — o viewport
+        // mostra SÓ o Cubo (template real do ProjectManager).
         val scene = Scene("Novo")
-        val mundo = scene.createRootNick("Mundo")
-        val cubo = scene.createNick("Cubo", mundo)
+        val mundo = scene.createRootNick(null, kind = NickKindRegistry.NICK_GROUP)
+        val cubo = scene.createNick(null, mundo, kind = NickKindRegistry.NICK_MESH)
         cubo.transform.setLocalPosition(0f, 0.5f, 0f)
         NickClassRegistry.createInstance("Spin")?.let { cubo.addClassInstance(it) }
 
@@ -131,13 +185,19 @@ class MalhaNickDesenhavelTest {
     }
 
     @Test
-    fun mundoSemFilhosVoltaASerCuboConsistenteComHierarquia() {
-        // Usuário apagou o Cubo: Mundo vira folha → desenha como cubo (continua
-        // aparecendo na Hierarquia e selecionável — regra A5 sem exceções).
+    fun mundoSemFilhosViraAuxiliarVisivelESelecionavel() {
+        // E5: usuário apagou o Cubo → a raiz (nick.empty) é AUXILIAR agora
+        // (losango, tamanho constante), não cubo — mas CONTINUA coerente com a
+        // regra A5: visível no viewport, na Hierarquia e selecionável por toque.
         val scene = Scene("t")
-        val mundo = scene.createRootNick("Mundo")
-        scene.createNick("Cubo", mundo).let { scene.removeNick(it) }
-        assertTrue(MalhaNick.desenhavel(mundo))
-        assertEquals(1, MalhaNick.contarDesenhaveisVisiveis(scene))
+        val mundo = scene.createRootNick(null, kind = NickKindRegistry.NICK_GROUP)
+        scene.createNick(null, mundo, kind = NickKindRegistry.NICK_MESH).let { scene.removeNick(it) }
+        // Um nick.group sem filhos não é auxiliar (group é container)…
+        assertFalse(MalhaNick.ehAuxiliar(mundo))
+        // …e um nick.empty sem filhos É auxiliar (ícone) — visível e selecionável
+        // no editor, mas não é "malha".
+        val vazio = scene.createNick("Vazio", null, kind = NickKindRegistry.NICK_EMPTY)
+        assertTrue(MalhaNick.ehAuxiliar(vazio))
+        assertFalse(MalhaNick.desenhavel(vazio))
     }
 }

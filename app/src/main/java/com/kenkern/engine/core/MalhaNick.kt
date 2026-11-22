@@ -75,9 +75,30 @@ object MalhaNick {
      * desenhados nem pegáveis — hierarquia e tela ficam coerentes: todo objeto
      * visível no viewport aparece na Hierarquia e pode ser selecionado por toque.
      * Puro Kotlin (mesma função no render, no picking e nos testes JVM).
+     *
+     * E5 (v0.1.18): Nicks AUXILIARES (luz/câmera/área/sinal/surgimento/vazio
+     * SEM malha) NÃO desenham o cubo — desenham o AUXILIAR DE EDITOR
+     * (EditorHelpers: ícone/forma, cor por grupo, tamanho constante, só no
+     * editor) e continuam visíveis na Hierarquia e selecionáveis por toque.
+     * Nick com malha é SEMPRE geometria (importado antigo com kind=nick.empty
+     * continua desenhando — a malha vence o tipo).
      */
     fun desenhavel(nick: Nick): Boolean =
-        temMalha(nick) || nick.children.isEmpty()
+        !ehAuxiliar(nick) && (temMalha(nick) || nick.children.isEmpty())
+
+    /**
+     * E5: o tipo representa algo INTANGÍVEL (sem geometria própria) e sem
+     * malha importada — luz, câmera, área, sinal, surgimento e o Nick Vazio.
+     * Esses Nicks desenham o AUXILIAR DE EDITOR (nunca o cubo, nunca em Play,
+     * nunca no jogo exportado) e NÃO contam como malha na StatusBar.
+     */
+    fun ehAuxiliar(nick: Nick): Boolean =
+        !temMalha(nick) && ehKindAuxiliar(nick.kind)
+
+    /** E5: classificação PURA por chave do tipo (mesma lista do EditorHelpers). */
+    fun ehKindAuxiliar(kind: String): Boolean =
+        kind == "nick.empty" || kind.startsWith("light.") ||
+            kind.startsWith("camera.") || kind.startsWith("area.")
 
     /** Total de Nicks da cena (N da StatusBar "N nicks · M desenhados"). */
     fun contarNicks(scene: Scene): Int {

@@ -16,11 +16,24 @@ Regras (DECISIONS #24–#28):
 - A janela "Adicionar Nick" lista SOMENTE tipos IMPLEMENTADOS.
 - Nicks de UI (2D) vivem na árvore própria do TELAR (DECISIONS #29).
 
+AUXILIARES DE EDITOR (E5, v0.1.18): todo Nick SEM malha própria (luz, câmera,
+área, sinal, surgimento e o Nick Vazio) é visível no viewport como um
+AUXILIAR desenhado SÓ no editor (nunca em Play, nunca no jogo exportado):
+tamanho constante na tela, cor por grupo, seleção por toque (tolerância 24dp)
+e âmbar quando selecionado. Formas: luz direcional = SETA na direção do Nick;
+luz pontual = ESFERA com anel de alcance (simbólico até a classe de luz do
+LUME); luz de foco = CONE; câmera = PIRÂMIDE com o FOV da câmera da engine
+(o campo FOV no Nick entra com a LENTE); área = volume em ARAME (caixa 1×1×1);
+demais tipos = LOSANGO. Botão "Mostrar auxiliares" na TopBar (padrão ligado).
+Corpos (body.*) continuam com o CUBO de 1 m como geometria placeholder até o
+M1/FORJA darem forma própria. Auxiliares NÃO contam como malha na StatusBar
+("N nicks · M malhas" — E6).
+
 ## BASE
 
 | Chave | Inglês | Português | Grupo | Status | Entra em |
 |-------|--------|-----------|-------|--------|----------|
-| nick.empty | Empty Nick | Nick Vazio | Base | IMPLEMENTADO (T0.2) | T0.2 |
+| nick.empty | Empty Nick | Nick Vazio | Base | IMPLEMENTADO (T0.2; auxiliar LOSANGO no E5 — não desenha mais cubo) | T0.2 |
 | nick.group | Group Nick | Nick de Grupo | Base | IMPLEMENTADO (T0.2) | T0.2 |
 | nick.mesh | Mesh Nick | Nick de Malha | Base | IMPLEMENTADO (T0.2) | T0.2 |
 | nick.prefab | Prefab Nick | Nick de Prefab | Base | PLANEJADO | F2.14 (prefabs) |
@@ -29,16 +42,22 @@ Regras (DECISIONS #24–#28):
 
 | Chave | Inglês | Português | Grupo | Status | Entra em |
 |-------|--------|-----------|-------|--------|----------|
-| light.directional | Directional Light Nick | Nick de Luz Direcional | Luz | IMPLEMENTADO (T0.2) | T0.2 |
-| light.point | Point Light Nick | Nick de Luz Pontual | Luz | IMPLEMENTADO (T0.2) | T0.2 |
-| light.spot | Spot Light Nick | Nick de Luz de Foco | Luz | IMPLEMENTADO (T0.2) | T0.2 |
+| light.directional | Directional Light Nick | Nick de Luz Direcional | Luz | IMPLEMENTADO (T0.2; auxiliar de editor SETA no E5) | T0.2 |
+| light.point | Point Light Nick | Nick de Luz Pontual | Luz | IMPLEMENTADO (T0.2; auxiliar de editor ESFERA no E5) | T0.2 |
+| light.spot | Spot Light Nick | Nick de Luz de Foco | Luz | IMPLEMENTADO (T0.2; auxiliar de editor CONE no E5) | T0.2 |
+
+**Ainda NÃO ilumina:** luz Nick ainda não afeta a cena — o
+`DefaultLightingPipeline` tem o sol fixo (sol + ambiente); a iluminação por
+Nick de luz entra no LUME (Fase 3), com as classes de luz (cor, intensidade,
+alcance). O que existe hoje é o AUXILIAR DE EDITOR (E5): seta/esfera/cone
+visíveis e selecionáveis no editor, sem efeito de render.
 | light.probe | Light Probe Nick | Nick de Sonda de Luz | Luz | PLANEJADO | KELU |
 
 ## CÂMERA (LENTE; modos como propriedade: primeira/segunda/terceira pessoa, perspectiva, ortogonal, topo)
 
 | Chave | Inglês | Português | Grupo | Status | Entra em |
 |-------|--------|-----------|-------|--------|----------|
-| camera.basic | Camera Nick | Nick de Câmera | Câmera | IMPLEMENTADO (T0.2) | T0.2 |
+| camera.basic | Camera Nick | Nick de Câmera | Câmera | IMPLEMENTADO (T0.2; auxiliar de editor PIRÂMIDE no E5, com o FOV da câmera da engine — campo próprio no LENTE) | T0.2 |
 | camera.follow | Follow Camera Nick | Nick de Câmera Seguidora | Câmera | PLANEJADO | M1 |
 | camera.cinematic | Cinematic Camera Nick | Nick de Câmera Cinemática | Câmera | PLANEJADO | anim.timeline |
 
@@ -62,9 +81,9 @@ Regras (DECISIONS #24–#28):
 
 | Chave | Inglês | Português | Grupo | Status | Entra em |
 |-------|--------|-----------|-------|--------|----------|
-| area.volume | Area Nick | Nick de Área (volume 3D de detecção) | Áreas | IMPLEMENTADO (T0.2) | T0.2 |
-| area.signal | Signal Nick | Nick de Sinal (emite e recebe eventos nomeados, liga no LINKERF) | Áreas | IMPLEMENTADO (T0.2) | T0.2 |
-| area.spawn | Spawn Point Nick | Nick de Ponto de Surgimento | Áreas | IMPLEMENTADO (T0.2) | T0.2 |
+| area.volume | Area Nick | Nick de Área (volume 3D de detecção) | Áreas | IMPLEMENTADO (T0.2; auxiliar CAIXA em arame no E5; detecção no M1) | T0.2 |
+| area.signal | Signal Nick | Nick de Sinal (emite e recebe eventos nomeados, liga no LINKERF) | Áreas | IMPLEMENTADO (T0.2; auxiliar LOSANGO no E5; ligações no LINKERF) | T0.2 |
+| area.spawn | Spawn Point Nick | Nick de Ponto de Surgimento | Áreas | IMPLEMENTADO (T0.2; auxiliar LOSANGO no E5; surge objetos no M1) | T0.2 |
 | area.checkpoint | Checkpoint Nick | Nick de Ponto de Controle | Áreas | PLANEJADO | M1 |
 | area.navigation | Navigation Area Nick | Nick de Área de Navegação | Áreas | PLANEJADO | MUNDO |
 

@@ -75,6 +75,14 @@ interface RenderBackend {
     fun drawGizmo(handle: Int, vertexCount: Int, mvp: Mat4)
 
     /**
+     * E5 (v0.1.18): linhas coloridas NO ESPAÇO DO MUNDO — viewport COMPLETO e
+     * COM teste de profundidade (a cena oclui). Usado pelos AUXILIARES DE
+     * EDITOR (luz/câmera/área/ícones) e pelo wireframe do colisor; o
+     * [drawGizmo] antigo desenha apenas no mini-viewport do canto.
+     */
+    fun drawWorldLines(handle: Int, vertexCount: Int, mvp: Mat4)
+
+    /**
      * Cria buffer do gizmo de transformação: interleaved [x, y, z, r, g, b, a]
      * por vértice (stride 28), GL_TRIANGLES. Desenhado sem teste de profundidade.
      */

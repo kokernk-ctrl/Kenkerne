@@ -256,6 +256,14 @@ class KenkernSurfaceView(
         private set
 
     /**
+     * E5 (v0.1.18): botão 'Mostrar auxiliares' da TopBar (padrão LIGADO) —
+     * ícones/formas dos Nicks SEM malha (luz/câmera/área/ícone) no viewport.
+     * Escrito pela UI, lido pelo thread GL. Em Play os auxiliares somem.
+     */
+    @Volatile
+    var mostrarAuxiliares: Boolean = true
+
+    /**
      * Construção do gizmo blindada (runCatching): qualquer exceção na
      * inicialização do TransformGizmo (ordem de campos, OOM, etc.) cai para um
      * GIZMO VAZIO — o viewport renderiza sem gizmo, o hit-test devolve NONE e
@@ -712,6 +720,32 @@ class KenkernSurfaceView(
         var bestT = Float.MAX_VALUE
         var nearestOverall = Float.MAX_VALUE // AABB projetada mais próxima, mesmo fora da tolerância
         var tested = 0
+
+        // E5: pontuação de UMA AABB de toque contra o raio do toque — reutilizada
+        // por malhas (AABB do .KERN/cubo) e por AUXILIARES DE EDITOR (caixa 0,4 m
+        // na posição do Nick, mesma tolerância de 24dp).
+        fun ofertar(id: com.kenkern.engine.core.ReferenceId, cx: Float, cy: Float, cz: Float, ex: Float, ey: Float, ez: Float) {
+            val t = PickingMath.rayAabb(pickOrigin, pickDir, cx, cy, cz, ex, ey, ez)
+            val sd = if (t >= 0f) {
+                0f // hit exato: o toque está DENTRO da AABB projetada
+            } else {
+                PickingMath.projectedAabbDistance(
+                    viewProj, renderW.toFloat(), renderH.toFloat(), bufToView,
+                    pickTouchX, pickTouchY, cx, cy, cz, ex, ey, ez
+                )
+            }
+            if (sd >= 0f && sd < nearestOverall) nearestOverall = sd
+            if (sd in 0f..tolPx) {
+                val better = sd < bestScreen - 0.5f ||
+                    (sd <= bestScreen + 0.5f && t >= 0f && t < bestT)
+                if (better) {
+                    bestScreen = sd
+                    bestT = if (t >= 0f) t else -1f
+                    bestId = id
+                }
+            }
+        }
+
         while (top > 0) {
             val nick = pickStack[--top] ?: continue
             // REGRA "CENA = TELA": container sem malha não é desenhado — não é
@@ -721,31 +755,26 @@ class KenkernSurfaceView(
                 // AABB em MUNDO REAL (malha importada: AABB do .KERN transformada;
                 // Nick padrão: cubo de 1 m) — 8 cantos × matriz de mundo.
                 nickWorldAabb(nick, pickMinW, pickMaxW)
-                val cx = (pickMinW.x + pickMaxW.x) * 0.5f
-                val cy = (pickMinW.y + pickMaxW.y) * 0.5f
-                val cz = (pickMinW.z + pickMaxW.z) * 0.5f
-                val ex = (pickMaxW.x - pickMinW.x) * 0.5f
-                val ey = (pickMaxW.y - pickMinW.y) * 0.5f
-                val ez = (pickMaxW.z - pickMinW.z) * 0.5f
-                val t = PickingMath.rayAabb(pickOrigin, pickDir, cx, cy, cz, ex, ey, ez)
-                val sd = if (t >= 0f) {
-                    0f // hit exato: o toque está DENTRO da AABB projetada
-                } else {
-                    PickingMath.projectedAabbDistance(
-                        viewProj, renderW.toFloat(), renderH.toFloat(), bufToView,
-                        pickTouchX, pickTouchY, cx, cy, cz, ex, ey, ez
-                    )
-                }
-                if (sd >= 0f && sd < nearestOverall) nearestOverall = sd
-                if (sd in 0f..tolPx) {
-                    val better = sd < bestScreen - 0.5f ||
-                        (sd <= bestScreen + 0.5f && t >= 0f && t < bestT)
-                    if (better) {
-                        bestScreen = sd
-                        bestT = if (t >= 0f) t else -1f
-                        bestId = nick.id
-                    }
-                }
+                ofertar(
+                    nick.id,
+                    (pickMinW.x + pickMaxW.x) * 0.5f,
+                    (pickMinW.y + pickMaxW.y) * 0.5f,
+                    (pickMinW.z + pickMaxW.z) * 0.5f,
+                    (pickMaxW.x - pickMinW.x) * 0.5f,
+                    (pickMaxW.y - pickMinW.y) * 0.5f,
+                    (pickMaxW.z - pickMinW.z) * 0.5f
+                )
+            } else if (nick.active && nick.visible && mostrarAuxiliares &&
+                loop.playState != com.kenkern.engine.engine.PlayState.STOPPED &&
+                MalhaNick.ehAuxiliar(nick)
+            ) {
+                // E5: AUXILIAR DE EDITOR — pegável por toque (mesma tolerância de
+                // 24dp) com caixa de toque de 0,4 m na posição do Nick. Some em
+                // Play e com 'Mostrar auxiliares' desligado (invisível = não pegável).
+                tested++
+                val wm = nick.transform.worldMatrix
+                val e = EditorHelpers.AABB_TOQUE
+                ofertar(nick.id, wm.m[12], wm.m[13], wm.m[14], e, e, e)
             }
             val children = nick.children
             for (ci in children.indices) {
@@ -971,6 +1000,10 @@ class KenkernSurfaceView(
                 scene?.updateWorldTransforms()
                 engineRenderer.reportUpdateMs((System.nanoTime() - updateStart) * 1e-6f)
                 if (surfaceReady) {
+                    // E5: estado dos AUXILIARES DE EDITOR lido por frame (thread GL):
+                    // visíveis no editor (padrão) e SUMEM em Play (nunca no jogo exportado).
+                    engineRenderer.mostrarAuxiliares = mostrarAuxiliares
+                    engineRenderer.emJogo = loop.playState != com.kenkern.engine.engine.PlayState.STOPPED
                     // Picking pendente: roda com as matrizes de mundo recém-atualizadas.
                     if (pickPending) {
                         pickPending = false

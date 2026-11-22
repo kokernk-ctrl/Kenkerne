@@ -25,6 +25,7 @@ import com.kenkern.engine.assets.mesh.KernWriter
 import com.kenkern.engine.assets.mesh.MeshData
 import com.kenkern.engine.core.MalhaNick
 import com.kenkern.engine.core.NickClassInstance
+import com.kenkern.engine.core.NickKindRegistry
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.linkerf.LinkerfLink
@@ -1152,15 +1153,17 @@ class Diagnostico(private val appContext: Context) {
             c.falhou("contexto EGL pbuffer não disponível")
             return
         }
-        // ---------- cena de referência: 5 Nicks, 2 desenhaveis visíveis
+        // ---------- cena de referência: 5 Nicks, 2 desenhaveis visíveis ----------
+        // E5: "Cubo"/"Oculto"/"Cubo3" são nick.mesh (GEOMETRIA, contam em M);
+        // um Nick de luz/área aqui seria AUXILIAR (ícone) e NÃO contaria em M.
         val scene = Scene("cena=tela")
         val mundo = scene.createRootNick("Mundo")
-        val cubo = scene.createNick("Cubo", mundo)
+        val cubo = scene.createNick("Cubo", mundo, kind = NickKindRegistry.NICK_MESH)
         cubo.transform.setLocalPosition(0f, 0.5f, 0f)
-        val oculto = scene.createNick("Oculto", mundo)
+        val oculto = scene.createNick("Oculto", mundo, kind = NickKindRegistry.NICK_MESH)
         oculto.visible = false
-        val grupo = scene.createNick("Grupo", mundo)
-        val cubo3 = scene.createNick("Cubo3", grupo)
+        val grupo = scene.createNick("Grupo", mundo, kind = NickKindRegistry.NICK_GROUP)
+        val cubo3 = scene.createNick("Cubo3", grupo, kind = NickKindRegistry.NICK_MESH)
         cubo3.transform.setLocalPosition(3f, 0.5f, 0f)
         scene.updateWorldTransforms()
         val totalNicks = MalhaNick.contarNicks(scene)
@@ -1661,9 +1664,10 @@ class Diagnostico(private val appContext: Context) {
      */
     private fun checarToqueCubo(c: Checagem) {
         // Cena padrão do editor: Mundo > Cubo na origem (cubo de 1 m).
+        // E5: kind=nick.mesh — um nick.empty folha seria AUXILIAR (ícone, sem cubo).
         val scene = Scene("Diag-Toque")
         val mundo = scene.createRootNick("Mundo")
-        val cubo = scene.createNick("Cubo", mundo)
+        val cubo = scene.createNick("Cubo", mundo, kind = NickKindRegistry.NICK_MESH)
         // Mesmo contrato do loop de render: matrizes de mundo atualizadas ANTES
         // do picking (KenkernSurfaceView.onDrawFrame faz o mesmo).
         scene.updateWorldTransforms()

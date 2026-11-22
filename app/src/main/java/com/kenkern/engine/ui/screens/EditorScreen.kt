@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Pause
@@ -178,6 +179,13 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     // Modo da câmera: Orbital ou Voo
     var cameraMode by rememberSaveable { mutableStateOf(CameraMode.ORBITAL) }
 
+    // E5: Mostrar auxiliares de editor (ícones de luz/câmera/área no viewport).
+    var mostrarAuxiliares by rememberSaveable { mutableStateOf(true) }
+    val alternarAuxiliares: (Boolean) -> Unit = { ligado ->
+        mostrarAuxiliares = ligado
+        surfaceView?.mostrarAuxiliares = ligado
+    }
+
     // E4: orientação atual — o layout dos painéis (posição/tamanho flutuantes)
     // é salvo POR ORIENTAÇÃO: retrato e paisagem têm viewports diferentes.
     val orientacao = if (LocalConfiguration.current.orientation ==
@@ -265,6 +273,8 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 persistHierarchy = persistHierarchy,
                 persistInspector = persistInspector,
                 onResetarLayout = resetarLayout,
+                mostrarAuxiliares = mostrarAuxiliares,
+                onMostrarAuxiliaresChange = alternarAuxiliares,
                 resolutionScale = resolutionScale,
                 onResolutionChange = { resolutionScale = it },
                 gizmoMode = gizmoMode,
@@ -342,7 +352,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                         vm.commitGizmoDrag(id, start, end)
                                     },
                                     onGizmoLiveUpdate = { vm.bump() }
-                                ).also { surfaceView = it }
+                                ).also { surfaceView = it; it.mostrarAuxiliares = mostrarAuxiliares }
                             },
                             modifier = Modifier.fillMaxSize()
                         )
@@ -741,6 +751,8 @@ private fun EditorTopBar(
     persistHierarchy: () -> Unit,
     persistInspector: () -> Unit,
     onResetarLayout: () -> Unit,
+    mostrarAuxiliares: Boolean,
+    onMostrarAuxiliaresChange: (Boolean) -> Unit,
     resolutionScale: Float,
     onResolutionChange: (Float) -> Unit,
     gizmoMode: GizmoMode,
@@ -868,6 +880,16 @@ private fun EditorTopBar(
 
             // FOCAR (F): enquadra o Nick selecionado (duplo toque no vazio = cena toda)
             TopBarIcon(Icons.Filled.CenterFocusStrong, stringResource(R.string.editor_focus)) { onFocusClick() }
+
+            TopBarSeparator()
+
+            // E5: Mostrar auxiliares de editor (ícones de luz/câmera/área no
+            // viewport; padrão LIGADO; em Play eles somem de todo jeito).
+            TopBarIcon(
+                Icons.Filled.Lightbulb,
+                stringResource(R.string.editor_show_helpers),
+                active = mostrarAuxiliares
+            ) { onMostrarAuxiliaresChange(!mostrarAuxiliares) }
 
             // Diagnóstico de toque: overlay ao vivo (ponto vermelho = toque,
             // círculos verdes = alças) para ver por que seleção/gizmo não respondem.
