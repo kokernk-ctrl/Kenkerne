@@ -1,5 +1,76 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## Aceite v0.1.18 — E1–E6 — Release `v0.1.18-fase2-teste`
+
+> 6 bugs do aparelho corrigidos. Cada item abaixo cita o que o teste precisa
+> provar. Fase 2 CONTINUA ABERTA; tag `fase-2-ok` NÃO criada.
+
+### E1 — handler nativo (Diagnóstico → "Rodar tudo")
+
+1. Checagem **"nativo"**: APROVADO com a LISTA de funções JNI —
+   `versaoNativa ✓ · ecoNativo ✓ · instalarHandlerSinaisNativo ✓ ·
+   handlerInstaladoNativo ✓` — versão 1.0.0, ABI arm64-v8a. Se algo faltar,
+   o detalhe mostra o NOME e o erro literal ("No implementation found…").
+2. (Crash real, se acontecer um dia) crash nativo gera
+   crash_logs/native_crash.txt com sinal + backtrace no diálogo do Hub.
+
+### E2 — Diagnóstico nunca trava
+
+3. "Rodar tudo" de novo: cada linha mostra o TEMPO da checagem (ex.: "412 ms",
+   "2,3 s") no canto; a UI RESPONDE durante a rodada (rola a lista, volta).
+4. Botão vira **CANCELAR** durante a rodada: toque → a checagem corrente para
+   e o resto sai como "–" CANCELADA; nada congela.
+5. Checagem **"etc2 nativo"**: aprova com o nativo em 1024² (< 1 s; MP/s
+   visíveis) + comparação 256² com PSNR dos dois encoders. Nenhuma checagem
+   passa de 30 s (se passar, ela falha com "tempo limite" e a rodada para).
+
+### E3 — janela "Adicionar Nick"
+
+6. No editor → "+" da Hierarquia → rolar a lista até o FIM em PAISAGEM
+   (mesmo com 360dp de altura): o ÚLTIMO tipo do catálogo fica INTEIRO
+   visível; o rodapé "Como filho do selecionado / Na raiz" aparece embaixo.
+7. Rolar a lista e tocar nas áreas vazias do painel: A CÂMERA NÃO MEXE.
+
+### E4 — painéis flutuantes
+
+8. Menu do painel → "Flutuar": ARRASTAR pelo CABEÇALHO move o painel AO VIVO;
+   ele NUNCA sai do viewport (solta na borda e ele fica DENTRO).
+9. Alça no CANTO INFERIOR DIREITO (48dp): redimensiona com mínimo
+   (~220×200dp) e máximo = viewport; tocar no painel o traz para FRENTE.
+10. Botão ALFINETE no cabeçalho = ACOPLAR de volta; botão RESETAR LAYOUT na
+    TopBar devolve tudo ao padrão (visível + acoplado + tamanho padrão).
+11. Mover/redimensionar, GIRAR O APARELHO: cada orientação lembra o PRÓPRIO
+    layout; toques no painel NUNCA movem a câmera.
+
+### E5 — auxiliares de editor
+
+12. "+" da Hierarquia → criar "Nick de Luz Direcional", "Nick de Luz
+    Pontual", "Nick de Luz de Foco", "Nick de Câmera", "Nick de Área",
+    "Ponto de Surgimento" e "Sinal": cada um aparece no viewport como
+    AUXILIAR colorido (seta/esfera+anel/cone/pirâmide/caixa/losango), com
+    tamanho CONSTANTE ao dar zoom, cor por grupo e âmbar ao SELECIONAR.
+13. TOCAR no auxiliar seleciona (tolerância ~24dp); a Hierarquia e o
+    Inspetor concordam; o gizmo de transformação funciona neles.
+14. Botão LÂMPADA na TopBar ("Mostrar auxiliares"): desliga/liga os ícones.
+    PLAY: os auxiliares SOMEM; STOP: voltam.
+15. Collider selecionado: o WIREFRAME VERDE agora aparece SOBRE O NICK no
+    viewport (não mais no quadradinho do canto).
+16. NÃO é aceite desta versão: luz Nick ILUMINAR a cena (entra no LUME) e
+    FOV/corpo com forma própria (LENTE/M1) — ver NICKS.md.
+
+### E6 — StatusBar
+
+17. Projeto novo: StatusBar lê "2 nicks · 1 malha" (era "1 desenhado").
+    Importar um modelo com N grupos de material: M cresce por GRUPO.
+18. Checagem "cena = tela": APROVADO com o texto novo ("M malhas medido").
+
+### Depois do teste
+
+- Reportar: o que falhou + print da checagem "nativo" (lista de funções) e
+  dos auxiliares (uma luz + câmera + área na mesma cena).
+- Ações seguintes: **PARADA 2 (T0.4 fidelidade de importação + T0.5 Hub
+  novo)** do BLOCO 0.
+
 ## Aceite da PARADA 1 — T0.1 idiomas + T0.2 tipos de Nick + T0.3 janela Adicionar Nick
 
 > BLOCO 0 do adendo v4 (DECISIONS #24–#28): app em en/pt, tipos de Nick como

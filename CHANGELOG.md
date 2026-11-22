@@ -1,5 +1,130 @@
 # KENKERN — CHANGELOG
 
+## v0.1.18 — 6 BUGS DO APARELHO (E1–E6) + T0.3: CORREÇÕES DO TESTE DE CAMPO
+
+> Tarefa: 6 bugs do aparelho, edições pontuais, CI verde por etapa. Fase 2
+> CONTINUA ABERTA (F2.11–F2.15); NENHUMA tag `fase-2-ok`.
+
+### E1 — handler nativo não instalava ("No implementation found")
+
+- **Causa raiz**: kenkern_native.cpp:205/236 exportavam
+  `Java_…_NativeCore_instalarHandlerSinais`/`…_handlerInstalado`, mas o Kotlin
+  declara `instalarHandlerSinaisNativo`/`handlerInstaladoNativo` — a .so
+  carregava (versão 1.0.0) e o JNI não encontrava os SÍMBOLOS (nome sem o
+  sufixo "Nativo").
+- **Correção**: símbolos renomeados com o sufixo da declaração Kotlin (mesma
+  regra das outras 5 externas).
+- **Provas**: (1) `nm -D --defined-only` na .so do host (mesma fonte do APK)
+  antes = exatamente as 2 faltando, depois = 8 external fun com símbolo;
+  (2) novo `scripts/check_jni_symbols.sh` deriva TODA `external fun` × os
+  símbolos da .so e FALHA o build se qualquer uma faltar;
+  (3) CI confere a libkenkern.so arm64 EXTRAÍDA DO APK RELEASE com o
+  llvm-nm do NDK;
+  (4) `NativeCore.testarExternas()` testa cada função JNI individualmente e a
+  checagem "nativo" lista cada uma com ✓ ou com o motivo literal;
+  (5) teste JVM carrega a .so do HOST e valida instalar/consultar (regressão).
+- **Correção do próprio E1 no CI** (bug encontrado pelo CI): o teste instalava
+  handlers de SIGSEGV na JVM de testes — o HotSpot usa SIGSEGV para
+  NullPointer implícito e o executor morria com exit 139. Nova externa
+  `restaurarSinaisNativo` devolve as ações originais (salvas no install); o
+  teste RESTAURA em finally. No app o handler continua ativo até o processo
+  morrer (B3 preservado).
+
+### E2 — Diagnóstico não podia travar ("ETC2 nativo: executando…" infinito)
+
+- **Causa raiz**: `Diagnostico.executar` era BLOQUEANTE numa thread de fundo,
+  SEM timeout e SEM botão cancelar; a checagem "etc2 nativo" rodava o ENCODER
+  KOTLIN em 1024² (o custo dominante: o nativo leva milissegundos) + 2
+  decodificações 1024² + PSNR — dezenas de segundos num aparelho médio.
+- **Correção**: `executar` é SUSPENSE; cada checagem roda em background com
+  `withTimeout(30 s)` + `runInterruptible` (laços pesados consultam
+  `diag.cancelado`); tempo de cada checagem na tela (ms/s); botão CANCELAR
+  (Job + flag; só o que NÃO finalizou vira CANCELADA); checagem que estoura =
+  FALHOU "tempo limite" e a rodada PARA; bloco GL numa ÚNICA thread dedicada
+  (EGL é current na thread criadora) com `Thread.interrupted()` limpo a cada
+  checagem; "etc2 nativo" mede o NATIVO em 1024² (meta B5 < 1 s, conferida na
+  aprovação) e compara nativo×Kotlin (PSNR/tamanho) em 256².
+- **Provas**: 5 testes JVM novos (ciclo PENDENTE→RODANDO→APROVADO/FALHOU/
+  CANCELADA com tempo; timeout fixado em 30 s).
+
+### E3 — janela "Adicionar Nick" cortada no fim da lista
+
+- **Causa raiz**: `LazyColumn(Modifier.fillMaxSize())` DENTRO da Column —
+  fillMaxSize consome TODA a altura restante: o rodapé media 0 e o fim da
+  lista ficava sob a borda/insets (último tipo inalcançável em paisagem).
+- **Correção**: `weight(1f)` (altura = espaço que sobra depois de cabeçalho +
+  busca + abas + rodapé), `contentPadding` inferior 16dp, sem verticalScroll
+  aninhado; BUSCA e ABAS continuam fixas acima.
+- **Barreira de toque** (E3/E4): `pointerInput + detectTapGestures` na raiz do
+  painel — TODO toque no painel mora no painel: ROLAGEM E TAPS NUNCA MOVEM A
+  CÂMERA (antes o toque em área vazia atravessava para o viewport).
+
+### E4 — painéis flutuantes não moviam nem redimensionavam
+
+- **Causa raiz**: `PanelUiState.floatX/floatY/floatW/floatH` eram `var Float`
+  COMUNS (PanelStateStore.kt:28-31) — o gesto escrevia nelas, mas
+  `Modifier.offset{}`/`width()`/`height()` só reagem a estado OBSERVÁVEL:
+  nada recompunha e o painel ficava parado.
+- **Correção**: campos viram `MutableState<Float>`; mover pelo CABEÇALHO com
+  clamp que mantém o painel INTEIRO dentro do viewport (a cada evento e no
+  fim); redimensionar pela alça do CANTO INFERIOR DIREITO com alvo de toque
+  48dp (era 44×14dp), mínimo 220×200dp e máximo = viewport; TRAZ PARA FRENTE
+  ao tocar (zIndex); botão ACOPLAR no cabeçalho (ícone alfinete); botão
+  RESETAR LAYOUT na TopBar (visíveis + acoplados + tamanho padrão); posição e
+  tamanho SALVOS POR PAINEL E POR ORIENTAÇÃO (chave "painel#land/port");
+  barreira de toque no card e nos painéis acoplados-overlap.
+- **Provas**: 8 testes JVM (clamp nas 4 bordas + painel maior que o bounds,
+  parse/format ida e volta, corrompidos caem no padrão, chave por orientação,
+  mínimos).
+
+### E5 — Nicks sem malha invisíveis/misleading: AUXILIARES DE EDITOR
+
+- **Fatos**: luz/câmera/área/sinal/surgimento/nick.empty eram "folha sem
+  malha" e desenhavam o CUBO cinza de 1 m como se fossem geometria (criados
+  como filho dentro de outra malha ficavam ocultos).
+- **Correção**: `MalhaNick.ehAuxiliar` (puro): luz/câmera/área/vazio SEM malha
+  são AUXILIARES; Nick COM malha é SEMPRE geometria (migração CK1 e
+  importados preservados). `EditorHelpers` (geometria pura em GL_LINES):
+  direcional=SETA · pontual=ESFERA com anel de alcance (simbólico) ·
+  foco=CONE · câmera=PIRÂMIDE COM O FOV REAL (reconstruída por chave
+  fov|aspect) · área=CAIXA 1×1×1 em arame · demais=LOSANGO; cor por grupo
+  (luz #FFD54F, câmera #4FC3F7, áreas #66BB6A, base #B0BEC5), ÂMBAR #FFA940
+  quando selecionado; TAMANHO CONSTANTE na tela; desenhados SÓ no editor
+  (nunca em Play, nunca no jogo exportado); seleção por toque com a MESMA
+  tolerância de 24dp (AABB de toque 0,4 m); botão "Mostrar auxiliares" na
+  TopBar (padrão ligado). body.* segue com o cubo placeholder (até M1/FORJA).
+- **Novo `RenderBackend.drawWorldLines`** (linhas no espaço do mundo, viewport
+  completo + depth) — e o WIREFRAME DO COLISOR migrou para ele: o `drawGizmo`
+  antigo desenhava o collider no MINI-VIEWPORT do canto (gizmo de eixos) —
+  defeito herdado do T0.3 corrigido.
+- **NICKS.md**: **luz Nick AINDA NÃO AFETA a cena** (DefaultLightingPipeline =
+  sol fixo; iluminação por Nick entra no LUME); FOV próprio da câmera entra
+  no LENTE; corpo placeholder até M1/FORJA. NÃO implementamos iluminação
+  nesta tarefa (pedido explícito).
+- **Provas**: 12 testes JVM atualizados/novos (classificação por tipo, malha
+  vence o tipo, auxiliar não conta em M, template M=1) + 5 de geometria
+  (forma por tipo, cor por grupo, pares GL_LINES válidos, pirâmide com
+  tan(fov/2)×aspect, 12 arestas da caixa).
+
+### E6 — StatusBar "N nicks · M malhas"
+
+- O contador do renderer JÁ media grupos de material (+1 por submitGroup do
+  .KERN; +1 por submit = grupo implícito do cubo/malha sem grupos), mas o
+  TEXTO dizia "desenhados" (ambíguo com N da Hierarquia).
+- Renomeado `nicksDesenhados`→`malhasDesenhadas` (renderer/view/StatusBar);
+  string `editor_nicks_meshes` ("%d nicks · %d malhas"); checagem "cena =
+  tela" reescrita ("M malhas medido", 1 grupo por malha na cena de
+  referência, auxiliares não contam); teste equivalente atualizado
+  (`auxiliarNaoContaEmM`, cena padrão N5/M2).
+
+### F — fechamento
+
+- versionCode 19 · versionName 0.1.18-fase2; Release de PRÉ-LANÇAMENTO
+  `v0.1.18-fase2-teste` com o APK assinado.
+- CI: suíte JVM (222 testes) + assembleRelease + **E1: llvm-nm confere TODA
+  external fun × os símbolos da libkenkern.so do APK** + i18n en/pt.
+- Testes de aceite no aparelho: TESTES_PENDENTES.md (seção v0.1.18).
+
 ## v0.1.17 — 2 BUGS DO APARELHO + NÚCLEO NATIVO C++ (etcpak + meshoptimizer)
 
 > Bug A: viewport desenhava objetos fora da cena (torus + cubo do "Mundo").
