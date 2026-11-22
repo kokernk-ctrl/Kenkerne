@@ -108,6 +108,7 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
     }
     var rodando by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    var jobRodada by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     fun rodar() {
         if (rodando) return
@@ -116,8 +117,10 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
         val zerada = diag.novaLista()
         resultados.clear()
         resultados.addAll(zerada)
-        scope.launch(Dispatchers.Default) {
+        jobRodada = scope.launch {
             try {
+                // E2 (v0.1.18): executar é SUSPENSE — cada checagem tem timeout de 30 s,
+                // tempo próprio na tela e cancelamento pelo botão (Job + diag.cancelar).
                 diag.executar { atualizada ->
                     // atualiza a linha correspondente (por id) na lista observável
                     val idx = resultados.indexOfFirst { it.id == atualizada.id }
@@ -127,6 +130,13 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                 withContext(Dispatchers.Main) { rodando = false }
             }
         }
+    }
+
+    // E2: botão CANCELAR — interrompe a checagem corrente (interrupção de thread
+    // + laços consultam diag.cancelado) e marca o resto como CANCELADA.
+    fun cancelar() {
+        diag.cancelar()
+        jobRodada?.cancel()
     }
 
     Column(
@@ -171,20 +181,27 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                 )
             }
             Button(
-                onClick = { rodar() },
-                enabled = !rodando,
+                onClick = { if (rodando) cancelar() else rodar() },
                 shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = KenkernAmber,
-                    contentColor = Color(0xFF1E1E1E)
-                ),
+                colors = if (rodando) {
+                    // CANCELAR (E2): interrompe a checagem corrente e marca o resto
+                    ButtonDefaults.outlinedButtonColors(
+                        contentColor = KenkernError
+                    )
+                } else {
+                    ButtonDefaults.buttonColors(
+                        containerColor = KenkernAmber,
+                        contentColor = Color(0xFF1E1E1E)
+                    )
+                },
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 modifier = Modifier
                     .height(40.dp)
                     .padding(end = 8.dp)
             ) {
                 Text(
-                    if (rodando) stringResource(R.string.diag_running) else stringResource(R.string.diag_run),
+                    if (rodando) stringResource(R.string.diag_cancel)
+                    else stringResource(R.string.diag_run),
                     fontSize = 13.sp, fontWeight = FontWeight.SemiBold
                 )
             }
@@ -223,6 +240,7 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                         Diagnostico.Status.RODANDO -> KenkernAmber to "…"
                         Diagnostico.Status.APROVADO -> KenkernSuccess to "OK"
                         Diagnostico.Status.FALHOU -> KenkernError to "X"
+                        Diagnostico.Status.CANCELADA -> KenkernTextLow to "–"
                     }
                     Box(
                         contentAlignment = Alignment.Center,
@@ -241,7 +259,20 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                     }
                     Spacer(Modifier.size(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(nomeChecagem(r.id), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = KenkernTextHigh)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(nomeChecagem(r.id), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = KenkernTextHigh, modifier = Modifier.weight(1f))
+                            // E2: tempo da checagem (ms; s quando ≥ 1 s; limite estourado = 30 s)
+                            if (r.tempoMs >= 0) {
+                                Text(
+                                    if (r.tempoMs >= 1_000L) stringResource(R.string.diag_check_time_s, r.tempoMs / 1000f)
+                                    else stringResource(R.string.diag_check_time_ms, r.tempoMs),
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = KenkernTextLow,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
+                        }
                         Spacer(Modifier.height(4.dp))
                         Text(
                             r.detalhe,

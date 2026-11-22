@@ -40,6 +40,14 @@ import com.kenkern.engine.render.OrbitCamera
 import com.kenkern.engine.render.PickingMath
 import com.kenkern.engine.render.TouchController
 import com.kenkern.engine.core.math.Mat4
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withTimeout
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -74,16 +82,23 @@ import kotlin.math.max
  */
 class Diagnostico(private val appContext: Context) {
 
-    private companion object {
-        const val TAG = "Kenkern/Diagnostico"
+    companion object {
+        private const val TAG = "Kenkern/Diagnostico"
+
+        /** E2 (v0.1.18): tempo máximo POR CHECAGEM — nenhuma pode travar a rodada. */
+        const val TIMEOUT_CHECAGEM_MS = 30_000L
     }
 
-    enum class Status { PENDENTE, RODANDO, APROVADO, FALHOU }
+    enum class Status { PENDENTE, RODANDO, APROVADO, FALHOU, CANCELADA }
 
     class Checagem(val id: String, val nome: String) {
         var status: Status = Status.PENDENTE
             private set
         var detalhe: String = "—"
+            private set
+
+        /** E2: tempo decorrido da checagem (ms) — mostrado na tela da rodada. */
+        var tempoMs: Long = -1L
             private set
 
         fun aprovado(detalhe: String) {
@@ -97,11 +112,21 @@ class Diagnostico(private val appContext: Context) {
         fun rodando() {
             status = Status.RODANDO; detalhe = "executando…"
         }
+
+        /** E2: cancelada pelo usuário ou porque uma checagem anterior estourou o tempo. */
+        fun cancelada(motivo: String) {
+            status = Status.CANCELADA; detalhe = motivo
+        }
+
+        /** E2: registra o tempo decorrido (chamado no fim da checagem, nos dois desfechos). */
+        fun registrarTempo(ms: Long) {
+            tempoMs = ms
+        }
     }
 
     fun novaLista(): List<Checagem> = listOf(
         Checagem("nativo", "Núcleo nativo C++ — biblioteca, eco, handler de sinais"),
-        Checagem("etc2-nativo", "ETC2 nativo (etcpak) — 1024²: ms · MP/s · PSNR × Kotlin"),
+        Checagem("etc2-nativo", "ETC2 nativo (etcpak) — 1024² ms/MP/s + PSNR × Kotlin em 256²"),
         Checagem("malha-nativa", "Malha nativa (meshoptimizer) — dedup+cache+LOD: ms × Kotlin"),
         Checagem("ck", ".ck (cena) — ida e volta"),
         Checagem("kern", ".KERN (malha) — ida e volta"),
@@ -123,70 +148,154 @@ class Diagnostico(private val appContext: Context) {
     )
 
     /**
-     * Executa TODAS as checagens, na ordem, chamando [onAtualiza] a cada mudança
-     * de estado (a tela observa). Bloqueante — chamar de thread de fundo.
-     * O contexto EGL é criado uma única vez para o bloco GL e liberado no fim.
-     * Nunca lança.
+     * E2 (v0.1.18): cancela a rodada — o botão da tela chama junto com
+     * Job.cancel(). A checagem corrente é interrompida (interrupção de thread +
+     * laços pesados consultam [cancelado]); as seguintes saem como CANCELADA.
      */
-    fun executar(onAtualiza: (Checagem) -> Unit) {
+    @Volatile
+    var cancelado: Boolean = false
+        private set
+
+    fun cancelar() {
+        cancelado = true
+    }
+
+    /**
+     * Executa TODAS as checagens, na ordem, chamando [onAtualiza] a cada mudança
+     * de estado (a tela observa). E2 (v0.1.18): SUSPENSE — cada checagem roda em
+     * BACKGROUND com TIMEOUT de [TIMEOUT_CHECAGEM_MS] ([runInterruptible] interrompe
+     * a thread de trabalho; os laços pesados consultam [cancelado]) e o tempo
+     * decorrido de cada uma vai para a tela. Cancelamento externo (Job do botão)
+     * propaga como CancellationException depois de marcar o resto como CANCELADA.
+     */
+    suspend fun executar(onAtualiza: (Checagem) -> Unit) {
+        cancelado = false
         val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release")
         val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "astc")
+        // E2: ids já FINALIZADAS nesta rodada — no cancel, só o que NÃO rodou vira
+        // CANCELADA (aprovadas/falhas anteriores permanecem com o resultado delas).
+        val finalizadas = HashSet<String>()
 
-        for (id in rapidas) rodarUma(id, onAtualiza)
-
-        val erro = StringBuilder()
-        val egl = EglDiag.criar { e -> erro.append(e) }
-        if (egl != null) {
-            try {
-                for (id in gl) rodarUma(id, onAtualiza, egl)
-            } finally {
-                egl.liberar()
+        // E2: o contexto EGL é CURRENT na thread que o criou — as checagens GL
+        // rodam numa ÚNICA THREAD DEDICADA (executor de 1 thread como dispatcher);
+        // as rápidas rodam no pool Default. Timeout/cancelamento interrompem a
+        // thread corrente SEM trocar de contexto: a UI nunca trava.
+        val glThread = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "kenkern-diag-gl") }
+        try {
+            for (id in rapidas) {
+                rodarUma(id, onAtualiza, finalizadas)
             }
-        } else {
-            val motivo = if (erro.isEmpty()) "motivo desconhecido" else erro.toString()
-            for (id in gl) {
+
+            val erro = StringBuilder()
+            val egl = runInterruptible(glThread.asCoroutineDispatcher()) {
+                EglDiag.criar { e -> erro.append(e) }
+            }
+            if (egl != null) {
+                try {
+                    for (id in gl) rodarUma(id, onAtualiza, finalizadas, egl, glThread.asCoroutineDispatcher())
+                } finally {
+                    runInterruptible(glThread.asCoroutineDispatcher()) { egl.liberar() }
+                }
+            } else {
+                val motivo = if (erro.isEmpty()) "motivo desconhecido" else erro.toString()
+                for (id in gl) {
+                    val c = Checagem(id, nome(id))
+                    c.falhou("contexto EGL pbuffer não criado: $motivo")
+                    onAtualiza(c)
+                }
+            }
+
+            rodarUma("memoria", onAtualiza, finalizadas)
+        } catch (e: CancellationException) {
+            // Botão cancelar (Job cancelado): marca como CANCELADA só o que NÃO
+            // finalizou — chamadas simples, sem suspensão dentro do catch — e
+            // REPROPAGA o cancelamento.
+            val pendentes = (rapidas + gl + "memoria").filter { it !in finalizadas }
+            for (id in pendentes) {
                 val c = Checagem(id, nome(id))
-                c.falhou("contexto EGL pbuffer não criado: $motivo")
+                c.cancelada("cancelada pelo usuário")
                 onAtualiza(c)
             }
+            throw e
+        } finally {
+            glThread.shutdown()
         }
-
-        rodarUma("memoria", onAtualiza)
     }
 
     private fun nome(id: String): String = novaLista().first { it.id == id }.nome
 
-    private fun rodarUma(id: String, onAtualiza: (Checagem) -> Unit, egl: EglDiag? = null) {
+    /**
+     * E2: UMA checagem em background com timeout de [TIMEOUT_CHECAGEM_MS].
+     * [TimeoutCancellationException] = FALHOU "tempo limite" e a rodada PARA
+     * (uma checagem que estoura é fato digno de relatório; as seguintes saem
+     * CANCELADA). Cancelamento EXTERNO (Job do botão) propaga limpo.
+     * [runInterruptible] interrompe a thread de trabalho; os laços pesados
+     * (encoder ETC2 Kotlin, dedup de malha) também consultam [cancelado].
+     */
+    private suspend fun rodarUma(
+        id: String,
+        onAtualiza: (Checagem) -> Unit,
+        finalizadas: HashSet<String>,
+        egl: EglDiag? = null,
+        disp: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default
+    ) {
         val c = Checagem(id, nome(id))
+        if (cancelado) {
+            // Uma checagem anterior estourou o tempo (ou usuário cancelou): não
+            // executa mais nada — sai como CANCELADA sem gastar tempo nenhum.
+            c.cancelada("cancelada — uma checagem anterior estourou o tempo")
+            onAtualiza(c)
+            finalizadas.add(id)
+            return
+        }
         c.rodando()
         onAtualiza(c)
-        runCatching {
-            when (id) {
-                "nativo" -> checarNativo(c)
-                "etc2-nativo" -> checarEtc2Nativo(c)
-                "malha-nativa" -> checarMalhaNativa(c)
-                "ck" -> checarCk(c)
-                "kern" -> checarKern(c)
-                "gltf" -> checarGltf(c)
-                "fbx" -> checarFbx(c)
-                "importar" -> checarImportar(c)
-                "kimg" -> checarKimg(c)
-                "picking" -> checarPicking(c)
-                "toque" -> checarToqueCubo(c)
-                "shaders" -> checarShaders(c)
-                "buffers" -> checarBuffers(c)
-                "glcaps" -> checarGlCaps(c)
-                "etc2" -> checarEtc2(c, egl)
-                "tex-cena" -> checarTexCena(c, egl)
-                "cena" -> checarCenaTela(c, egl)
-                "astc" -> checarAstc(c)
-                "memoria" -> checarMemoria(c)
-                "release" -> checarRelease(c)
+        val t0 = System.nanoTime()
+        var motivoTimeout: String? = null
+        try {
+            withTimeout(TIMEOUT_CHECAGEM_MS) {
+                runInterruptible(disp) {
+                    // Limpa interrupção PENDENTE de um timeout anterior nesta thread:
+                    // um flag sujo quebraria as chamadas bloqueantes da checagem.
+                    Thread.interrupted()
+                    runCatching {
+                        when (id) {
+                            "nativo" -> checarNativo(c)
+                            "etc2-nativo" -> checarEtc2Nativo(c)
+                            "malha-nativa" -> checarMalhaNativa(c)
+                            "ck" -> checarCk(c)
+                            "kern" -> checarKern(c)
+                            "gltf" -> checarGltf(c)
+                            "fbx" -> checarFbx(c)
+                            "importar" -> checarImportar(c)
+                            "kimg" -> checarKimg(c)
+                            "picking" -> checarPicking(c)
+                            "toque" -> checarToqueCubo(c)
+                            "shaders" -> checarShaders(c)
+                            "buffers" -> checarBuffers(c)
+                            "glcaps" -> checarGlCaps(c)
+                            "etc2" -> checarEtc2(c, egl)
+                            "tex-cena" -> checarTexCena(c, egl)
+                            "cena" -> checarCenaTela(c, egl)
+                            "astc" -> checarAstc(c)
+                            "memoria" -> checarMemoria(c)
+                            "release" -> checarRelease(c)
+                        }
+                    }.onFailure {
+                        c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
+                        KenkernLog.e(TAG, "checagem '$id' lançou exceção", it)
+                    }
+                }
             }
-        }.onFailure {
-            c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
-            KenkernLog.e(TAG, "checagem '$id' lançou exceção", it)
+        } catch (e: TimeoutCancellationException) {
+            motivoTimeout = "tempo limite de ${TIMEOUT_CHECAGEM_MS / 1000} s — checagem interrompida (lento demais neste aparelho; ver relatório)"
+            cancelado = true // a rodada PARA aqui: as seguintes saem CANCELADA
         }
+        currentCoroutineContext().ensureActive() // cancelamento externo (botão) propaga
+        c.registrarTempo((System.nanoTime() - t0) / 1_000_000L)
+        if (cancelado && c.status != Status.FALHOU) c.cancelada("cancelada — uma checagem anterior estourou o tempo")
+        if (motivoTimeout != null) c.falhou(motivoTimeout)
+        finalizadas.add(id)
         onAtualiza(c)
     }
 
@@ -234,11 +343,16 @@ class Diagnostico(private val appContext: Context) {
 
     /**
      * Checagem "etc2 nativo" (B4, v0.1.17) — ENCODER ETC2 NATIVO × KOTLIN no
-     * APARELHO: codifica 1024×1024 REALISTA (gradiente + ruído, semente fixa)
-     * nos DOIS encoders e mostra ms, MP/s e PSNR dos dois + tamanho idêntico.
+     * APARELHO. E2 (v0.1.18): o NATIVO é medido em 1024×1024 (a meta B5 é
+     * "< 1 s em 1024² NESTE aparelho") e a COMPARAÇÃO nativo × Kotlin roda em
+     * 256×256 — mesmo padrão, mesma semente, igualmente válida (os testes JVM
+     * comparam 4×4 e não-múltiplos de 4). Motivo: o custo dominante é o
+     * ENCODER KOTLIN (sem etcpak), dezenas de segundos em 1024² num aparelho
+     * médio — era a causa da tela ficar em "executando…" sem nunca terminar
+     * (Diagnostico.executar era BLOQUEANTE, sem timeout, sem botão cancelar).
      * APROVADO exige: etcpak carregado, mesmo tamanho de saída e PSNR do
      * nativo ≥ PSNR do Kotlin − 1 dB (o etcpak não pode ser pior de verdade).
-     * Meta B5 (texto do relatório): o número de ms aqui é a prova no aparelho.
+     * O laço do encoder Kotlin consulta [cancelado] (responde ao botão).
      */
     private fun checarEtc2Nativo(c: Checagem) {
         val w = 1024
@@ -262,40 +376,60 @@ class Diagnostico(private val appContext: Context) {
             return
         }
 
-        // ---------- NATIVO (etcpak, multithread em C++) ----------
+        // ---------- NATIVO 1024² (medição da meta B5: < 1 s) ----------
         val tNativo0 = System.nanoTime()
-        val nativo = com.kenkern.engine.nativecore.Etc2Nativo.codificar(rgba, w, h, temAlfa = false, qualidadeRapida = true)
-        val nativoMs = (System.nanoTime() - tNativo0) / 1_000_000L
-        if (nativo == null) {
+        val nativo1024 = com.kenkern.engine.nativecore.Etc2Nativo.codificar(rgba, w, h, temAlfa = false, qualidadeRapida = true)
+        val nativo1024Ms = (System.nanoTime() - tNativo0) / 1_000_000L
+        if (nativo1024 == null) {
             c.falhou("etcpak devolveu null (ver CONSOLE) — encoder Kotlin assume")
             return
         }
-        val psnrNativo = com.kenkern.engine.assets.image.Etc2.psnr(rgba, com.kenkern.engine.assets.image.Etc2.decodificarRgb(nativo, w, h))
 
-        // ---------- KOTLIN (encoder atual, modo rápido, paralelo) ----------
+        // ---------- COMPARAÇÃO 256² (recorte da MESMA textura) ----------
+        val cw = 256
+        val ch = 256
+        val recorte = ByteArray(cw * ch * 4)
+        for (y in 0 until ch) {
+            System.arraycopy(rgba, y * w * 4, recorte, y * cw * 4, cw * 4)
+        }
+
+        val tNativo256 = System.nanoTime()
+        val nativo256 = com.kenkern.engine.nativecore.Etc2Nativo.codificar(recorte, cw, ch, temAlfa = false, qualidadeRapida = true)
+        val nativo256Ms = (System.nanoTime() - tNativo256) / 1_000_000L
+        if (nativo256 == null) {
+            c.falhou("etcpak devolveu null na comparação 256² (ver CONSOLE) — encoder Kotlin assume")
+            return
+        }
+        val psnrNativo = com.kenkern.engine.assets.image.Etc2.psnr(recorte, com.kenkern.engine.assets.image.Etc2.decodificarRgb(nativo256, cw, ch))
+
+        // ---------- KOTLIN 256² (encoder atual, modo rápido, cancelável) ----------
         com.kenkern.engine.assets.image.Etc2.testeForcarKotlin = true
         val kotlinBlocos: ByteArray
         val kotlinMs: Long
         try {
             val tKotlin0 = System.nanoTime()
-            kotlinBlocos = com.kenkern.engine.assets.image.Etc2.codificarRgb(rgba, w, h, qualidade = com.kenkern.engine.assets.image.Etc2.Qualidade.RAPIDA)
+            kotlinBlocos = com.kenkern.engine.assets.image.Etc2.codificarRgb(
+                recorte, cw, ch,
+                cancelado = { cancelado },
+                qualidade = com.kenkern.engine.assets.image.Etc2.Qualidade.RAPIDA
+            )
             kotlinMs = (System.nanoTime() - tKotlin0) / 1_000_000L
         } finally {
             com.kenkern.engine.assets.image.Etc2.testeForcarKotlin = false
         }
-        val psnrKotlin = com.kenkern.engine.assets.image.Etc2.psnr(rgba, com.kenkern.engine.assets.image.Etc2.decodificarRgb(kotlinBlocos, w, h))
+        val psnrKotlin = com.kenkern.engine.assets.image.Etc2.psnr(recorte, com.kenkern.engine.assets.image.Etc2.decodificarRgb(kotlinBlocos, cw, ch))
 
         // ---------- veredito ----------
         val mp = w.toLong() * h / 1_000_000.0
-        val aceleracao = if (kotlinMs > 0) kotlinMs.toDouble() / nativoMs.coerceAtLeast(1) else 0.0
-        val problemas = ArrayList<String>(2)
-        if (nativo.size != kotlinBlocos.size) problemas.add("tamanhos divergem: nativo ${nativo.size} × kotlin ${kotlinBlocos.size}")
+        val problemas = ArrayList<String>(3)
+        if (nativo256.size != kotlinBlocos.size) problemas.add("tamanhos divergem na comparação: nativo ${nativo256.size} × kotlin ${kotlinBlocos.size}")
         if (psnrNativo < psnrKotlin - 1.0) problemas.add("PSNR nativo ${"%.1f".format(java.util.Locale.US, psnrNativo)} dB < kotlin ${"%.1f".format(java.util.Locale.US, psnrKotlin)} dB − 1")
+        if (nativo1024Ms > 1_000L) problemas.add("nativo levou $nativo1024Ms ms em 1024² (meta B5: < 1 s)")
 
         if (problemas.isEmpty()) {
             c.aprovado(
-                "1024² · nativo ${nativoMs} ms (%.1f MP/s) · kotlin ${kotlinMs} ms (%.1f MP/s) · %.0f× mais rápido · PSNR nativo %.1f dB × kotlin %.1f dB · saída ${nativo.size} B idêntica".format(
-                    java.util.Locale.US, mp / (nativoMs / 1000.0), mp / (kotlinMs / 1000.0), aceleracao, psnrNativo, psnrKotlin
+                "1024² nativo ${nativo1024Ms} ms (%.1f MP/s · meta < 1 s ok) · comparação 256²: nativo ${nativo256Ms} ms × kotlin ${kotlinMs} ms · PSNR nativo %.1f dB × kotlin %.1f dB · saída ${nativo256.size} B idêntica".format(
+                    java.util.Locale.US, mp / (nativo1024Ms.coerceAtLeast(1) / 1000.0), psnrNativo, psnrKotlin
                 )
             )
         } else {
