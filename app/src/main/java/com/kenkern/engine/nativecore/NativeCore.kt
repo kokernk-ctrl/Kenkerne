@@ -168,10 +168,28 @@ object NativeCore {
         }
     }
 
+    /**
+     * Restaura os handlers ANTERIORES à instalação (CI/CI-E1): usado SÓ pelo
+     * teste no HOST — a JVM de testes usa SIGSEGV para NullPointer implícito
+     * (HotSpot); handler nosso + NPE em código JIT-ado derrubava o executor
+     * com exit 139 (SIGSEGV) no CI. No APP nunca é chamado: o handler fica
+     * ativo até o processo morrer (comportamento do B3 preservado).
+     */
+    fun restaurarSinais(): Boolean {
+        if (!isAvailable) return false
+        return try {
+            restaurarSinaisNativo()
+        } catch (e: Throwable) {
+            KenkernLog.e(TAG, "restauração dos handlers nativos falhou", e)
+            false
+        }
+    }
+
     // ------------------------------------------------- externos (JNI)
 
     private external fun ecoNativo(valor: Int): Int
     private external fun versaoNativa(): String
     private external fun instalarHandlerSinaisNativo(caminhoArquivo: String): Boolean
     private external fun handlerInstaladoNativo(): Boolean
+    private external fun restaurarSinaisNativo(): Boolean
 }

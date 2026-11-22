@@ -245,4 +245,23 @@ Java_com_kenkern_engine_nativecore_NativeCore_handlerInstaladoNativo(JNIEnv* /*e
     return g_handlerInstalado ? JNI_TRUE : JNI_FALSE;
 }
 
+/**
+ * Restaura os handlers ANTERIORES à instalação (E1/CI, v0.1.18): as ações
+ * antigas são salvas no install — o teste no HOST valida o par instalar/
+ * consultar e RESTAURA em seguida, porque a JVM do teste usa SIGSEGV para o
+ * NullPointer implícito (HotSpot): handler nosso + NPE em código JIT-ado
+ * derrubava o executor de testes com 139 (SIGSEGV) no CI. No APP este
+ * restore nunca é chamado — o handler fica ativo até o processo morrer.
+ */
+JNIEXPORT jboolean JNICALL
+Java_com_kenkern_engine_nativecore_NativeCore_restaurarSinaisNativo(JNIEnv* /*env*/, jobject /*thiz*/) {
+    if (!g_handlerInstalado) return JNI_FALSE;
+    int ok = 1;
+    for (int i = 0; i < NUM_SINAIS; i++) {
+        if (sigaction(SINAIS[i], &g_acoesAntigas[i], nullptr) != 0) ok = 0;
+    }
+    g_handlerInstalado = 0;
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
 } // extern "C"
