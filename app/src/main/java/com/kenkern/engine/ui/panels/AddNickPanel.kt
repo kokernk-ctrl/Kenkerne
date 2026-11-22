@@ -2,10 +2,12 @@ package com.kenkern.engine.ui.panels
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -19,7 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
@@ -44,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -118,7 +120,13 @@ fun AddNickPanel(
         color = KenkernSurfaceHigh,
         border = androidx.compose.foundation.BorderStroke(1.dp, KenkernOutline),
         shape = RoundedCornerShape(0.dp),
-        modifier = Modifier.fillMaxHeight()
+        modifier = Modifier
+            .fillMaxHeight()
+            // E3 (v0.1.18): BARREIRA DE TOQUE — sem pointerInput o painel não é
+            // hit-testável e TODO toque na área vazia atravessava para o viewport
+            // (movia a câmera). Agora o toque mora no painel: rolagem/taps nunca
+            // chegam à câmera.
+            .pointerInput(Unit) { detectTapGestures { } }
     ) {
         Column(Modifier.fillMaxSize()) {
             // ---------- Cabeçalho: título + fechar ----------
@@ -190,7 +198,8 @@ fun AddNickPanel(
             }
 
             if (lista.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                // E3: weight(1f) — a mensagem ocupa o RESTO (o rodapé continua visível).
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
                         if (aba == 0 && recentes.isEmpty() && !buscaAtiva) {
                             stringResource(R.string.addnick_no_recent)
@@ -201,7 +210,17 @@ fun AddNickPanel(
                     )
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
+                // E3 (v0.1.18): a lista vive em Column COM RODAPÉ abaixo — fillMaxSize
+                // consumia TODA a altura restante (o rodapé media 0 e o FIM da lista
+                // ficava sob a borda/gestos: último tipo inalcançável). Agora:
+                // weight(1f) = altura limitada ao ESPAÇO QUE SOBRA depois de
+                // cabeçalho+busca+abas+rodapé; contentPadding inferior garante o
+                // último cartão inteiro dentro da área visível. Sem verticalScroll
+                // aninhado (a única rolagem é a da própria LazyColumn).
+                LazyColumn(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
                     items(lista, key = { it }) { kind ->
                         KindCard(
                             kind = kind,
