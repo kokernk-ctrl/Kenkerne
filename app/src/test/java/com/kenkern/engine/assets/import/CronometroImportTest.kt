@@ -80,8 +80,14 @@ class CronometroImportTest {
         )
         val nomes = nomes(cronometro)
         assertTrue("parse medido: $nomes", nomes.any { it.startsWith("parse ") })
-        assertTrue("dedup medido: $nomes", nomes.any { it.startsWith("dedup de vértices") })
-        assertTrue("LODs medidos: $nomes", nomes.any { it.startsWith("LODs") })
+        assertTrue(
+            "dedup medido (Kotlin ou meshoptimizer): $nomes",
+            nomes.any { it.startsWith("dedup") }
+        )
+        assertTrue(
+            "LODs medidos (grade Kotlin ou meshopt_simplify): $nomes",
+            nomes.any { it.startsWith("LODs") || it.startsWith("LOD ") }
+        )
         assertTrue("serialização .KERN medida: $nomes", nomes.any { it == "serialização .KERN" })
         assertTrue("validação medida: $nomes", nomes.any { it == "validação de integridade" })
         assertTrue("tempos registrados em ms", cronometro.somaEtapasMs() >= 0)
@@ -100,8 +106,16 @@ class CronometroImportTest {
         val cronometro = CronometroImport()
         PosProcessamento.aplicar(mesh, cronometro)
         val nomes = nomes(cronometro)
-        assertTrue(nomes.any { it == "dedup de vértices" })
-        assertTrue(nomes.any { it.startsWith("LODs") })
+        // B6: dedup e LODs medidos SEPARADAMENTE nos DOIS caminhos — nativo
+        // (meshoptimizer) quando a biblioteca existe, Kotlin no fallback.
+        assertTrue(
+            "dedup medido (nativo ou Kotlin): $nomes",
+            nomes.any { it.startsWith("dedup") }
+        )
+        assertTrue(
+            "LODs medidos (meshopt_simplify ou grade Kotlin): $nomes",
+            nomes.any { it.startsWith("LOD") || it.startsWith("LODs") }
+        )
     }
 
     @Test

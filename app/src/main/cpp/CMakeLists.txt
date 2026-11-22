@@ -16,16 +16,24 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # third_party/ fica na RAIZ do repositório (4 níveis acima de app/src/main/cpp).
 get_filename_component(KENKERN_RAIZ "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
 set(ETCPAK_DIR "${KENKERN_RAIZ}/third_party/etcpak")
+set(MESHOPT_DIR "${KENKERN_RAIZ}/third_party/meshoptimizer")
 
 if(NOT EXISTS "${ETCPAK_DIR}/ProcessRGB.cpp")
     message(FATAL_ERROR "etcpak não encontrado em ${ETCPAK_DIR} — clone o repositório completo (third_party/ é parte da fonte)")
+endif()
+if(NOT EXISTS "${MESHOPT_DIR}/simplifier.cpp")
+    message(FATAL_ERROR "meshoptimizer não encontrado em ${MESHOPT_DIR} — clone o repositório completo (third_party/ é parte da fonte)")
 endif()
 
 add_library(kenkern SHARED
     kenkern_native.cpp
     kenkern_etc2.cpp
+    kenkern_malha.cpp
     ${ETCPAK_DIR}/ProcessRGB.cpp
     ${ETCPAK_DIR}/Tables.cpp
+    ${MESHOPT_DIR}/indexgenerator.cpp
+    ${MESHOPT_DIR}/vcacheoptimizer.cpp
+    ${MESHOPT_DIR}/simplifier.cpp
 )
 
 target_include_directories(kenkern PRIVATE

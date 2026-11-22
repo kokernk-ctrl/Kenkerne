@@ -159,8 +159,12 @@ val compilarNativoHost by tasks.registering {
     inputs.files(
         file("src/main/cpp/kenkern_native.cpp"),
         file("src/main/cpp/kenkern_etc2.cpp"),
+        file("src/main/cpp/kenkern_malha.cpp"),
         file("../third_party/etcpak/ProcessRGB.cpp"),
-        file("../third_party/etcpak/Tables.cpp")
+        file("../third_party/etcpak/Tables.cpp"),
+        file("../third_party/meshoptimizer/indexgenerator.cpp"),
+        file("../third_party/meshoptimizer/vcacheoptimizer.cpp"),
+        file("../third_party/meshoptimizer/simplifier.cpp")
     )
     doLast {
         dirSaida.mkdirs()
@@ -173,8 +177,12 @@ val compilarNativoHost by tasks.registering {
                 "-I${rootProject.projectDir}/third_party",
                 file("src/main/cpp/kenkern_native.cpp").absolutePath,
                 file("src/main/cpp/kenkern_etc2.cpp").absolutePath,
+                file("src/main/cpp/kenkern_malha.cpp").absolutePath,
                 File(rootProject.projectDir, "third_party/etcpak/ProcessRGB.cpp").absolutePath,
                 File(rootProject.projectDir, "third_party/etcpak/Tables.cpp").absolutePath,
+                File(rootProject.projectDir, "third_party/meshoptimizer/indexgenerator.cpp").absolutePath,
+                File(rootProject.projectDir, "third_party/meshoptimizer/vcacheoptimizer.cpp").absolutePath,
+                File(rootProject.projectDir, "third_party/meshoptimizer/simplifier.cpp").absolutePath,
                 "-o", arquivoSaida.absolutePath
             )
         }

@@ -102,6 +102,7 @@ class Diagnostico(private val appContext: Context) {
     fun novaLista(): List<Checagem> = listOf(
         Checagem("nativo", "Núcleo nativo C++ — biblioteca, eco, handler de sinais"),
         Checagem("etc2-nativo", "ETC2 nativo (etcpak) — 1024²: ms · MP/s · PSNR × Kotlin"),
+        Checagem("malha-nativa", "Malha nativa (meshoptimizer) — dedup+cache+LOD: ms × Kotlin"),
         Checagem("ck", ".ck (cena) — ida e volta"),
         Checagem("kern", ".KERN (malha) — ida e volta"),
         Checagem("gltf", "Importador glTF/GLB → .KERN (meta + integridade)"),
@@ -128,7 +129,7 @@ class Diagnostico(private val appContext: Context) {
      * Nunca lança.
      */
     fun executar(onAtualiza: (Checagem) -> Unit) {
-        val rapidas = listOf("nativo", "etc2-nativo", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release")
+        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release")
         val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "astc")
 
         for (id in rapidas) rodarUma(id, onAtualiza)
@@ -163,6 +164,7 @@ class Diagnostico(private val appContext: Context) {
             when (id) {
                 "nativo" -> checarNativo(c)
                 "etc2-nativo" -> checarEtc2Nativo(c)
+                "malha-nativa" -> checarMalhaNativa(c)
                 "ck" -> checarCk(c)
                 "kern" -> checarKern(c)
                 "gltf" -> checarGltf(c)
@@ -295,6 +297,96 @@ class Diagnostico(private val appContext: Context) {
             c.aprovado(
                 "1024² · nativo ${nativoMs} ms (%.1f MP/s) · kotlin ${kotlinMs} ms (%.1f MP/s) · %.0f× mais rápido · PSNR nativo %.1f dB × kotlin %.1f dB · saída ${nativo.size} B idêntica".format(
                     java.util.Locale.US, mp / (nativoMs / 1000.0), mp / (kotlinMs / 1000.0), aceleracao, psnrNativo, psnrKotlin
+                )
+            )
+        } else {
+            c.falhou(problemas.joinToString("; "))
+        }
+    }
+
+    /**
+     * Checagem "malha nativa" (B6, v0.1.17) — MESHOPTIMIZER × KOTLIN no
+     * APARELHO: grade CONECTADA de 100×100 células (20.000 triângulos) passa
+     * pelo dedup+cache (meshopt_generateVertexRemap + optimizeVertexCache) e
+     * pelo LOD (meshopt_simplify) NATIVOS e pelos equivalentes KOTLIN
+     * (deduplicarVertices + gerarLods); mostra os ms dos dois + a contagem de
+     * vértices únicos (tem que ser IGUAL nos dois caminhos).
+     */
+    private fun checarMalhaNativa(c: Checagem) {
+        // ---------- malha de teste: grade conectada (dedup funde os cantos)
+        val cols = 100
+        val linhas = 100
+        val b = com.kenkern.engine.assets.mesh.KernWriter.Builder()
+        for (cy in 0..linhas) {
+            for (cx in 0..cols) {
+                b.vertex(
+                    cx.toFloat(), cy.toFloat(), 0f, 0f, 0f, 1f,
+                    cx.toFloat() / cols, cy.toFloat() / linhas, 1f, 0f, 0f
+                )
+            }
+        }
+        for (cy in 0 until linhas) {
+            for (cx in 0 until cols) {
+                val a = cy * (cols + 1) + cx
+                val bIdx = a + 1
+                val d = a + cols + 2
+                val e = a + cols + 1
+                b.triangle(a, bIdx, d)
+                b.triangle(a, d, e)
+            }
+        }
+        val malha = b.build()
+
+        if (!com.kenkern.engine.nativecore.MalhaNativa.disponivel()) {
+            c.falhou("meshoptimizer indisponível (ver CONSOLE) — o importador segue no caminho Kotlin")
+            return
+        }
+
+        // ---------- NATIVO: dedup + cache, depois LOD por simplificação
+        val tNativo0 = System.nanoTime()
+        val registros = ByteArray(malha.vertexCount * com.kenkern.engine.nativecore.MalhaNativa.BYTES_REGISTRO_VERTICE)
+        var p = 0
+        for (v in 0 until malha.vertexCount) {
+            for (k in 0 until 3) { val f = malha.positions[v * 3 + k]; registros[p++] = (java.lang.Float.floatToIntBits(f) and 0xFF).toByte(); registros[p++] = ((java.lang.Float.floatToIntBits(f) ushr 8) and 0xFF).toByte(); registros[p++] = ((java.lang.Float.floatToIntBits(f) ushr 16) and 0xFF).toByte(); registros[p++] = ((java.lang.Float.floatToIntBits(f) ushr 24) and 0xFF).toByte() }
+            for (k in 0 until 3) { val f = malha.normals[v * 3 + k]; registros[p++] = (java.lang.Float.floatToIntBits(f) and 0xFF).toByte(); registros[p++] = ((java.lang.Float.floatToIntBits(f) ushr 8) and 0xFF).toByte(); registros[p++] = ((java.lang.Float.floatToIntBits(f) ushr 16) and 0xFF).toByte(); registros[p++] = ((java.lang.Float.floatToIntBits(f) ushr 24) and 0xFF).toByte() }
+            for (k in 0 until 2) { val f = malha.uvs[v * 2 + k]; registros[p++] = (java.lang.Float.floatToIntBits(f) and 0xFF).toByte(); registros[p++] = ((java.lang.Float.floatToIntBits(f) ushr 8) and 0xFF).toByte(); registros[p++] = ((java.lang.Float.floatToIntBits(f) ushr 16) and 0xFF).toByte(); registros[p++] = ((java.lang.Float.floatToIntBits(f) ushr 24) and 0xFF).toByte() }
+        }
+        val dedupNativo = com.kenkern.engine.nativecore.MalhaNativa.dedupEOtimizar(
+            registros, malha.indices, intArrayOf(0, malha.indices.size), malha.vertexCount
+        )
+        val lodNativo = if (dedupNativo != null) {
+            com.kenkern.engine.nativecore.MalhaNativa.simplificar(
+                dedupNativo.indices, malha.positions, malha.vertexCount,
+                (malha.indices.size / 4 / 3) * 3
+            )
+        } else null
+        val nativoMs = (System.nanoTime() - tNativo0) / 1_000_000L
+
+        // ---------- KOTLIN: dedup + LODs por grade (o código atual)
+        val tKotlin0 = System.nanoTime()
+        val dedupKotlin = com.kenkern.engine.assets.import.PosProcessamento.deduplicarVertices(malha)
+        val lodKotlin = com.kenkern.engine.assets.import.PosProcessamento.gerarLods(dedupKotlin)
+        val kotlinMs = (System.nanoTime() - tKotlin0) / 1_000_000L
+
+        if (dedupNativo == null || lodNativo == null) {
+            c.falhou("meshoptimizer falhou (ver CONSOLE) — importador segue no Kotlin")
+            return
+        }
+
+        val problemas = ArrayList<String>(2)
+        if (dedupNativo.unicos != dedupKotlin.vertexCount) {
+            problemas.add("vértices únicos divergem: nativo ${dedupNativo.unicos} × kotlin ${dedupKotlin.vertexCount}")
+        }
+        if (lodNativo.indices.size % 3 != 0 || lodNativo.indices.size > malha.indices.size) {
+            problemas.add("LOD nativo incoerente: ${lodNativo.indices.size} índices")
+        }
+
+        if (problemas.isEmpty()) {
+            val aceleracao = if (kotlinMs > 0) kotlinMs.toDouble() / nativoMs.coerceAtLeast(1) else 0.0
+            c.aprovado(
+                "grade 100×100 (20.000 tris) · nativo ${nativoMs} ms × kotlin ${kotlinMs} ms · %.1f× · " +
+                    "únicos ${dedupNativo.unicos} == ${dedupKotlin.vertexCount} · LOD nativo ${lodNativo.indices.size / 3} tris (erro %.4f) · LODs kotlin ${lodKotlin.lods.size}".format(
+                        java.util.Locale.US, aceleracao, lodNativo.erro
                 )
             )
         } else {
