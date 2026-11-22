@@ -3,6 +3,7 @@ package com.kenkern.engine.ui.panels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -43,22 +45,25 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.kenkern.engine.R
-import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.editor.PanelStateStore
+import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.ui.theme.KenkernAmber
 import com.kenkern.engine.ui.theme.KenkernOutline
 import com.kenkern.engine.ui.theme.KenkernOutlineSoft
 import com.kenkern.engine.ui.theme.KenkernSurface
 import com.kenkern.engine.ui.theme.KenkernTextLow
 import com.kenkern.engine.ui.theme.KenkernTextMid
-import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
  * Painel ACOPLADO (docked): ocupa a lateral do editor, dentro da estrutura
  * fixa (TopBar / Row central / StatusBar) — nada sobrepõe o viewport.
  * O menu do cabeçalho oferece as exceções: flutuar e ocultar.
+ * E4 (v0.1.18): BARREIRA DE TOQUE — em telas estreitas o painel "acoplado"
+ * vira OVERLAY dentro do viewport; sem pointerInput os toques na área vazia
+ * atravessavam para a câmera.
  */
 @Composable
 fun DockedPanel(
@@ -70,7 +75,7 @@ fun DockedPanel(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
-    Surface(modifier = modifier, color = KenkernSurface) {
+    Surface(modifier = modifier.pointerInput(Unit) { detectTapGestures { } }, color = KenkernSurface) {
         Column(Modifier.fillMaxSize()) {
             // Cabeçalho 40dp: título + menu (Flutuar / Ocultar)
             Row(
@@ -179,14 +184,27 @@ fun PanelResizeDivider(
 }
 
 /**
- * Painel FLUTUANTE (exceção): card arrastável pelo cabeçalho e redimensionável
- * pela alça inferior, contido na área do viewport (nunca cobre TopBar/StatusBar).
+ * Painel FLUTUANTE (exceção) — E4 (v0.1.18) corrigido de ponta a ponta:
+ *  - MOVER pelo cabeçalho e REDIMENSIONAR pela alça do CANTO INFERIOR DIREITO
+ *    (alvo de toque 48dp; mínimo [PanelStateStore.MIN_FLOAT_W/H_DP], máximo =
+ *    viewport);
+ *  - SEMPRE dentro do viewport (clamp [PanelStateStore.clampDentro] a cada
+ *    arrasto e no fim);
+ *  - TRAZ PARA FRENTE ao tocar ([emFoco] → [zIndex]; o Editor guarda quem tem
+ *    o foco);
+ *  - botão ACOPLAR no cabeçalho (ícone alfinete) + itens de menu;
+ *  - BARREIRA DE TOQUE: o card inteiro é hit-testável — toque no painel NUNCA
+ *    chega à câmera do viewport;
+ *  - posição/tamanho em [PanelUiState] OBSERVÁVEL (era var comum: o painel
+ *    nunca movia) e SALVOS por painel e por ORIENTAÇÃO (PanelStateStore).
  */
 @Composable
 fun FloatingPanel(
     state: PanelUiState,
     boundsWidthPx: Float,
     boundsHeightPx: Float,
+    emFoco: Boolean,
+    onFoco: () -> Unit,
     onPersist: () -> Unit,
     onDock: () -> Unit,
     onHide: () -> Unit,
@@ -198,13 +216,15 @@ fun FloatingPanel(
     val density = LocalDensity.current
     val active = dragging || resizing
 
-    fun clampPosition() {
-        val minX = -(state.floatW * density.density * 0.6f)
-        val maxX = boundsWidthPx - 64f
-        val minY = 0f
-        val maxY = max(0f, boundsHeightPx - 72f)
-        state.floatX = state.floatX.coerceAtLeast(minX).coerceAtMost(maxOf(minX, maxX))
-        state.floatY = state.floatY.coerceIn(minY, maxY)
+    val wPx = state.floatW.value * density.density
+    val hPx = state.floatH.value * density.density
+
+    fun clampPosicao() {
+        val (cx, cy) = PanelStateStore.clampDentro(
+            state.floatX.value, state.floatY.value, wPx, hPx, boundsWidthPx, boundsHeightPx
+        )
+        state.floatX.value = cx
+        state.floatY.value = cy
     }
 
     Card(
@@ -212,17 +232,21 @@ fun FloatingPanel(
         colors = CardDefaults.cardColors(containerColor = KenkernSurface.copy(alpha = 0.98f)),
         elevation = CardDefaults.cardElevation(defaultElevation = if (active) 12.dp else 6.dp),
         modifier = Modifier
-            .offset { IntOffset(state.floatX.roundToInt(), state.floatY.roundToInt()) }
-            .width(state.floatW.dp)
-            .height(state.floatH.dp)
+            .zIndex(if (emFoco) 2f else 1f)
+            .offset { IntOffset(state.floatX.value.roundToInt(), state.floatY.value.roundToInt()) }
+            .width(state.floatW.value.dp)
+            .height(state.floatH.value.dp)
             .border(
                 width = if (active) 1.5.dp else 1.dp,
                 color = if (active) KenkernAmber.copy(alpha = 0.7f) else KenkernOutlineSoft,
                 shape = RoundedCornerShape(12.dp)
             )
+            // E4: barreira de toque do card — hit-testável em TODA a área: o
+            // toque no painel nunca atravessa para o viewport/câmera.
+            .pointerInput(Unit) { detectTapGestures { } }
     ) {
         Column(Modifier.fillMaxSize()) {
-            // Cabeçalho arrastável + menu (Acoplar / Ocultar)
+            // Cabeçalho arrastável: ACOPLAR (alfinete) + título + menu
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -231,26 +255,39 @@ fun FloatingPanel(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                     .pointerInput(Unit) {
                         detectDragGestures(
-                            onDragStart = { dragging = true },
+                            onDragStart = {
+                                dragging = true
+                                onFoco()
+                            },
                             onDrag = { change, amount ->
                                 change.consume()
-                                state.floatX += amount.x
-                                state.floatY += amount.y
-                                clampPosition()
+                                state.floatX.value += amount.x
+                                state.floatY.value += amount.y
+                                clampPosicao()
                             },
-                            onDragEnd = { dragging = false; onPersist() },
-                            onDragCancel = { dragging = false; clampPosition(); onPersist() }
+                            onDragEnd = { dragging = false; clampPosicao(); onPersist() },
+                            onDragCancel = { dragging = false; clampPosicao(); onPersist() }
                         )
                     }
-                    .padding(start = 10.dp)
+                    .padding(start = 4.dp)
             ) {
+                // E4: botão ACOPLAR visível direto no cabeçalho (alvo 48dp).
+                IconButton(onClick = onDock, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        Icons.Filled.PushPin,
+                        contentDescription = stringResource(R.string.panel_dock, state.title),
+                        tint = KenkernTextLow,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Spacer(Modifier.width(2.dp))
                 Icon(
                     Icons.Filled.DragIndicator,
                     contentDescription = null,
                     tint = if (active) KenkernAmber else KenkernTextLow,
                     modifier = Modifier.size(16.dp)
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(4.dp))
                 Text(
                     state.title,
                     style = MaterialTheme.typography.labelLarge,
@@ -260,7 +297,7 @@ fun FloatingPanel(
                     modifier = Modifier.weight(1f)
                 )
                 Box {
-                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { menuOpen = true; onFoco() }, modifier = Modifier.size(40.dp)) {
                         Icon(
                             Icons.Filled.MoreVert,
                             contentDescription = stringResource(R.string.panel_options, state.title),
@@ -297,32 +334,38 @@ fun FloatingPanel(
                 content()
             }
 
-            // Alça de redimensionamento
+            // Alça de redimensionamento no CANTO INFERIOR DIREITO — alvo de
+            // toque 48dp (E4; era 44×14dp, abaixo do mínimo) com a pega visível
+            // de 14dp dentro.
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(14.dp)
+                    .height(48.dp)
             ) {
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .size(width = 44.dp, height = 14.dp)
+                        .align(Alignment.BottomEnd)
+                        .size(48.dp)
                         .background(if (resizing) KenkernAmber.copy(alpha = 0.25f) else Color.Transparent)
                         .pointerInput(Unit) {
                             detectDragGestures(
-                                onDragStart = { resizing = true },
+                                onDragStart = {
+                                    resizing = true
+                                    onFoco()
+                                },
                                 onDrag = { change, amount ->
                                     change.consume()
-                                    val dDp = amount.x / density.density
-                                    val dHDp = amount.y / density.density
-                                    state.floatW = (state.floatW + dDp)
-                                        .coerceIn(PanelStateStore.MIN_FLOAT_W_DP, 560f)
-                                    state.floatH = (state.floatH + dHDp)
-                                        .coerceIn(PanelStateStore.MIN_FLOAT_H_DP, 800f)
+                                    val maxWdp = boundsWidthPx / density.density
+                                    val maxHdp = boundsHeightPx / density.density
+                                    state.floatW.value = (state.floatW.value + amount.x / density.density)
+                                        .coerceIn(PanelStateStore.MIN_FLOAT_W_DP, maxWdp)
+                                    state.floatH.value = (state.floatH.value + amount.y / density.density)
+                                        .coerceIn(PanelStateStore.MIN_FLOAT_H_DP, maxHdp)
+                                    clampPosicao()
                                 },
-                                onDragEnd = { resizing = false; onPersist() },
-                                onDragCancel = { resizing = false; onPersist() }
+                                onDragEnd = { resizing = false; clampPosicao(); onPersist() },
+                                onDragCancel = { resizing = false; clampPosicao(); onPersist() }
                             )
                         }
                 ) {

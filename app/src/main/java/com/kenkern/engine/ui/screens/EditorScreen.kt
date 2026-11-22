@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.RotateRight
@@ -85,6 +86,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -176,6 +178,12 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     // Modo da câmera: Orbital ou Voo
     var cameraMode by rememberSaveable { mutableStateOf(CameraMode.ORBITAL) }
 
+    // E4: orientação atual — o layout dos painéis (posição/tamanho flutuantes)
+    // é salvo POR ORIENTAÇÃO: retrato e paisagem têm viewports diferentes.
+    val orientacao = if (LocalConfiguration.current.orientation ==
+        android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    ) "land" else "port"
+
     // ---------- Janela "Adicionar Nick" (T0.3): painel lateral no viewport ----------
     var addNickVisivel by rememberSaveable { mutableStateOf(false) }
     // Ponto de surgimento (centro da tela projetado no chão) — calculado ao ABRIR.
@@ -224,14 +232,23 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
         }
     }
 
-    val hierarchy = remember {
-        vm.panelStore.get("hierarchy", "Hierarquia", 200f, 140f, 320f, 280f, 340f)
+    val hierarchy = remember(orientacao) {
+        vm.panelStore.get("hierarchy", orientacao, "Hierarquia", 200f, 140f, 320f, 280f, 340f)
     }
-    val inspector = remember {
-        vm.panelStore.get("inspector", "Inspetor", 240f, 180f, 360f, 300f, 400f)
+    val inspector = remember(orientacao) {
+        vm.panelStore.get("inspector", orientacao, "Inspetor", 240f, 180f, 360f, 300f, 400f)
     }
     val persistHierarchy = remember { { vm.panelStore.persist(hierarchy) } }
     val persistInspector = remember { { vm.panelStore.persist(inspector) } }
+
+    // E4: quem está na frente — tocar em um painel flutuante o traz para o
+    // primeiro plano (zIndex); Resetar layout devolve o padrão profissional.
+    var painelFoco by remember { mutableStateOf<String?>(null) }
+    val resetarLayout = {
+        vm.panelStore.resetar(hierarchy)
+        vm.panelStore.resetar(inspector)
+        painelFoco = null
+    }
 
     Box(Modifier.fillMaxSize().background(KenkernBackground)) {
         Column(
@@ -247,6 +264,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 inspector = inspector,
                 persistHierarchy = persistHierarchy,
                 persistInspector = persistInspector,
+                onResetarLayout = resetarLayout,
                 resolutionScale = resolutionScale,
                 onResolutionChange = { resolutionScale = it },
                 gizmoMode = gizmoMode,
@@ -433,6 +451,8 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 state = hierarchy,
                                 boundsWidthPx = viewportWpx,
                                 boundsHeightPx = viewportHpx,
+                                emFoco = painelFoco == "hierarchy",
+                                onFoco = { painelFoco = "hierarchy" },
                                 onPersist = persistHierarchy,
                                 onDock = {
                                     hierarchy.docked.value = true
@@ -449,6 +469,8 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 state = inspector,
                                 boundsWidthPx = viewportWpx,
                                 boundsHeightPx = viewportHpx,
+                                emFoco = painelFoco == "inspector",
+                                onFoco = { painelFoco = "inspector" },
                                 onPersist = persistInspector,
                                 onDock = {
                                     inspector.docked.value = true
@@ -709,7 +731,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
 
 // ============================== TopBar (48dp) ==============================
 
-/** Voltar | Undo | Redo | sep | Play/Stop | sep | Mover/Girar/Escalar | Local/Global | Snap | sep | Orbital/Voo | Focar | espaço | resolução | painéis. */
+/** Voltar | Undo | Redo | sep | Play/Stop | sep | Mover/Girar/Escalar | Local/Global | Snap | sep | Orbital/Voo | Focar | sep | Auxiliares | sep | resolução | painéis | Resetar layout. */
 @Composable
 private fun EditorTopBar(
     vm: EditorViewModel,
@@ -718,6 +740,7 @@ private fun EditorTopBar(
     inspector: PanelUiState,
     persistHierarchy: () -> Unit,
     persistInspector: () -> Unit,
+    onResetarLayout: () -> Unit,
     resolutionScale: Float,
     onResolutionChange: (Float) -> Unit,
     gizmoMode: GizmoMode,
@@ -921,6 +944,13 @@ private fun EditorTopBar(
                 inspector.visible.value = !inspector.visible.value
                 persistInspector()
             }
+
+            // E4: Resetar layout — painéis de volta ao padrão profissional
+            // (visíveis + acoplados + tamanho/posição padrão, nas 2 orientações).
+            TopBarIcon(
+                Icons.Filled.Restore,
+                stringResource(R.string.editor_reset_layout)
+            ) { onResetarLayout() }
         }
     }
 }

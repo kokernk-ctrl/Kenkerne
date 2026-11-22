@@ -64,6 +64,8 @@
     <string name="editor_show_hierarchy">Show Hierarchy</string>
     <string name="editor_hide_inspector">Hide Inspector</string>
     <string name="editor_show_inspector">Show Inspector</string>
+    <string name="editor_reset_layout">Reset layout (panels docked and visible)</string>
+    <string name="editor_show_helpers">Show editor helpers</string>
     <string name="editor_hint_orbit">1 finger: orbit · 2 fingers: pan and zoom</string>
     <string name="editor_hint_flight">Joystick moves · drag to look · buttons go up/down</string>
     <string name="editor_recovered">Scene recovered from auto-save</string>

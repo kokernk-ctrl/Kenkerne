@@ -64,6 +64,8 @@
     <string name="editor_show_hierarchy">Mostrar Hierarquia</string>
     <string name="editor_hide_inspector">Ocultar Inspetor</string>
     <string name="editor_show_inspector">Mostrar Inspetor</string>
+    <string name="editor_reset_layout">Resetar layout (painéis acoplados e visíveis)</string>
+    <string name="editor_show_helpers">Mostrar auxiliares</string>
     <string name="editor_hint_orbit">1 dedo: orbitar · 2 dedos: mover e zoom</string>
     <string name="editor_hint_flight">Joystick move · arraste para olhar · botões sobem/descem</string>
     <string name="editor_recovered">Cena recuperada do auto-save</string>
