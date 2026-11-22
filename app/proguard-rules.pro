@@ -54,3 +54,11 @@
 -dontwarn org.apache.bcel.**
 
 
+
+# B3 (v0.1.17) — NÚCLEO NATIVO C++ (libkenkern.so via NDK/CMake, arm64-v8a):
+# a classe NativeCore e TODOS os métodos JNI precisam dos NOMES EXATOS para a
+# resolução dinâmica da JVM (Java_com_kenkern_engine_nativecore_NativeCore_*).
+# O -keep geral de com.kenkern.engine.** já cobre a engine; estas regras
+# documentam a exigência e cobrem qualquer método native de terceiros.
+-keep class com.kenkern.engine.nativecore.NativeCore { *; }
+-keepclasseswithmembernames class * { native <methods>; }

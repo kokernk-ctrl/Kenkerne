@@ -100,6 +100,7 @@ class Diagnostico(private val appContext: Context) {
     }
 
     fun novaLista(): List<Checagem> = listOf(
+        Checagem("nativo", "Núcleo nativo C++ — biblioteca, eco, handler de sinais"),
         Checagem("ck", ".ck (cena) — ida e volta"),
         Checagem("kern", ".KERN (malha) — ida e volta"),
         Checagem("gltf", "Importador glTF/GLB → .KERN (meta + integridade)"),
@@ -108,6 +109,7 @@ class Diagnostico(private val appContext: Context) {
         Checagem("kimg", ".KIMG — ida e volta + mipmaps + limites"),
         Checagem("etc2", "ETC2 — upload e leitura de pixel (GL offscreen)"),
         Checagem("tex-cena", "Textura na cena — quad com .KIMG (pixel não-preto)"),
+        Checagem("cena", "Cena = tela — viewport desenha só Nicks (M medido)"),
         Checagem("astc", "ASTC — extensão do aparelho (informativo)"),
         Checagem("picking", "Matemática de picking (raio de tela)"),
         Checagem("toque", "Toque no cubo — API real do TouchController"),
@@ -125,8 +127,8 @@ class Diagnostico(private val appContext: Context) {
      * Nunca lança.
      */
     fun executar(onAtualiza: (Checagem) -> Unit) {
-        val rapidas = listOf("ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release")
-        val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "astc")
+        val rapidas = listOf("nativo", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release")
+        val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "astc")
 
         for (id in rapidas) rodarUma(id, onAtualiza)
 
@@ -158,6 +160,7 @@ class Diagnostico(private val appContext: Context) {
         onAtualiza(c)
         runCatching {
             when (id) {
+                "nativo" -> checarNativo(c)
                 "ck" -> checarCk(c)
                 "kern" -> checarKern(c)
                 "gltf" -> checarGltf(c)
@@ -171,6 +174,7 @@ class Diagnostico(private val appContext: Context) {
                 "glcaps" -> checarGlCaps(c)
                 "etc2" -> checarEtc2(c, egl)
                 "tex-cena" -> checarTexCena(c, egl)
+                "cena" -> checarCenaTela(c, egl)
                 "astc" -> checarAstc(c)
                 "memoria" -> checarMemoria(c)
                 "release" -> checarRelease(c)
@@ -183,6 +187,47 @@ class Diagnostico(private val appContext: Context) {
     }
 
     // ---------------------------------------------------------------- .ck
+
+    /**
+     * Checagem "nativo" (B3d, v0.1.17) — NÚCLEO C++ NO APARELHO:
+     *  - biblioteca carregada (isAvailable) + versão devolvida PELO NATIVO;
+     *  - ABI do aparelho (arm64-v8a é a única compilada);
+     *  - CHAMADA DE ECO: eco(21) == 43 prova a ponte JNI funcionando;
+     *  - HANDLER DE SINAIS instalado (SIGSEGV/SIGABRT/SIGBUS/SIGFPE gravam
+     *    crash_logs/native_crash.txt com sinal, endereço e backtrace).
+     * NUNCA provoca crash de propósito: a checagem SÓ consulta estado — o
+     * handler será exercitado por um crash real, se acontecer.
+     */
+    private fun checarNativo(c: Checagem) {
+        val carregada = com.kenkern.engine.nativecore.NativeCore.carregar()
+        if (!carregada) {
+            c.falhou(
+                "libkenkern.so NÃO carregou (ver CONSOLE) — módulos nativos seguem em fallback Kotlin; " +
+                    "esperado arm64-v8a, aparelho é ${com.kenkern.engine.nativecore.NativeCore.abi}"
+            )
+            return
+        }
+        val versao = com.kenkern.engine.nativecore.NativeCore.versao ?: "?"
+        val abi = com.kenkern.engine.nativecore.NativeCore.abi
+        val eco = com.kenkern.engine.nativecore.NativeCore.eco(21)
+        val handler = com.kenkern.engine.nativecore.NativeCore.handlerInstalado()
+
+        val problemas = ArrayList<String>(2)
+        if (eco != 43) problemas.add("eco(21) devolveu $eco (esperado 43) — ponte JNI quebrada")
+        if (!handler) problemas.add("handler de sinais nativo NÃO instalado (crash nativo não gera native_crash.txt)")
+        if (versao != com.kenkern.engine.nativecore.NativeCore.VERSAO_ESPERADA) {
+            problemas.add("versão nativa $versao ≠ esperada ${com.kenkern.engine.nativecore.NativeCore.VERSAO_ESPERADA}")
+        }
+
+        if (problemas.isEmpty()) {
+            c.aprovado(
+                "libkenkern.so carregada · versão $versao · ABI $abi · eco(21)=$eco ✓ · " +
+                    "handler de sinais instalado (SIGSEGV/SIGABRT/SIGBUS/SIGFPE → crash_logs/native_crash.txt)"
+            )
+        } else {
+            c.falhou(problemas.joinToString("; "))
+        }
+    }
 
     private fun checarCk(c: Checagem) {
         val scene = Scene("Diag")

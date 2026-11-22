@@ -10,12 +10,28 @@ android {
     namespace = "com.kenkern.engine"
     compileSdk = 35
 
+    // B3 (v0.1.17): NÚCLEO NATIVO C++17 — NDK e CMake com VERSÃO FIXADA
+    // (mesma no CI: ndk;27.3.13750724 + cmake;3.22.1). Somente arm64-v8a
+    // por enquanto (decisão do ROADMAP, não reabrir).
+    ndkVersion = "27.3.13750724"
+
     defaultConfig {
         applicationId = "com.kenkern.engine"
         minSdk = 26
         targetSdk = 35
         versionCode = 17
         versionName = "0.1.16-fase2"
+
+        // B3: compila libkenkern.so só para arm64-v8a.
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags += listOf("-std=c++17", "-Wall", "-Wextra")
+                arguments += listOf("-DANDROID_STL=c++_static")
+            }
+        }
     }
 
     // Testes de unidade JVM: métodos do android.jar (ex.: Log.d feito a cada
@@ -47,6 +63,14 @@ android {
                 keyAlias = alias
                 keyPassword = keyPass
             }
+        }
+    }
+
+    // B3: fonte do núcleo nativo C++17 (CMake fixado em 3.22.1).
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
         }
     }
 

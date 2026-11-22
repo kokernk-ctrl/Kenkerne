@@ -1,0 +1,116 @@
+package com.kenkern.engine.nativecore
+
+import android.os.Build
+import com.kenkern.engine.diag.KenkernLog
+
+/**
+ * NÚCLEO NATIVO da KENKERN (B3, v0.1.17): objeto Kotlin de acesso ao
+ * libkenkern.so (C++17 via NDK/CMake; arm64-v8a).
+ *
+ *  - [isAvailable]: a biblioteca carregou? O carregamento é em try/catch
+ *    REGISTRADO no KenkernLog — biblioteca ausente NUNCA derruba o app;
+ *  - [versao]/[abi]: versão do núcleo nativo e ABI do aparelho;
+ *  - [eco]: chamada JNI mínima de validação (eco(n) = n·2+1) com FALLBACK
+ *    Kotlin automático (mesma fórmula) quando a biblioteca não existe;
+ *  - [instalarHandlerSinais]/[handlerInstalado]: handler de SIGSEGV/SIGABRT/
+ *    SIGBUS/SIGFPE que grava crash_logs/native_crash.txt com sinal, endereço
+ *    e backtrace (o diálogo de crash do Hub mostra esse arquivo também).
+ *
+ * REGRA DO ROADMAP: todo módulo nativo tem FALLBACK Kotlin automático — o
+ * aparelho sem a biblioteca (ou com ABI não coberta) continua funcionando,
+ * com o motivo registrado no Console.
+ */
+object NativeCore {
+
+    private const val TAG = "Kenkern/NativeCore"
+
+    /** Versão esperada do núcleo nativo (precisa casar com kenkern_native.cpp). */
+    const val VERSAO_ESPERADA = "1.0.0"
+
+    @Volatile
+    var isAvailable: Boolean = false
+        private set
+
+    /** Versão devolvida PELO NATIVO (null = biblioteca não carregada). */
+    @Volatile
+    var versao: String? = null
+        private set
+
+    /** ABI primária do aparelho (arm64-v8a é a única compilada por enquanto). */
+    val abi: String
+        get() = Build.SUPPORTED_ABIS?.firstOrNull() ?: "desconhecida"
+
+    @Volatile
+    private var cargaTentada = false
+
+    /**
+     * Carrega a biblioteca (idempotente). Chamado no Application.onCreate e
+     * pela checagem "nativo" do Diagnóstico. Falha = registro no Console +
+     * isAvailable false (módulos nativos seguem em fallback Kotlin).
+     */
+    @Synchronized
+    fun carregar(): Boolean {
+        if (cargaTentada) return isAvailable
+        cargaTentada = true
+        try {
+            System.loadLibrary("kenkern")
+            isAvailable = true
+            versao = versaoNativa()
+            KenkernLog.w(TAG, "núcleo nativo carregado: versão $versao · ABI $abi")
+        } catch (e: Throwable) {
+            // ABI não coberta (ex.: emulador x86) ou biblioteca corrompida —
+            // motivo REGISTRADO, app segue no fallback Kotlin.
+            KenkernLog.w(TAG, "núcleo nativo INDISPONÍVEL (${e.message ?: e.javaClass.simpleName}) — módulos nativos usam fallback Kotlin", e)
+        }
+        return isAvailable
+    }
+
+    /**
+     * Eco de validação: NATIVO quando disponível; FALLBACK Kotlin (mesma
+     * fórmula n·2+1) caso contrário. A checagem "nativo" do Diagnóstico
+     * confere isAvailable + eco(21) == 43 para validar a chamada JNI.
+     */
+    fun eco(valor: Int): Int {
+        if (!isAvailable) return valor * 2 + 1
+        return try {
+            ecoNativo(valor)
+        } catch (e: Throwable) {
+            KenkernLog.e(TAG, "eco nativo falhou — usando fallback Kotlin", e)
+            valor * 2 + 1
+        }
+    }
+
+    /**
+     * Instala o handler de sinais nativos (SIGSEGV/SIGABRT/SIGBUS/SIGFPE) que
+     * grava [caminhoArquivo] (crash_logs/native_crash.txt) com sinal, endereço
+     * e backtrace. Retorna false se a biblioteca não existe ou a instalação
+     * falhou (app segue SEM handler nativo; nada derruba o boot).
+     */
+    fun instalarHandlerSinais(caminhoArquivo: String): Boolean {
+        if (!isAvailable) return false
+        return try {
+            instalarHandlerSinaisNativo(caminhoArquivo)
+        } catch (e: Throwable) {
+            KenkernLog.e(TAG, "handler de sinais nativo não instalou — crash nativo não gera native_crash.txt", e)
+            false
+        }
+    }
+
+    /** True quando os 4 handlers nativos estão instalados (Diagnóstico). */
+    fun handlerInstalado(): Boolean {
+        if (!isAvailable) return false
+        return try {
+            handlerInstaladoNativo()
+        } catch (e: Throwable) {
+            KenkernLog.e(TAG, "consulta do handler nativo falhou", e)
+            false
+        }
+    }
+
+    // ------------------------------------------------- externos (JNI)
+
+    private external fun ecoNativo(valor: Int): Int
+    private external fun versaoNativa(): String
+    private external fun instalarHandlerSinaisNativo(caminhoArquivo: String): Boolean
+    private external fun handlerInstaladoNativo(): Boolean
+}

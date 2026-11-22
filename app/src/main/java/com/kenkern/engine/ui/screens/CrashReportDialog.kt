@@ -46,7 +46,10 @@ import java.io.File
 
 /**
  * Armazém/leitura do relatório de crash exibido AO INICIAR O HUB quando existe
- * `filesDir/crash_logs/last_crash.txt` (gravado pelo KenkernApplication).
+ * `filesDir/crash_logs/last_crash.txt` (gravado pelo KenkernApplication) OU
+ * `filesDir/crash_logs/native_crash.txt` (gravado pelo HANDLER DE SINAIS do
+ * núcleo C++ — B3, v0.1.17: SIGSEGV/SIGABRT/SIGBUS/SIGFPE com sinal, endereço
+ * e backtrace; o handler Kotlin de exceções não vê crash nativo).
  * Mantido separado do composable para não confundir nomes no pacote.
  */
 object CrashReportStore {
@@ -54,14 +57,19 @@ object CrashReportStore {
     private const val TAG = "Kenkern/CrashReport"
     private const val CRASH_DIR = "crash_logs"
     private const val CRASH_FILE = "last_crash.txt"
+    private const val NATIVE_CRASH_FILE = "native_crash.txt"
 
     /** Arquivo de crash no mesmo formato que o KenkernApplication grava. */
     private fun crashFile(context: Context): File =
         File(File(context.filesDir, CRASH_DIR), CRASH_FILE)
 
+    /** Arquivo do CRASH NATIVO (handler de sinais do núcleo C++). */
+    private fun nativeCrashFile(context: Context): File =
+        File(File(context.filesDir, CRASH_DIR), NATIVE_CRASH_FILE)
+
     /** True se existe relatório de crash pendente (chamado 1x na composição raiz). */
     fun hasPendingReport(context: Context): Boolean =
-        runCatching { crashFile(context).isFile }
+        runCatching { crashFile(context).isFile || nativeCrashFile(context).isFile }
             .onFailure {
                 // Falso negativo = diálogo de crash nunca aparece — registrar (regra nova).
                 KenkernLog.w(TAG, "verificação de crash pendente falhou — diálogo pode não aparecer", it)
@@ -72,6 +80,8 @@ object CrashReportStore {
     fun clearReports(context: Context) {
         runCatching { crashFile(context).delete() }
             .onFailure { KenkernLog.w(TAG, "apagar last_crash.txt falhou — relatório volta no próximo início", it) }
+        runCatching { nativeCrashFile(context).delete() }
+            .onFailure { KenkernLog.w(TAG, "apagar native_crash.txt falhou — relatório nativo volta no próximo início", it) }
         runCatching { BootTrace.file(context).delete() }
             .onFailure { KenkernLog.w(TAG, "apagar boot_trace.txt falhou", it) }
     }
@@ -83,6 +93,15 @@ object CrashReportStore {
             appendLine("(arquivo de crash ausente ou ilegível)")
         } else {
             append(crash.trimEnd())
+            appendLine()
+        }
+        // B3: CRASH NATIVO (SIGSEGV/SIGABRT/SIGBUS/SIGFPE) com sinal, endereço e
+        // backtrace — gravado pelo handler C++ ANTES de o processo morrer.
+        val nativo = runCatching { nativeCrashFile(context).readText() }.getOrNull()
+        if (!nativo.isNullOrBlank()) {
+            appendLine()
+            appendLine("— crash nativo (handler de sinais C++) —")
+            append(nativo.trimEnd())
             appendLine()
         }
         appendLine()
