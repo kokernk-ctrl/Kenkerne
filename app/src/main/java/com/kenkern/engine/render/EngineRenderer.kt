@@ -46,6 +46,14 @@ class EngineRenderer {
     private var cubeHandle = 0
     private var gizmoHandle = 0
     private var gizmoVertexCount = 0
+
+    // T0.3: WIREFRAME do colisor do Nick SELECIONADO (overlay de edição — a
+    // visualização do collider do Inspetor). Buffer reconstruído SÓ quando a
+    // chave (nick + forma + centro + tamanho) muda; 1 draw de linhas por frame.
+    private var colliderWireHandle = 0
+    private var colliderWireCount = 0
+    private var colliderWireKey = ""
+    private val colliderMvp = Mat4()
     private var kernRoundtripOk = false
 
     // Buffers GL do gizmo de transformação (MALHA de triângulos, 1 VBO por modo)
@@ -432,6 +440,37 @@ class EngineRenderer {
         )
         gridDrawn = 1
 
+        // T0.3: COLISOR do Nick selecionado (wireframe verde, espaço do Nick):
+        // Caixa/Convexo/Malha = paralelepípedo; Esfera/Cápsula/Cilindro = curvas.
+        var colliderDc = 0
+        if (scene != null && selectedId != null) {
+            val selNick = scene.findNick(selectedId)
+            val colisor = selNick?.findClassInstance(MalhaNick.CLASSE_COLISOR)
+            if (selNick != null && colisor != null) {
+                val forma = colisor.getString("forma", "box")
+                val centro = colisor.fields["centro"] as? com.kenkern.engine.core.NickValue.Vec3Value
+                val tamanho = colisor.fields["tamanho"] as? com.kenkern.engine.core.NickValue.Vec3Value
+                val cx = centro?.x ?: 0f; val cy = centro?.y ?: 0f; val cz = centro?.z ?: 0f
+                val tx = tamanho?.x ?: 1f; val ty = tamanho?.y ?: 1f; val tz = tamanho?.z ?: 1f
+                val chave = "${selNick.id.value}|$forma|$cx,$cy,$cz|$tx,$ty,$tz"
+                if (chave != colliderWireKey) {
+                    if (colliderWireHandle != 0) backend.destroyLineBuffer(colliderWireHandle)
+                    val dados = buildColliderWireframe(forma, cx, cy, cz, tx, ty, tz)
+                    colliderWireCount = dados.size / 6
+                    colliderWireHandle = backend.createColoredLineBuffer(dados)
+                    colliderWireKey = chave
+                }
+                if (colliderWireHandle != 0 && colliderWireCount > 0) {
+                    colliderMvp.multiply(viewProj, selNick.transform.worldMatrix)
+                    backend.drawGizmo(colliderWireHandle, colliderWireCount, colliderMvp)
+                    colliderDc = 1
+                }
+            } else if (colliderWireHandle != 0) {
+                backend.destroyLineBuffer(colliderWireHandle)
+                colliderWireHandle = 0; colliderWireCount = 0; colliderWireKey = ""
+            }
+        }
+
         // Gizmo de transformação como MALHA: ≤ 2 dc (completo / apagado + alça amarela).
         var tGizmoDc = 0
         val g = tGizmo
@@ -490,10 +529,148 @@ class EngineRenderer {
         backend.endFrame()
 
         // Total real de draw calls do frame (estatística da StatusBar).
-        drawCount = skyDrawn + gridDrawn +
+        drawCount = skyDrawn + gridDrawn + colliderDc +
             ((geometry as? DefaultGeometryPipeline)?.lastFlushCount ?: 0) +
             gizmoDrawn + tGizmoDc
         nicksDesenhados = nicksDrawnThisFrame
+    }
+
+    /**
+     * T0.3: linhas do WIREFRAME do colisor em espaço LOCAL (6 floats/vértice,
+     * pares GL_LINES — mesmo formato do gizmo de eixos). Cor verde de física.
+     * Convexo/Malha desenham a AABB (limite da forma) nesta fase.
+     */
+    private fun buildColliderWireframe(
+        forma: String, cx: Float, cy: Float, cz: Float,
+        tx: Float, ty: Float, tz: Float
+    ): FloatArray {
+        val r = 0.35f; val g = 0.85f; val b = 0.55f
+        val linhas = ArrayList<Float>(24 * 6 * 2)
+        val linha: (Float, Float, Float, Float, Float, Float) -> Unit = { ax, ay, az, bx, by, bz ->
+            linhas.add(ax); linhas.add(ay); linhas.add(az); linhas.add(r); linhas.add(g); linhas.add(b)
+            linhas.add(bx); linhas.add(by); linhas.add(bz); linhas.add(r); linhas.add(g); linhas.add(b)
+        }
+        val hx = tx * 0.5f; val hy = ty * 0.5f; val hz = tz * 0.5f
+        when (forma) {
+            "sphere" -> {
+                val raio = (hx + hy + hz) / 3f
+                circuloXz(linha, cx, cy, cz, raio)
+                circuloXy(linha, cx, cy, cz, raio)
+                circuloYz(linha, cx, cy, cz, raio)
+            }
+            "cylinder" -> {
+                val raio = (hx + hz) * 0.5f
+                circuloXz(linha, cx, cy + hy, cz, raio)
+                circuloXz(linha, cx, cy - hy, cz, raio)
+                for (a in floatArrayOf(0f, 90f, 180f, 270f)) {
+                    val rad = Math.toRadians(a.toDouble())
+                    val px = cx + (raio * kotlin.math.cos(rad)).toFloat()
+                    val pz = cz + (raio * kotlin.math.sin(rad)).toFloat()
+                    linha(px, cy + hy, pz, px, cy - hy, pz)
+                }
+            }
+            "capsule" -> {
+                val raio = (hx + hz) * 0.5f
+                val cilindro = (ty - raio * 2f).coerceAtLeast(0f)
+                val topo = cy + cilindro * 0.5f
+                val base = cy - cilindro * 0.5f
+                circuloXz(linha, cx, topo, cz, raio)
+                circuloXz(linha, cx, base, cz, raio)
+                for (a in floatArrayOf(0f, 90f, 180f, 270f)) {
+                    val rad = Math.toRadians(a.toDouble())
+                    val px = cx + (raio * kotlin.math.cos(rad)).toFloat()
+                    val pz = cz + (raio * kotlin.math.sin(rad)).toFloat()
+                    linha(px, topo, pz, px, base, pz)
+                }
+                // Calotas: semicírculos verticais (frente e lado).
+                arcoVertical(linha, cx, topo, cz, raio, planoXz = true)
+                arcoVertical(linha, cx, base, cz, raio, planoXz = true, paraCima = false)
+                arcoVertical(linha, cx, topo, cz, raio, planoXz = false)
+                arcoVertical(linha, cx, base, cz, raio, planoXz = false, paraCima = false)
+            }
+            else -> {
+                // box / convex / mesh: AABB (limite da forma) — 12 arestas.
+                val x0 = cx - hx; val x1 = cx + hx
+                val y0 = cy - hy; val y1 = cy + hy
+                val z0 = cz - hz; val z1 = cz + hz
+                linha(x0, y0, z0, x1, y0, z0); linha(x1, y0, z0, x1, y0, z1)
+                linha(x1, y0, z1, x0, y0, z1); linha(x0, y0, z1, x0, y0, z0)
+                linha(x0, y1, z0, x1, y1, z0); linha(x1, y1, z0, x1, y1, z1)
+                linha(x1, y1, z1, x0, y1, z1); linha(x0, y1, z1, x0, y1, z0)
+                linha(x0, y0, z0, x0, y1, z0); linha(x1, y0, z0, x1, y1, z0)
+                linha(x1, y0, z1, x1, y1, z1); linha(x0, y0, z1, x0, y1, z1)
+            }
+        }
+        val out = FloatArray(linhas.size)
+        for (i in linhas.indices) out[i] = linhas[i]
+        return out
+    }
+
+    private fun circuloXz(
+        linha: (Float, Float, Float, Float, Float, Float) -> Unit,
+        cx: Float, cy: Float, cz: Float, raio: Float
+    ) {
+        val seg = 24
+        var px = cx + raio; var pz = cz
+        for (i in 1..seg) {
+            val rad = (2.0 * Math.PI * i / seg)
+            val nx = cx + (raio * kotlin.math.cos(rad)).toFloat()
+            val nz = cz + (raio * kotlin.math.sin(rad)).toFloat()
+            linha(px, cy, pz, nx, cy, nz)
+            px = nx; pz = nz
+        }
+    }
+
+    private fun circuloXy(
+        linha: (Float, Float, Float, Float, Float, Float) -> Unit,
+        cx: Float, cy: Float, cz: Float, raio: Float
+    ) {
+        val seg = 24
+        var px = cx + raio; var py = cy
+        for (i in 1..seg) {
+            val rad = (2.0 * Math.PI * i / seg)
+            val nx = cx + (raio * kotlin.math.cos(rad)).toFloat()
+            val ny = cy + (raio * kotlin.math.sin(rad)).toFloat()
+            linha(px, py, cz, nx, ny, cz)
+            px = nx; py = ny
+        }
+    }
+
+    private fun circuloYz(
+        linha: (Float, Float, Float, Float, Float, Float) -> Unit,
+        cx: Float, cy: Float, cz: Float, raio: Float
+    ) {
+        val seg = 24
+        var py = cy + raio; var pz = cz
+        for (i in 1..seg) {
+            val rad = (2.0 * Math.PI * i / seg)
+            val ny = cy + (raio * kotlin.math.cos(rad)).toFloat()
+            val nz = cz + (raio * kotlin.math.sin(rad)).toFloat()
+            linha(cx, py, pz, cx, ny, nz)
+            py = ny; pz = nz
+        }
+    }
+
+    /** Semicírculo vertical da cápsula (90°→270° ou para cima/baixo). */
+    private fun arcoVertical(
+        linha: (Float, Float, Float, Float, Float, Float) -> Unit,
+        cx: Float, cy: Float, cz: Float, raio: Float,
+        planoXz: Boolean,
+        paraCima: Boolean = true
+    ) {
+        val seg = 12
+        val inicio = if (paraCima) 0.0 else Math.PI
+        var pa = inicio
+        for (i in 1..seg) {
+            val na = inicio + Math.PI * i / seg
+            val ax = (raio * kotlin.math.cos(pa)).toFloat()
+            val ay = (raio * kotlin.math.sin(pa)).toFloat()
+            val bx = (raio * kotlin.math.cos(na)).toFloat()
+            val by = (raio * kotlin.math.sin(na)).toFloat()
+            if (planoXz) linha(cx + ax, cy + ay, cz, cx + bx, cy + by, cz)
+            else linha(cx, cy + ay, cz + ax, cx, cy + by, cz + bx)
+            pa = na
+        }
     }
 
     private fun extractWorldRotation(m: Mat4, out: Quaternion) {

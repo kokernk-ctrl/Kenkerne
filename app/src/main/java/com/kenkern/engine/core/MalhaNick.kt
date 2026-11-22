@@ -17,6 +17,12 @@ object MalhaNick {
 
     const val CLASSE = "Malha"
 
+    /** T0.3: classe de COLISÃO do Collider Body Nick (forma/centro/tamanho). */
+    const val CLASSE_COLISOR = "Colisor"
+
+    /** Chaves estáveis das formas do colisor (rótulos localizados na UI). */
+    val FORMAS_COLISOR = listOf("box", "sphere", "capsule", "cylinder", "convex", "mesh")
+
     /** Caminho relativo do .KERN ou null se o Nick não tem malha importada. */
     fun path(nick: Nick): String? {
         val inst = nick.findClassInstance(CLASSE) ?: return null

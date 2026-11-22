@@ -1,5 +1,38 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## Aceite da PARADA 1 — T0.1 idiomas + T0.2 tipos de Nick + T0.3 janela Adicionar Nick
+
+> BLOCO 0 do adendo v4 (DECISIONS #24–#28): app em en/pt, tipos de Nick como
+> preset de dados (CK2), janela "Adicionar Nick", cabeçalho de tipo no Inspetor
+> e seletor de forma do collider. Build pós-T0.3 (APK de teste do CI).
+
+1. Abrir o app: a interface segue o IDIOMA DO APARELHO (português no seu caso).
+   No Hub, tocar o ÍCONE DE GLOBO no cabeçalho → Português / English / idioma
+   do aparelho — a troca é IMEDIATA (tela recria traduzida, sem reiniciar).
+2. Criar um PROJETO NOVO: a Hierarquia mostra "Nick de Grupo (1)" e
+   "Nick de Malha" (nomes automáticos = rótulo do TIPO; renomear deixa o texto
+   do usuário fixo — o campo vazio volta ao rótulo).
+3. ABRIR UM PROJETO ANTIGO (CK1, ex.: com "Mundo"/"Cubo"): os nomes automáticos
+   viram o rótulo do tipo migrado ("Nick Vazio"/"Nick de Malha" — Mundo vira
+   nick vazio, modelo com malha vira Nick de Malha); o conteúdo NÃO muda.
+4. No editor, tocar o "+" da Hierarquia: painel "Adicionar Nick" (~40% da
+   largura, ao lado da Hierarquia) com busca, abas (Recentes, Base, Luz, Câmera,
+   Corpos, Áreas), cartões com ícone/nome/descrição e ESTRELA de favorito.
+   Criar um "Nick de Corpo Colisor": nasce SELECIONADO no CENTRO da tela
+   projetado no chão; a opção "Como filho do selecionado / Na raiz" funciona;
+   DESFAZER remove (é UM passo de undo).
+5. Com o Collider selecionado: o Inspetor mostra o CABEÇALHO com ícone + tipo
+   (+ chave em mono), e a seção "Forma do colisor" com Caixa/Esfera/Cápsula/
+   Cilindro/Convexo/Malha — trocar a forma mostra o WIREFRAME VERDE no viewport
+   (ajustado à AABB do Nick) e o DESFAZER devolve a forma anterior.
+6. Botão "Adicionar classe" no Inspetor: menu AGRUPADO por função (Movimento:
+   Spin/Bob · Geometria: Malha · Física: Colisor).
+7. Trocar o idioma para English e conferir que Hub, editor, painéis, janela
+   Adicionar Nick, Diagnóstico e diálogo de crash ficam em inglês (voltar para
+   Português depois).
+8. Reportar: o que ficou estranho/no idioma errado + prints da janela Adicionar
+   Nick e do wireframe do collider.
+
 ## Aceite v0.1.17 — BUGS A/B + NÚCLEO NATIVO — Release `v0.1.17-fase2-teste`
 
 > Bug A: viewport desenhava objetos fora da cena. Bug B: importação lenta.

@@ -7,11 +7,14 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 ## Estado agora
 
 - **Ordem de execução (adendo v4, 2026-11-22)**: v0.1.17 FEITA (Release
-  publicada, aguardando aceite no aparelho) → **BLOCO 0**: T0.1 idiomas en/pt →
-  T0.2 NickKindRegistry + CK2 + migração CK1 + NICKS.md → T0.3 janela Adicionar
-  Nick + Inspetor + collider (**PARADA 1**) → T0.4 fidelidade de importação →
-  T0.5 Hub novo (**PARADA 2**) → M1 (marco jogável, M1.3 = input de tela/joystick,
-  DECISIONS #31) → resto da Fase 2 → Fase 3… (ordem completa no ROADMAP.md).
+  publicada, aguardando aceite no aparelho) → **BLOCO 0**: T0.1 ✓COMPILADO
+  (idiomas en/pt + seletor no Hub + checagem de CI) → T0.2 ✓COMPILADO
+  (NickKindRegistry + CK2 + migração CK1, 17 tipos IMPLEMENTADOS no NICKS.md) →
+  T0.3 ✓COMPILADO (janela Adicionar Nick + cabeçalho de tipo + seletor de forma
+  do collider com wireframe) — **PARADA 1: aguardando teste do USUÁRIO**
+  (passo a passo no TESTES_PENDENTES.md) → T0.4 fidelidade de importação →
+  T0.5 Hub novo (**PARADA 2**) → M1 (marco jogável, M1.3 = input de
+  tela/joystick, DECISIONS #31) → resto da Fase 2 → Fase 3… (ROADMAP.md).
 - **Fase**: 2 (Projeto & Assets) — **EM CURSO (ABERTA)**. Faltam F2.11
   streaming, F2.12 navegador, F2.13 pré-visualização, F2.14 prefabs e F2.15
   registro de assets. A tag `fase-2-ok` permanece REMOVIDA (não criar até

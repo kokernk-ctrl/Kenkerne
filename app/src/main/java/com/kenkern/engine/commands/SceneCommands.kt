@@ -1,5 +1,6 @@
 package com.kenkern.engine.commands
 
+import com.kenkern.engine.core.MalhaNick
 import com.kenkern.engine.core.Nick
 import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickClassRegistry
@@ -9,12 +10,14 @@ import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.TransformSnapshot
 
-/** Cria um Nick do TIPO (kind) informado (filho do pai informado ou raiz). */
+/** Cria um Nick do TIPO (kind) informado (filho do pai informado ou raiz),
+ *  aplicando as CLASSES PADRÃO do tipo (T0.3 — ex.: body.collider → Colisor). */
 class CreateNickCommand(
     private val scene: Scene,
     val parentId: ReferenceId?,
     private val kind: String,
     private val name: String? = null,
+    private val classesPadrao: List<String> = emptyList(),
     private val newId: ReferenceId = ReferenceId.generate()
 ) : Command {
     override val label: String get() = "Criar ${NickKindRegistry.labelOf(kind, "pt")}"
@@ -34,6 +37,10 @@ class CreateNickCommand(
         }
         val parent = parentId?.let { scene.findNick(it) }
         val nick = scene.createNick(name, parent, newId, kind = kind)
+        // Classes padrão do TIPO (preset de dados — DECISIONS #24).
+        for (classe in classesPadrao) {
+            NickClassRegistry.createInstance(classe)?.let { nick.addClassInstance(it) }
+        }
         created = nick
         storedParent = nick.parent
         storedIndex = nick.indexInParent().coerceAtLeast(0)
@@ -286,5 +293,49 @@ class SetClassFieldCommand(
         val inst = scene.findNick(nickId)?.findClassInstance(typeName) ?: return
         val value = oldValue ?: return
         inst.fields[fieldName] = value.copyValue()
+    }
+}
+
+/**
+ * T0.3 (adendo v4): troca a FORMA do colisor em UM Command — a forma nova se
+ * AJUSTA À AABB ATUAL do Nick (centro/tamanho da classe "Colisor" assumem o
+ * centro e a meia-extensão×2 da malha/cubo), e o UNDO devolve os 3 campos.
+ */
+class SetColliderShapeCommand(
+    private val scene: Scene,
+    private val nickId: ReferenceId,
+    private val novaForma: String
+) : Command {
+    override val label: String get() = "Forma do colisor"
+
+    private var antigaForma: String? = null
+    private var antigoCentro: NickValue.Vec3Value? = null
+    private var antigoTamanho: NickValue.Vec3Value? = null
+
+    // Rascunhos (sem alocação relevante por execute).
+    private val meia = FloatArray(3)
+    private val centro = FloatArray(3)
+
+    override fun execute() {
+        val nick = scene.findNick(nickId) ?: return
+        val inst = nick.findClassInstance(MalhaNick.CLASSE_COLISOR) ?: return
+        if (antigaForma == null) {
+            antigaForma = inst.getString("forma", "box")
+            (inst.fields["centro"] as? NickValue.Vec3Value)?.let { antigoCentro = it.copyValue() as NickValue.Vec3Value }
+            (inst.fields["tamanho"] as? NickValue.Vec3Value)?.let { antigoTamanho = it.copyValue() as NickValue.Vec3Value }
+        }
+        // Ajuste à AABB atual: a forma nova envolve o que o Nick já é.
+        MalhaNick.meiaExtensaoLocal(nick, meia)
+        MalhaNick.centroLocal(nick, centro)
+        inst.fields["forma"] = NickValue.StringValue(novaForma)
+        inst.fields["centro"] = NickValue.Vec3Value(centro[0], centro[1], centro[2])
+        inst.fields["tamanho"] = NickValue.Vec3Value(meia[0] * 2f, meia[1] * 2f, meia[2] * 2f)
+    }
+
+    override fun undo() {
+        val inst = scene.findNick(nickId)?.findClassInstance(MalhaNick.CLASSE_COLISOR) ?: return
+        antigaForma?.let { inst.fields["forma"] = NickValue.StringValue(it) }
+        antigoCentro?.let { inst.fields["centro"] = it.copyValue() as NickValue.Vec3Value }
+        antigoTamanho?.let { inst.fields["tamanho"] = it.copyValue() as NickValue.Vec3Value }
     }
 }

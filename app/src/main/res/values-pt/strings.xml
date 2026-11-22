@@ -142,6 +142,31 @@
     <string name="inspector_no_class">Nenhuma classe</string>
     <string name="inspector_class_applied">(já aplicada)</string>
     <string name="inspector_remove_class">Remover classe %1$s</string>
+    <string name="inspector_type">Tipo</string>
+    <string name="class_cat_movimento">Movimento</string>
+    <string name="class_cat_geometria">Geometria</string>
+    <string name="class_cat_fisica">Física</string>
+    <string name="class_cat_geral">Geral</string>
+
+    <!-- ===================== Janela Adicionar Nick (T0.3) ===================== -->
+    <string name="addnick_title">Adicionar Nick</string>
+    <string name="addnick_close">Fechar</string>
+    <string name="addnick_search">Buscar tipo…</string>
+    <string name="addnick_recentes">Recentes</string>
+    <string name="addnick_no_recent">Nada aqui ainda — os tipos que você criar aparecem aqui.</string>
+    <string name="addnick_empty">Nenhum tipo encontrado</string>
+    <string name="addnick_favorite">Favorito</string>
+    <string name="addnick_as_child">Como filho do selecionado</string>
+    <string name="addnick_at_root">Na raiz</string>
+
+    <!-- ===================== Forma do colisor (T0.3) ===================== -->
+    <string name="collider_shape">Forma do colisor</string>
+    <string name="collider_box">Caixa</string>
+    <string name="collider_sphere">Esfera</string>
+    <string name="collider_capsule">Cápsula</string>
+    <string name="collider_cylinder">Cilindro</string>
+    <string name="collider_convex">Convexo</string>
+    <string name="collider_mesh">Malha</string>
 
     <!-- ===================== Panels (docked/floating) ===================== -->
     <string name="panel_options">Opções do painel %1$s</string>

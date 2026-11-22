@@ -28,6 +28,29 @@ object PickingMath {
     private val aabbCentroLocal = FloatArray(3)
 
     /**
+     * T0.3 (adendo v4): interseção do RAIO com o PLANO DO CHÃO (y = 0) —
+     * usada pelo ponto de surgimento do Nick novo da janela "Adicionar Nick"
+     * ("posição do centro da tela projetada no chão"). Puro Kotlin (testes JVM
+     * rodam o mesmo código).
+     *
+     * Escreve x/z em [out] (índices 0 e 1) e devolve o t do raio; devolve -1
+     * quando não há interseção À FRENTE (olhando para cima ou paralelo ao
+     * chão) — o chamador usa o fallback que preferir.
+     */
+    fun interseccaoChao(
+        ox: Float, oy: Float, oz: Float,
+        dx: Float, dy: Float, dz: Float,
+        out: FloatArray
+    ): Float {
+        if (abs(dy) < 1e-6f) return -1f // paralelo ao chão
+        val t = -oy / dy
+        if (t < 0f) return -1f // interseção ATRÁS (olhando para cima)
+        out[0] = ox + dx * t
+        out[1] = oz + dz * t
+        return t
+    }
+
+    /**
      * AABB em MUNDO do Nick: 8 cantos da AABB LOCAL (malha importada tem AABB
      * própria pela classe "Malha"; Nick padrão = cubo de 1 m) transformados
      * pela matriz de mundo. Escreve em [outMin]/[outMax] (pré-alocados).

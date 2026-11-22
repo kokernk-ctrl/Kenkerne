@@ -142,6 +142,31 @@
     <string name="inspector_no_class">No class</string>
     <string name="inspector_class_applied">(already applied)</string>
     <string name="inspector_remove_class">Remove class %1$s</string>
+    <string name="inspector_type">Type</string>
+    <string name="class_cat_movimento">Movement</string>
+    <string name="class_cat_geometria">Geometry</string>
+    <string name="class_cat_fisica">Physics</string>
+    <string name="class_cat_geral">General</string>
+
+    <!-- ===================== Add Nick window (T0.3) ===================== -->
+    <string name="addnick_title">Add Nick</string>
+    <string name="addnick_close">Close</string>
+    <string name="addnick_search">Search type…</string>
+    <string name="addnick_recentes">Recent</string>
+    <string name="addnick_no_recent">Nothing here yet — types you create show up here.</string>
+    <string name="addnick_empty">No type found</string>
+    <string name="addnick_favorite">Favorite</string>
+    <string name="addnick_as_child">As child of selection</string>
+    <string name="addnick_at_root">At root</string>
+
+    <!-- ===================== Collider shape (T0.3) ===================== -->
+    <string name="collider_shape">Collider shape</string>
+    <string name="collider_box">Box</string>
+    <string name="collider_sphere">Sphere</string>
+    <string name="collider_capsule">Capsule</string>
+    <string name="collider_cylinder">Cylinder</string>
+    <string name="collider_convex">Convex</string>
+    <string name="collider_mesh">Mesh</string>
 
     <!-- ===================== Panels (docked/floating) ===================== -->
     <string name="panel_options">Panel options of %1$s</string>

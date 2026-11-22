@@ -77,8 +77,8 @@ private fun nickIcon(nick: Nick): ImageVector = when {
 }
 
 /**
- * Painel HIERARQUIA: árvore de Nicks com criar, renomear, apagar,
- * reordenar (subir/descer) e reparentar.
+ * Painel HIERARQUIA: árvore de Nicks com criar (janela "Adicionar Nick" da
+ * T0.3), renomear, apagar, reordenar (subir/descer) e reparentar.
  *
  * Visual (paleta neutra): linhas de 28dp, ícone por tipo, guias verticais de
  * indentação (1px #3C3C3C), seta de expandir; item selecionado com fundo
@@ -86,7 +86,7 @@ private fun nickIcon(nick: Nick): ImageVector = when {
  * (#9D9D9D), destacado só quando oculto; vermelho apenas na confirmação.
  */
 @Composable
-fun HierarchyPanel(vm: EditorViewModel) {
+fun HierarchyPanel(vm: EditorViewModel, onAdicionarNick: () -> Unit = { vm.addNick() }) {
     val revision = vm.revision.intValue
     val scene = vm.scene.value
     val selection = vm.selection.value
@@ -108,7 +108,7 @@ fun HierarchyPanel(vm: EditorViewModel) {
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 4.dp)
         ) {
-            IconButton(onClick = { vm.addNick() }, enabled = scene != null, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onAdicionarNick, enabled = scene != null, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Filled.Add, stringResource(R.string.hierarchy_create), tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = { showRename = true }, enabled = selection != null, modifier = Modifier.size(40.dp)) {

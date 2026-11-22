@@ -109,6 +109,7 @@ import com.kenkern.engine.render.GizmoSpace
 import com.kenkern.engine.render.KenkernSurfaceView
 import com.kenkern.engine.render.TransformGizmo
 import java.util.Locale
+import com.kenkern.engine.ui.panels.AddNickPanel
 import com.kenkern.engine.ui.panels.DockedPanel
 import com.kenkern.engine.ui.panels.FloatingPanel
 import com.kenkern.engine.ui.panels.HierarchyPanel
@@ -174,6 +175,18 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
 
     // Modo da câmera: Orbital ou Voo
     var cameraMode by rememberSaveable { mutableStateOf(CameraMode.ORBITAL) }
+
+    // ---------- Janela "Adicionar Nick" (T0.3): painel lateral no viewport ----------
+    var addNickVisivel by rememberSaveable { mutableStateOf(false) }
+    // Ponto de surgimento (centro da tela projetado no chão) — calculado ao ABRIR.
+    val spawnXz = remember { FloatArray(2) }
+    val abrirAddNick = {
+        val sv = surfaceView
+        if (sv != null && !sv.centroProjetadoNoChao(spawnXz)) {
+            sv.pontoSpawnFallback(spawnXz)
+        }
+        addNickVisivel = true
+    }
 
     // ---------- Importação de modelo (ETAPA A): SAF + opções ----------
     var uriImportacaoPendente by remember { mutableStateOf<android.net.Uri?>(null) }
@@ -276,7 +289,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 hierarchy.visible.value = false
                                 persistHierarchy()
                             }
-                        ) { HierarchyPanel(vm) }
+                        ) { HierarchyPanel(vm, onAdicionarNick = abrirAddNick) }
 
                         PanelResizeDivider(
                             onDrag = { dxPx ->
@@ -289,7 +302,9 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                     }
 
                     // ---------- Viewport (sempre dominante) ----------
-                    Box(Modifier.weight(1f).fillMaxHeight()) {
+                    Box(
+                        Modifier.weight(1f).fillMaxHeight()
+                    ) {
                         AndroidView(
                             factory = { ctx ->
                                 KenkernSurfaceView(
@@ -347,6 +362,27 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             FlightControls(svForFlight)
                         }
 
+                        // ---------- Janela "Adicionar Nick" (T0.3) ----------
+                        // Painel lateral de ~40% da largura da TELA dentro do viewport:
+                        // nunca cobre a Hierarquia, a TopBar nem a StatusBar.
+                        if (addNickVisivel) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterStart)
+                                    .fillMaxHeight()
+                                    .width(
+                                        (viewportWpx / density.density * 0.4f).dp
+                                            .coerceIn(240.dp, 420.dp)
+                                    )
+                            ) {
+                                AddNickPanel(
+                                    vm = vm,
+                                    spawnXz = spawnXz,
+                                    onFechar = { addNickVisivel = false }
+                                )
+                            }
+                        }
+
                         // Telas estreitas: painel "acoplado" vira overlay de lateral
                         if (!wide && hShown && hierarchy.docked.value) {
                             DockedPanel(
@@ -367,7 +403,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     hierarchy.visible.value = false
                                     persistHierarchy()
                                 }
-                            ) { HierarchyPanel(vm) }
+                            ) { HierarchyPanel(vm, onAdicionarNick = abrirAddNick) }
                         }
                         if (!wide && iShown && inspector.docked.value) {
                             DockedPanel(
@@ -406,7 +442,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     hierarchy.visible.value = false
                                     persistHierarchy()
                                 }
-                            ) { HierarchyPanel(vm) }
+                            ) { HierarchyPanel(vm, onAdicionarNick = abrirAddNick) }
                         }
                         if (iShown && !inspector.docked.value) {
                             FloatingPanel(

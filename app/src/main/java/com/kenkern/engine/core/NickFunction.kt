@@ -79,7 +79,8 @@ object KenkernBuiltInClasses {
                 listOf(
                     NickFieldDefinition("speed", "FLOAT", NickValue.FloatValue(45f)),
                     NickFieldDefinition("axis", "STRING", NickValue.StringValue("Y"))
-                )
+                ),
+                categoria = "movimento"
             )
         )
         NickClassRegistry.register(
@@ -89,7 +90,8 @@ object KenkernBuiltInClasses {
                 listOf(
                     NickFieldDefinition("amplitude", "FLOAT", NickValue.FloatValue(0.5f)),
                     NickFieldDefinition("speed", "FLOAT", NickValue.FloatValue(1.5f))
-                )
+                ),
+                categoria = "movimento"
             )
         )
         // T0.2 (adendo v4): classe COLISOR do Collider Body Nick — a forma é
@@ -104,7 +106,28 @@ object KenkernBuiltInClasses {
                     NickFieldDefinition("forma", "STRING", NickValue.StringValue("box")),
                     NickFieldDefinition("centro", "VEC3", NickValue.Vec3Value(0f, 0f, 0f)),
                     NickFieldDefinition("tamanho", "VEC3", NickValue.Vec3Value(1f, 1f, 1f))
-                )
+                ),
+                categoria = "fisica"
+            )
+        )
+        // T0.3: classe MALHA registrada também no catálogo (categoria Geometria)
+        // — o importador cria a instância direto (criarClasseMalha), e o botão
+        // "Adicionar classe" do Inspetor agora a lista com os campos padrão.
+        NickClassRegistry.register(
+            NickClassDefinition(
+                "Malha",
+                "Malha .KERN importada (caminho + AABB)",
+                listOf(
+                    NickFieldDefinition("path", "STRING", NickValue.StringValue("")),
+                    NickFieldDefinition("aabbMinX", "FLOAT", NickValue.FloatValue(-0.5f)),
+                    NickFieldDefinition("aabbMinY", "FLOAT", NickValue.FloatValue(-0.5f)),
+                    NickFieldDefinition("aabbMinZ", "FLOAT", NickValue.FloatValue(-0.5f)),
+                    NickFieldDefinition("aabbMaxX", "FLOAT", NickValue.FloatValue(0.5f)),
+                    NickFieldDefinition("aabbMaxY", "FLOAT", NickValue.FloatValue(0.5f)),
+                    NickFieldDefinition("aabbMaxZ", "FLOAT", NickValue.FloatValue(0.5f)),
+                    NickFieldDefinition("escalaFit", "FLOAT", NickValue.FloatValue(1f))
+                ),
+                categoria = "geometria"
             )
         )
         NickFunctionRegistry.register(SpinFunction)

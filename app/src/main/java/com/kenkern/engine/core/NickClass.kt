@@ -72,11 +72,16 @@ data class NickFieldDefinition(
 /**
  * Definição de uma classe de Nick: agrupa dados (campos) e FUNÇÕES.
  * Classes nativas são registradas em [NickClassRegistry].
+ *
+ * T0.3 (adendo v4): [categoria] agrupa o botão "Adicionar classe" do Inspetor
+ * por função (Movimento, Geometria, Física…) — chave estável em inglês,
+ * rótulo localizado na UI.
  */
 class NickClassDefinition(
     val name: String,
     val description: String,
-    val fields: List<NickFieldDefinition>
+    val fields: List<NickFieldDefinition>,
+    val categoria: String = "geral"
 ) {
     fun createInstance(): NickClassInstance {
         val inst = NickClassInstance(name)
@@ -119,6 +124,17 @@ object NickClassRegistry {
     fun find(typeName: String): NickClassDefinition? = definitions[typeName]
 
     fun all(): List<NickClassDefinition> = definitions.values.toList()
+
+    /** T0.3: classes agrupadas por CATEGORIA (ordem de registro preservada dentro de cada grupo). */
+    fun porCategoria(): LinkedHashMap<String, List<NickClassDefinition>> {
+        val out = LinkedHashMap<String, List<NickClassDefinition>>()
+        for (def in definitions.values) {
+            out.getOrPut(def.categoria) { ArrayList() }.let { lista ->
+                (lista as ArrayList).add(def)
+            }
+        }
+        return out
+    }
 
     fun names(): List<String> = definitions.keys.toList()
 

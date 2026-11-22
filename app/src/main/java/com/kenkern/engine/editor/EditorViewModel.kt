@@ -26,6 +26,7 @@ import com.kenkern.engine.commands.RenameCommand
 import com.kenkern.engine.commands.ReorderCommand
 import com.kenkern.engine.commands.ReparentCommand
 import com.kenkern.engine.commands.SetClassFieldCommand
+import com.kenkern.engine.commands.SetColliderShapeCommand
 import com.kenkern.engine.commands.SetFlagCommand
 import com.kenkern.engine.commands.TransformCommand
 import com.kenkern.engine.commands.TransformDragCommand
@@ -429,6 +430,40 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         // O novo nick é o último filho do pai (ou última raiz): seleciona direto.
         val criado = cmd.createdNickId()?.let { s.findNick(it) }
         if (criado != null) select(criado.id)
+    }
+
+    /**
+     * T0.3 (adendo v4, seção 3): cria um Nick do TIPO escolhido na janela
+     * "Adicionar Nick" — UM Command (desfazer remove), classes padrão do tipo
+     * aplicadas, nasce SELECIONADO na posição do centro da tela projetada no
+     * chão. [spawnXz] traz x/z do ponto projetado (null = origem).
+     */
+    fun addNickOfKind(kind: String, comoFilhoDoSelecionado: Boolean, spawnXz: FloatArray?) {
+        val s = sceneRef ?: return
+        val def = NickKindRegistry.find(kind)
+        val parent = if (comoFilhoDoSelecionado) {
+            selection.value?.let { s.findNick(it) } ?: s.roots.firstOrNull()
+        } else {
+            null
+        }
+        val cmd = CreateNickCommand(
+            s, parent?.id, kind,
+            classesPadrao = def?.defaultClasses ?: emptyList()
+        )
+        run(cmd)
+        val criado = cmd.createdNickId()?.let { s.findNick(it) }
+        if (criado != null) {
+            if (spawnXz != null) {
+                criado.transform.setLocalPosition(spawnXz[0], 0f, spawnXz[1])
+            }
+            select(criado.id)
+            bump()
+        }
+    }
+
+    /** T0.3: troca a FORMA do colisor do Nick selecionado (UM Command; ajusta à AABB). */
+    fun setColliderShape(id: ReferenceId, forma: String) {
+        run(SetColliderShapeCommand(sceneRef ?: return, id, forma))
     }
 
     fun renameSelected(newName: String) {

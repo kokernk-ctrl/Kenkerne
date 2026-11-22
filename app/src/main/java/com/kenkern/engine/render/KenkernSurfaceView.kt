@@ -398,6 +398,51 @@ class KenkernSurfaceView(
         focusPending = true
     }
 
+    // Rascunhos do ponto de surgimento (T0.3) — sem alocação por chamada.
+    private val spawnView = com.kenkern.engine.core.math.Mat4()
+    private val spawnEye = Vec3()
+    private val spawnOut = FloatArray(2)
+
+    /**
+     * T0.3 (adendo v4, seção 3): posição do CENTRO DA TELA projetada no CHÃO
+     * (y=0) — onde o Nick novo da janela "Adicionar Nick" nasce. Escreve x/z
+     * em [out] (tamanho 2) e devolve true; false quando não há interseção à
+     * frente (olhando para cima/paralelo): o chamador usa o alvo da câmera.
+     * Pode ser chamado de qualquer thread (usa só a câmera; valores de float).
+     */
+    fun centroProjetadoNoChao(out: FloatArray): Boolean {
+        camera.view(spawnView)
+        camera.eyePoint(spawnEye)
+        // Forward da câmera = -3ª linha da view (mesma derivação do renderer).
+        val fx = -spawnView.m[2]
+        val fy = -spawnView.m[6]
+        val fz = -spawnView.m[10]
+        val t = PickingMath.interseccaoChao(spawnEye.x, spawnEye.y, spawnEye.z, fx, fy, fz, spawnOut)
+        if (t >= 0f) {
+            out[0] = spawnOut[0]
+            out[1] = spawnOut[1]
+            return true
+        }
+        // Fallback: projeção horizontal do ALVO da câmera (orbital: o próprio
+        // alvo; voo: 8 m à frente da posição no plano XZ).
+        return false
+    }
+
+    /** Fallback do ponto de surgimento: alvo da câmera (orbital) ou 8 m à frente (voo). */
+    fun pontoSpawnFallback(out: FloatArray) {
+        if (camera.mode == CameraMode.FLIGHT) {
+            camera.view(spawnView)
+            val fx = -spawnView.m[2]
+            val fz = -spawnView.m[10]
+            camera.eyePoint(spawnEye)
+            out[0] = spawnEye.x + fx * 8f
+            out[1] = spawnEye.z + fz * 8f
+        } else {
+            out[0] = camera.target.x
+            out[1] = camera.target.z
+        }
+    }
+
     /** Duplo toque: vazio => cena toda; sobre um Nick selecionado => o Nick. */
     private fun handleDoubleTap() {
         focusAllNicks = selectionProvider() == null
