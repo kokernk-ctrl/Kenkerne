@@ -86,6 +86,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -113,6 +114,7 @@ import com.kenkern.engine.ui.panels.FloatingPanel
 import com.kenkern.engine.ui.panels.HierarchyPanel
 import com.kenkern.engine.ui.panels.InspectorPanel
 import com.kenkern.engine.ui.panels.PanelResizeDivider
+import com.kenkern.engine.R
 import com.kenkern.engine.ui.theme.KenkernAmber
 import com.kenkern.engine.ui.theme.KenkernBackground
 import com.kenkern.engine.ui.theme.KenkernError
@@ -331,11 +333,8 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Text(
-                                    if (cameraMode == CameraMode.FLIGHT) {
-                                        "Joystick move · arraste para olhar · botões sobem/descem"
-                                    } else {
-                                        "1 dedo: orbitar · 2 dedos: mover e zoom"
-                                    },
+                                    if (cameraMode == CameraMode.FLIGHT) stringResource(R.string.editor_hint_flight)
+                                    else stringResource(R.string.editor_hint_orbit),
                                     fontSize = 12.sp,
                                     color = KenkernTextMid
                                 )
@@ -511,11 +510,11 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 containerColor = KenkernSurfaceOverlay,
                 action = {
                     TextButton(onClick = { vm.recoveryNotice.value = false }) {
-                        Text("OK", color = KenkernAmber, fontSize = 12.sp)
+                        Text(stringResource(R.string.hub_ok), color = KenkernAmber, fontSize = 12.sp)
                     }
                 }
             ) {
-                Text("Cena recuperada do auto-save", fontSize = 12.sp)
+                Text(stringResource(R.string.editor_recovered), fontSize = 12.sp)
             }
         }
 
@@ -525,13 +524,13 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
             AlertDialog(
                 onDismissRequest = { opcoesImportacaoVisiveis = false; uriImportacaoPendente = null },
                 containerColor = KenkernSurfaceOverlay,
-                title = { Text("Importar modelo", fontSize = 16.sp, color = KenkernTextHigh) },
+                title = { Text(stringResource(R.string.import_title), fontSize = 16.sp, color = KenkernTextHigh) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            if (pastaImportacaoPendente) "Pasta: $nomePendente\n\n" +
-                                "A pasta inteira (modelo + .bin + texturas) é copiada para os assets do projeto."
-                            else "Arquivo: $nomePendente",
+                            if (pastaImportacaoPendente) stringResource(R.string.import_folder_label, nomePendente) + "\n\n" +
+                                stringResource(R.string.import_folder_note)
+                            else stringResource(R.string.import_file_label, nomePendente),
                             fontSize = 12.sp, color = KenkernTextMid
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -539,19 +538,19 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 checked = vm.importAjustarTamanho.value,
                                 onCheckedChange = { vm.importAjustarTamanho.value = it }
                             )
-                            Text("Ajustar ao tamanho (~2 m)", fontSize = 12.sp, color = KenkernTextHigh)
+                            Text(stringResource(R.string.import_adjust), fontSize = 12.sp, color = KenkernTextHigh)
                         }
 
                         // B2a: LIMITE DE RESOLUÇÃO DE TEXTURA (padrão 1024; opções
                         // 512/1024/2048). Reduz ANTES de gerar mipmaps — a importação
                         // fica muito mais rápida e o .KIMG menor.
-                        Text("Limite de resolução de textura", fontSize = 12.sp, color = KenkernTextHigh)
+                        Text(stringResource(R.string.import_res_limit), fontSize = 12.sp, color = KenkernTextHigh)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             for (opcao in com.kenkern.engine.editor.EditorViewModel.OPCOES_LIMITE_TEXTURA) {
                                 androidx.compose.material3.FilterChip(
                                     selected = vm.importLimiteTextura.intValue == opcao,
                                     onClick = { vm.importLimiteTextura.intValue = opcao },
-                                    label = { Text("$opcao", fontSize = 11.sp) },
+                                    label = { Text(opcao.toString(), fontSize = 11.sp) },
                                     leadingIcon = null
                                 )
                             }
@@ -559,22 +558,22 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
 
                         // B2b: QUALIDADE do encoder ETC2 — rápida por padrão
                         // (individual + diferencial + planar, paralelo); T/H só na alta.
-                        Text("Qualidade ETC2", fontSize = 12.sp, color = KenkernTextHigh)
+                        Text(stringResource(R.string.import_quality_etc2), fontSize = 12.sp, color = KenkernTextHigh)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             androidx.compose.material3.FilterChip(
                                 selected = vm.importQualidadeEtc2.value == com.kenkern.engine.assets.image.Etc2.Qualidade.RAPIDA,
                                 onClick = { vm.importQualidadeEtc2.value = com.kenkern.engine.assets.image.Etc2.Qualidade.RAPIDA },
-                                label = { Text("Rápida (padrão)", fontSize = 11.sp) }
+                                label = { Text(stringResource(R.string.import_fast), fontSize = 11.sp) }
                             )
                             androidx.compose.material3.FilterChip(
                                 selected = vm.importQualidadeEtc2.value == com.kenkern.engine.assets.image.Etc2.Qualidade.ALTA,
                                 onClick = { vm.importQualidadeEtc2.value = com.kenkern.engine.assets.image.Etc2.Qualidade.ALTA },
-                                label = { Text("Alta qualidade (T/H)", fontSize = 11.sp) }
+                                label = { Text(stringResource(R.string.import_high), fontSize = 11.sp) }
                             )
                         }
 
                         Text(
-                            "O modelo entra com escala 1 e Y para cima; a operação inteira é UM passo de desfazer.",
+                            stringResource(R.string.import_scale_note),
                             fontSize = 11.sp, color = KenkernTextLow
                         )
                     }
@@ -585,11 +584,11 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                         val uri = uriImportacaoPendente
                         uriImportacaoPendente = null
                         if (uri != null) vm.prepararImportacao(uri, pastaImportacaoPendente)
-                    }) { Text("Importar", color = KenkernAmber, fontSize = 12.sp) }
+                    }) { Text(stringResource(R.string.import_btn), color = KenkernAmber, fontSize = 12.sp) }
                 },
                 dismissButton = {
                     TextButton(onClick = { opcoesImportacaoVisiveis = false; uriImportacaoPendente = null }) {
-                        Text("Cancelar", color = KenkernTextMid, fontSize = 12.sp)
+                        Text(stringResource(R.string.import_cancel), color = KenkernTextMid, fontSize = 12.sp)
                     }
                 }
             )
@@ -607,7 +606,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 containerColor = KenkernSurfaceOverlay,
                 action = {
                     TextButton(onClick = { vm.consumeStatus() }) {
-                        Text("OK", color = KenkernAmber, fontSize = 12.sp)
+                        Text(stringResource(R.string.hub_ok), color = KenkernAmber, fontSize = 12.sp)
                     }
                 }
             ) {
@@ -639,7 +638,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = KenkernAmber, strokeWidth = 3.dp)
                     Spacer(Modifier.height(16.dp))
-                    Text("Preparando projeto...", fontSize = 12.sp, color = KenkernTextMid)
+                    Text(stringResource(R.string.editor_preparing), fontSize = 12.sp, color = KenkernTextMid)
                 }
             }
         }
@@ -706,15 +705,15 @@ private fun EditorTopBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp)
         ) {
-            TopBarIcon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar ao Hub") {
+            TopBarIcon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.editor_back_hub)) {
                 onExit()
             }
             TopBarIcon(
-                Icons.AutoMirrored.Filled.Undo, "Desfazer",
+                Icons.AutoMirrored.Filled.Undo, stringResource(R.string.editor_undo),
                 enabled = vm.canUndo
             ) { vm.undo() }
             TopBarIcon(
-                Icons.AutoMirrored.Filled.Redo, "Refazer",
+                Icons.AutoMirrored.Filled.Redo, stringResource(R.string.editor_redo),
                 enabled = vm.canRedo
             ) { vm.redo() }
 
@@ -723,12 +722,12 @@ private fun EditorTopBar(
             val playing = vm.playState.value == PlayState.PLAYING
             TopBarIcon(
                 if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                if (playing) "Pausar" else "Reproduzir",
+                if (playing) stringResource(R.string.editor_pause) else stringResource(R.string.editor_play),
                 active = playing
             ) {
                 vm.setPlayState(if (playing) PlayState.PAUSED else PlayState.PLAYING)
             }
-            TopBarIcon(Icons.Filled.Stop, "Parar") {
+            TopBarIcon(Icons.Filled.Stop, stringResource(R.string.editor_stop)) {
                 vm.setPlayState(PlayState.STOPPED)
             }
 
@@ -737,18 +736,18 @@ private fun EditorTopBar(
             // IMPORTAR MODELO (ETAPA A): menu com Arquivo e Pasta (SAF).
             var importMenu by remember { mutableStateOf(false) }
             Box {
-                TopBarIcon(Icons.Filled.SaveAlt, "Importar modelo") { importMenu = true }
+                TopBarIcon(Icons.Filled.SaveAlt, stringResource(R.string.editor_import_model)) { importMenu = true }
                 DropdownMenu(
                     expanded = importMenu,
                     onDismissRequest = { importMenu = false },
                     containerColor = KenkernSurfaceOverlay
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Arquivo (.glb, .gltf, .fbx, .zip)", fontSize = 12.sp, color = KenkernTextHigh) },
+                        text = { Text(stringResource(R.string.editor_import_file), fontSize = 12.sp, color = KenkernTextHigh) },
                         onClick = { importMenu = false; onImportClick(false) }
                     )
                     DropdownMenuItem(
-                        text = { Text("Pasta (glTF com .bin e texturas)", fontSize = 12.sp, color = KenkernTextHigh) },
+                        text = { Text(stringResource(R.string.editor_import_folder), fontSize = 12.sp, color = KenkernTextHigh) },
                         onClick = { importMenu = false; onImportClick(true) }
                     )
                 }
@@ -758,15 +757,15 @@ private fun EditorTopBar(
 
             // Modo de transformação: Mover / Girar / Escalar
             TopBarIcon(
-                Icons.Filled.OpenWith, "Mover",
+                Icons.Filled.OpenWith, stringResource(R.string.editor_move),
                 active = gizmoMode == GizmoMode.MOVE
             ) { onGizmoModeChange(GizmoMode.MOVE) }
             TopBarIcon(
-                Icons.Filled.RotateRight, "Girar",
+                Icons.Filled.RotateRight, stringResource(R.string.editor_rotate),
                 active = gizmoMode == GizmoMode.ROTATE
             ) { onGizmoModeChange(GizmoMode.ROTATE) }
             TopBarIcon(
-                Icons.Filled.OpenInFull, "Escalar",
+                Icons.Filled.OpenInFull, stringResource(R.string.editor_scale),
                 active = gizmoMode == GizmoMode.SCALE
             ) { onGizmoModeChange(GizmoMode.SCALE) }
 
@@ -781,7 +780,8 @@ private fun EditorTopBar(
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
                 Text(
-                    if (gizmoSpace == GizmoSpace.GLOBAL) "Global" else "Local",
+                    if (gizmoSpace == GizmoSpace.GLOBAL) stringResource(R.string.editor_global)
+                    else stringResource(R.string.editor_local),
                     fontSize = 12.sp,
                     color = KenkernTextHigh
                 )
@@ -789,7 +789,7 @@ private fun EditorTopBar(
 
             // Snap (0,25 m / 15° / 0,1)
             TopBarIcon(
-                Icons.Filled.GridOn, "Snap",
+                Icons.Filled.GridOn, stringResource(R.string.editor_snap),
                 active = snapEnabled
             ) { onSnapChange(!snapEnabled) }
 
@@ -798,7 +798,8 @@ private fun EditorTopBar(
             // Câmera: Orbital <-> Voo
             TopBarIcon(
                 Icons.Filled.Flight,
-                if (cameraMode == CameraMode.FLIGHT) "Voltar à câmera orbital" else "Câmera de voo",
+                if (cameraMode == CameraMode.FLIGHT) stringResource(R.string.editor_orbit_back)
+                else stringResource(R.string.editor_flight),
                 active = cameraMode == CameraMode.FLIGHT
             ) {
                 onCameraModeChange(
@@ -807,13 +808,13 @@ private fun EditorTopBar(
             }
 
             // FOCAR (F): enquadra o Nick selecionado (duplo toque no vazio = cena toda)
-            TopBarIcon(Icons.Filled.CenterFocusStrong, "Focar seleção (F)") { onFocusClick() }
+            TopBarIcon(Icons.Filled.CenterFocusStrong, stringResource(R.string.editor_focus)) { onFocusClick() }
 
             // Diagnóstico de toque: overlay ao vivo (ponto vermelho = toque,
             // círculos verdes = alças) para ver por que seleção/gizmo não respondem.
             TopBarIcon(
                 Icons.Filled.BugReport,
-                "Diagnóstico de toque (overlay)",
+                stringResource(R.string.editor_touch_diag),
                 active = debugOverlay
             ) { onDebugToggle() }
 
@@ -842,7 +843,7 @@ private fun EditorTopBar(
                         DropdownMenuItem(
                             text = {
                                 Text(
-                                    "Resolução ${(option * 100).toInt()}%",
+                                    stringResource(R.string.editor_resolution, (option * 100).toInt()),
                                     fontSize = 12.sp,
                                     color = if (option == resolutionScale) KenkernAmber else KenkernTextMid
                                 )
@@ -868,7 +869,8 @@ private fun EditorTopBar(
 
             TopBarIcon(
                 Icons.Filled.AccountTree,
-                if (hierarchy.visible.value) "Ocultar Hierarquia" else "Mostrar Hierarquia",
+                if (hierarchy.visible.value) stringResource(R.string.editor_hide_hierarchy)
+                else stringResource(R.string.editor_show_hierarchy),
                 active = hierarchy.visible.value
             ) {
                 hierarchy.visible.value = !hierarchy.visible.value
@@ -876,7 +878,8 @@ private fun EditorTopBar(
             }
             TopBarIcon(
                 Icons.Filled.Tune,
-                if (inspector.visible.value) "Ocultar Inspetor" else "Mostrar Inspetor",
+                if (inspector.visible.value) stringResource(R.string.editor_hide_inspector)
+                else stringResource(R.string.editor_show_inspector),
                 active = inspector.visible.value
             ) {
                 inspector.visible.value = !inspector.visible.value
@@ -1140,9 +1143,9 @@ private fun FlightControls(sv: KenkernSurfaceView) {
     val vert = remember { mutableStateOf(0f) }
     val knob = remember { mutableStateOf(Offset.Zero) }
     var speedT by remember { mutableStateOf(cam.flightSpeedNormalized()) }
-    var speedLabel by remember {
-        mutableStateOf(String.format(Locale.US, "%.1f m/s", cam.flightSpeed))
-    }
+    // T0.1: rótulo de velocidade localizado (stringResource na composição —
+    // o estado guarda só o valor normalizado, o texto vem do recurso).
+    val speedLabel = stringResource(R.string.editor_speed, cam.flightSpeed)
 
     // Movimento contínuo sincronizado com os frames (dt real, sem alocação relevante).
     LaunchedEffect(Unit) {
@@ -1225,7 +1228,6 @@ private fun FlightControls(sv: KenkernSurfaceView) {
                 onValueChange = { t ->
                     speedT = t
                     cam.setFlightSpeedNormalized(t)
-                    speedLabel = String.format(Locale.US, "%.1f m/s", cam.flightSpeed)
                 },
                 modifier = Modifier.fillMaxWidth().height(28.dp)
             )
@@ -1236,10 +1238,10 @@ private fun FlightControls(sv: KenkernSurfaceView) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
         ) {
-            FlightHoldButton(Icons.Filled.KeyboardArrowUp, "Subir") { held ->
+            FlightHoldButton(Icons.Filled.KeyboardArrowUp, stringResource(R.string.editor_up)) { held ->
                 vert.value = if (held) 1f else 0f
             }
-            FlightHoldButton(Icons.Filled.KeyboardArrowDown, "Descer") { held ->
+            FlightHoldButton(Icons.Filled.KeyboardArrowDown, stringResource(R.string.editor_down)) { held ->
                 vert.value = if (held) -1f else 0f
             }
         }
@@ -1324,9 +1326,9 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
             )
             Text(
                 when {
-                    playing -> "PLAY"
-                    paused -> "PAUSA"
-                    else -> "PRONTO"
+                    playing -> stringResource(R.string.editor_status_play)
+                    paused -> stringResource(R.string.editor_status_pause)
+                    else -> stringResource(R.string.editor_status_ready)
                 },
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -1336,21 +1338,21 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
                     else -> KenkernTextMid
                 }
             )
-            Text("$fps FPS", fontSize = 12.sp, color = KenkernTextMid)
+            Text(stringResource(R.string.editor_fps, fps), fontSize = 12.sp, color = KenkernTextMid)
 
             // REGRA "CENA = TELA" (A4): contagem de Nicks da cena × Nicks desenhados
             // — M precisa bater com os Nicks visíveis com malha (checagem "cena = tela"
             // do Diagnóstico; a Hierarquia e o viewport mostram os mesmos objetos).
             Text(
-                "$totalNicks nicks · $nicksDesenhados desenhados",
+                stringResource(R.string.editor_nicks_drawn, totalNicks, nicksDesenhados),
                 fontSize = 12.sp,
                 color = KenkernTextMid
             )
 
             // Métricas de frame: atualizadas apenas 2x/s (fpsTick), formatadas fora do thread GL.
             Text(
-                text = String.format(
-                    Locale.US, "%.1f ms upd · %.1f ms draw · %d dc", updMs, drawTimeMs, draws
+                text = stringResource(
+                    R.string.editor_frame_metrics, updMs, drawTimeMs, draws
                 ),
                 fontSize = 12.sp,
                 color = KenkernTextMid,
@@ -1366,7 +1368,7 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
                     tint = KenkernError,
                     modifier = Modifier.size(12.dp)
                 )
-                Text("GL limitado (modo seguro)", fontSize = 12.sp, color = KenkernError)
+                Text(stringResource(R.string.editor_gl_limited), fontSize = 12.sp, color = KenkernError)
             }
 
             // Gizmo caiu no modo vazio (construção falhou): aviso visível, app vivo.
@@ -1377,13 +1379,14 @@ private fun EditorStatusBar(vm: EditorViewModel, surfaceView: KenkernSurfaceView
                     tint = KenkernError,
                     modifier = Modifier.size(12.dp)
                 )
-                Text("Gizmo indisponível (modo vazio)", fontSize = 12.sp, color = KenkernError)
+                Text(stringResource(R.string.editor_gizmo_unavailable), fontSize = 12.sp, color = KenkernError)
             }
 
             Spacer(Modifier.weight(1f))
 
             Text(
-                if (surfaceView?.isKernOk() == true) "OpenGL ES · .KERN OK" else "OpenGL ES",
+                if (surfaceView?.isKernOk() == true) stringResource(R.string.editor_gl_ok)
+                else stringResource(R.string.editor_gl),
                 fontSize = 12.sp,
                 color = KenkernTextMid
             )
@@ -1410,7 +1413,7 @@ private fun DialogosImportacao(vm: EditorViewModel) {
         AlertDialog(
             onDismissRequest = { /* modal durante a importação; sair pelo CANCELAR */ },
             containerColor = KenkernSurfaceOverlay,
-            title = { Text("Importando modelo", fontSize = 16.sp, color = KenkernTextHigh) },
+            title = { Text(stringResource(R.string.import_running), fontSize = 16.sp, color = KenkernTextHigh) },
             text = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(
@@ -1423,7 +1426,7 @@ private fun DialogosImportacao(vm: EditorViewModel) {
             },
             confirmButton = {
                 TextButton(onClick = { vm.cancelarImportacao() }) {
-                    Text("Cancelar", color = KenkernError, fontSize = 12.sp)
+                    Text(stringResource(R.string.import_cancel), color = KenkernError, fontSize = 12.sp)
                 }
             }
         )
@@ -1435,7 +1438,7 @@ private fun DialogosImportacao(vm: EditorViewModel) {
         AlertDialog(
             onDismissRequest = { vm.limparRelatorioImportacao() },
             containerColor = KenkernSurfaceOverlay,
-            title = { Text("Importação concluída", fontSize = 16.sp, color = KenkernTextHigh) },
+            title = { Text(stringResource(R.string.import_done), fontSize = 16.sp, color = KenkernTextHigh) },
             text = {
                 Column {
                     Text(
@@ -1452,11 +1455,11 @@ private fun DialogosImportacao(vm: EditorViewModel) {
                 TextButton(onClick = {
                     clipboard.setText(AnnotatedString(relatorio.textoRelatorio()))
                     vm.limparRelatorioImportacao()
-                }) { Text("Copiar relatório", color = KenkernAmber, fontSize = 12.sp) }
+                }) { Text(stringResource(R.string.import_copy_report), color = KenkernAmber, fontSize = 12.sp) }
             },
             dismissButton = {
                 TextButton(onClick = { vm.limparRelatorioImportacao() }) {
-                    Text("Fechar", color = KenkernTextMid, fontSize = 12.sp)
+                    Text(stringResource(R.string.import_close), color = KenkernTextMid, fontSize = 12.sp)
                 }
             }
         )
@@ -1475,7 +1478,7 @@ private fun DialogosImportacao(vm: EditorViewModel) {
                         tint = KenkernError, modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("Não foi possível importar", fontSize = 15.sp, color = KenkernTextHigh)
+                    Text(stringResource(R.string.import_failed_title), fontSize = 15.sp, color = KenkernTextHigh)
                 }
             },
             text = {
@@ -1489,7 +1492,7 @@ private fun DialogosImportacao(vm: EditorViewModel) {
             },
             confirmButton = {
                 TextButton(onClick = { vm.limparErroImportacao() }) {
-                    Text("OK", color = KenkernAmber, fontSize = 12.sp)
+                    Text(stringResource(R.string.hub_ok), color = KenkernAmber, fontSize = 12.sp)
                 }
             }
         )
@@ -1508,26 +1511,23 @@ private fun DialogosImportacao(vm: EditorViewModel) {
                         tint = KenkernAmber, modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("Arquivo grande", fontSize = 15.sp, color = KenkernTextHigh)
+                    Text(stringResource(R.string.import_big_title), fontSize = 15.sp, color = KenkernTextHigh)
                 }
             },
             text = {
                 Text(
-                    "'${pendenteGrande.nome}' tem %.0f MB (acima de 200 MB).\n\n" +
-                        "A importação roda em background, mas vai usar bastante memória e tempo. Continuar?".format(
-                            java.util.Locale.US, pendenteGrande.tamanhoMb
-                        ),
+                    stringResource(R.string.import_big_text, pendenteGrande.nome, pendenteGrande.tamanhoMb),
                     fontSize = 12.sp, color = KenkernTextMid
                 )
             },
             confirmButton = {
                 TextButton(onClick = { vm.confirmarImportacaoGrande() }) {
-                    Text("Importar mesmo assim", color = KenkernAmber, fontSize = 12.sp)
+                    Text(stringResource(R.string.import_big_yes), color = KenkernAmber, fontSize = 12.sp)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { vm.recusarImportacaoGrande() }) {
-                    Text("Cancelar", color = KenkernTextMid, fontSize = 12.sp)
+                    Text(stringResource(R.string.import_cancel), color = KenkernTextMid, fontSize = 12.sp)
                 }
             }
         )

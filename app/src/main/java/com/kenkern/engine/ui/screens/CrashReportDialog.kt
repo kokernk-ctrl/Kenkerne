@@ -28,12 +28,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import com.kenkern.engine.R
 import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.ui.theme.KenkernAmber
@@ -164,7 +166,7 @@ fun CrashReportDialog(
             DialogProperties()
         },
         title = {
-            Text("O app fechou na última vez", fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.crash_title), fontWeight = FontWeight.SemiBold)
         },
         text = {
             // Texto ROLÁVEL com altura relativa à tela (45% de screenHeightDp):
@@ -200,7 +202,7 @@ fun CrashReportDialog(
                     modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                 ) {
                     Text(
-                        if (copied) "Copiado" else "Copiar",
+                        if (copied) stringResource(R.string.crash_copied) else stringResource(R.string.crash_copy),
                         color = KenkernAmber,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -210,7 +212,7 @@ fun CrashReportDialog(
                     onClick = onDelete,
                     modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                 ) {
-                    Text("Apagar", color = KenkernError, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.crash_delete), color = KenkernError, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

@@ -39,9 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.kenkern.engine.R
 import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.editor.PanelStateStore
 import com.kenkern.engine.ui.theme.KenkernAmber
@@ -93,7 +95,7 @@ fun DockedPanel(
                     ) {
                         Icon(
                             Icons.Filled.MoreVert,
-                            contentDescription = "Opções do painel $title",
+                            contentDescription = stringResource(R.string.panel_options, title),
                             tint = KenkernTextMid,
                             modifier = Modifier.size(18.dp)
                         )
@@ -104,14 +106,14 @@ fun DockedPanel(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Flutuar sobre o viewport", fontSize = MaterialTheme.typography.bodyMedium.fontSize) },
+                            text = { Text(stringResource(R.string.panel_float), fontSize = MaterialTheme.typography.bodyMedium.fontSize) },
                             onClick = {
                                 menuOpen = false
                                 onFloat()
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Ocultar painel", fontSize = MaterialTheme.typography.bodyMedium.fontSize) },
+                            text = { Text(stringResource(R.string.panel_hide), fontSize = MaterialTheme.typography.bodyMedium.fontSize) },
                             onClick = {
                                 menuOpen = false
                                 onHide()
@@ -261,7 +263,7 @@ fun FloatingPanel(
                     IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
                         Icon(
                             Icons.Filled.MoreVert,
-                            contentDescription = "Opções do painel ${state.title}",
+                            contentDescription = stringResource(R.string.panel_options, state.title),
                             tint = KenkernTextMid,
                             modifier = Modifier.size(18.dp)
                         )
@@ -272,14 +274,14 @@ fun FloatingPanel(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Acoplar à lateral", fontSize = MaterialTheme.typography.bodyMedium.fontSize) },
+                            text = { Text(stringResource(R.string.panel_dock), fontSize = MaterialTheme.typography.bodyMedium.fontSize) },
                             onClick = {
                                 menuOpen = false
                                 onDock()
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Ocultar painel", fontSize = MaterialTheme.typography.bodyMedium.fontSize) },
+                            text = { Text(stringResource(R.string.panel_hide), fontSize = MaterialTheme.typography.bodyMedium.fontSize) },
                             onClick = {
                                 menuOpen = false
                                 onHide()
@@ -326,7 +328,7 @@ fun FloatingPanel(
                 ) {
                     Icon(
                         Icons.Filled.DragIndicator,
-                        contentDescription = "Redimensionar ${state.title}",
+                        contentDescription = stringResource(R.string.panel_resize, state.title),
                         tint = if (resizing) KenkernAmber else KenkernTextLow,
                         modifier = Modifier.size(14.dp)
                     )

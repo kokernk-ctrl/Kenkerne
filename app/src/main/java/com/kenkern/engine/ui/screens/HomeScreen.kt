@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
@@ -61,19 +62,22 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kenkern.engine.R
 import com.kenkern.engine.projects.Kernpack
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
 import com.kenkern.engine.diag.KenkernLog
+import com.kenkern.engine.ui.AppLanguage
 import com.kenkern.engine.ui.theme.KenkernAmber
 import com.kenkern.engine.ui.theme.KenkernBackground
 import com.kenkern.engine.ui.theme.KenkernError
-import com.kenkern.engine.ui.theme.KenkernOutline
 import com.kenkern.engine.ui.theme.KenkernOutlineSoft
 import com.kenkern.engine.ui.theme.KenkernSurface
 import com.kenkern.engine.ui.theme.KenkernSurfaceHigh
@@ -93,6 +97,10 @@ import java.util.Locale
  *  - Paisagem: grade de 2 colunas (LazyVerticalGrid).
  *  - Estado vazio: mensagem curta + um único botão de criar.
  *  - Fundo plano #1E1E1E, sem gradientes decorativos.
+ *
+ * T0.1 (idiomas): TODAS as strings vêm de recursos (strings.xml/values-pt);
+ *  - seletor de idioma (Português / English / idioma do aparelho) no
+ *    cabeçalho — troca imediata via AppLanguage.apply (recreate da Activity).
  */
 @Composable
 fun HomeScreen(
@@ -159,6 +167,8 @@ fun HomeScreen(
                     )
                 }
                 Spacer(Modifier.weight(1f))
+                // T0.1: SELETOR DE IDIOMA (en/pt/padrão do aparelho; troca imediata)
+                LanguageSelector()
                 // Importar .kernpack (SAF OPEN_DOCUMENT)
                 IconButton(
                     onClick = { importarLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
@@ -166,7 +176,7 @@ fun HomeScreen(
                 ) {
                     Icon(
                         Icons.Filled.Folder,
-                        contentDescription = "Importar projeto (.kernpack)",
+                        contentDescription = stringResource(R.string.hub_import_cd),
                         tint = KenkernTextMid
                     )
                 }
@@ -177,7 +187,7 @@ fun HomeScreen(
                 ) {
                     Icon(
                         Icons.Filled.BugReport,
-                        contentDescription = "Diagnóstico",
+                        contentDescription = stringResource(R.string.hub_diagnostico_cd),
                         tint = KenkernTextMid
                     )
                 }
@@ -192,7 +202,7 @@ fun HomeScreen(
                     contentPadding = PaddingValues(horizontal = 12.dp),
                     modifier = Modifier.height(40.dp)
                 ) {
-                    Text("Novo projeto", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.hub_new_project), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -210,7 +220,7 @@ fun HomeScreen(
                 ) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(
-                            "Projetos recentes",
+                            stringResource(R.string.hub_recent_projects),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             color = KenkernTextMid
@@ -252,7 +262,9 @@ fun HomeScreen(
                 containerColor = KenkernSurfaceHigh,
                 contentColor = KenkernTextHigh,
                 action = {
-                    TextButton(onClick = onConsumeStatus) { Text("OK", color = KenkernAmber) }
+                    TextButton(onClick = onConsumeStatus) {
+                        Text(stringResource(R.string.hub_ok), color = KenkernAmber)
+                    }
                 }
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -303,11 +315,10 @@ fun HomeScreen(
             titleContentColor = KenkernTextHigh,
             textContentColor = KenkernTextMid,
             shape = RoundedCornerShape(16.dp),
-            title = { Text("Apagar projeto", fontWeight = FontWeight.SemiBold) },
+            title = { Text(stringResource(R.string.hub_delete_title), fontWeight = FontWeight.SemiBold) },
             text = {
                 Text(
-                    "Apagar \"${project.name}\" e todos os arquivos dele? " +
-                        "Esta ação não pode ser desfeita.",
+                    stringResource(R.string.hub_delete_text, project.name),
                     fontSize = 13.sp
                 )
             },
@@ -317,32 +328,91 @@ fun HomeScreen(
                     pendingDelete = null
                     onDeleteProject(toDelete)
                 }) {
-                    Text("Apagar", color = KenkernError, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.hub_delete), color = KenkernError, fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = null }) {
-                    Text("Cancelar", color = KenkernTextMid)
+                    Text(stringResource(R.string.hub_cancel), color = KenkernTextMid)
                 }
             }
         )
     }
 }
 
-/** Data relativa curta: "agora", "há 2 h", "ontem", "há 3 dias", dd/MM/yy. */
+/**
+ * T0.1: seletor de idioma do app — Português / English / idioma do aparelho.
+ * A escolha é gravada por AppLanguage e a Activity é RECREADA na hora
+ * (attachBaseContext aplica o locale novo; o Hub inteiro recompõe traduzido).
+ */
+@Composable
+private fun LanguageSelector() {
+    val context = LocalContext.current
+    var menuOpen by remember { mutableStateOf(false) }
+    val atual = AppLanguage.currentTag(context)
+    val escolhido = AppLanguage.chosen(context)
+
+    Box {
+        IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
+            Icon(
+                Icons.Filled.Language,
+                contentDescription = stringResource(R.string.hub_language_cd),
+                tint = if (escolhido != null) KenkernAmber else KenkernTextMid
+            )
+        }
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false },
+            containerColor = KenkernSurfaceHigh
+        ) {
+            fun marcar(tag: String?): String =
+                if (escolhido == tag && (tag != null || escolhido == null)) " ✓" else ""
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.hub_language_pt) + marcar(AppLanguage.PT), fontSize = 13.sp, color = KenkernTextHigh) },
+                onClick = { menuOpen = false; AppLanguage.apply(context, AppLanguage.PT) }
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.hub_language_en) + marcar(AppLanguage.EN), fontSize = 13.sp, color = KenkernTextHigh) },
+                onClick = { menuOpen = false; AppLanguage.apply(context, AppLanguage.EN) }
+            )
+            HorizontalDivider(thickness = 1.dp, color = KenkernOutlineSoft)
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        stringResource(R.string.hub_language_device) + marcar(null) +
+                            " (" + (if (atual == AppLanguage.PT) stringResource(R.string.hub_language_pt) else stringResource(R.string.hub_language_en)) + ")",
+                        fontSize = 13.sp, color = KenkernTextMid
+                    )
+                },
+                onClick = { menuOpen = false; AppLanguage.apply(context, null) }
+            )
+        }
+    }
+}
+
+/**
+ * Data relativa curta localizada: "agora", "há 2 min", "ontem", "há 3 dias",
+ * dd/MM/yy (a data absoluta usa o formato curto do locale corrente).
+ */
+@Composable
 private fun relativeDate(created: String): String {
-    val parsed = runCatching {
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).parse(created)?.time
-    }.onFailure { KenkernLog.w("Kenkern/HomeScreen", "data de criação do projeto ilegível — mostrando texto cru", it) }
-        .getOrNull() ?: return created
+    val parsed = remember(created) {
+        runCatching {
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).parse(created)?.time
+        }.onFailure { KenkernLog.w("Kenkern/HomeScreen", "data de criação do projeto ilegível — mostrando texto cru", it) }
+            .getOrNull()
+    }
+    if (parsed == null) return created
     val diffMinutes = (System.currentTimeMillis() - parsed) / 60000L
     return when {
-        diffMinutes < 1L -> "agora"
-        diffMinutes < 60L -> "há ${diffMinutes} min"
-        diffMinutes < 60L * 24L -> "há ${diffMinutes / 60L} h"
-        diffMinutes < 60L * 48L -> "ontem"
-        diffMinutes < 60L * 24L * 7L -> "há ${diffMinutes / (60L * 24L)} dias"
-        else -> SimpleDateFormat("dd/MM/yy", Locale.getDefault()).format(Date(parsed))
+        diffMinutes < 1L -> stringResource(R.string.hub_time_now)
+        diffMinutes < 60L -> stringResource(R.string.hub_time_min, diffMinutes)
+        diffMinutes < 60L * 24L -> stringResource(R.string.hub_time_hour, diffMinutes / 60L)
+        diffMinutes < 60L * 48L -> stringResource(R.string.hub_time_yesterday)
+        diffMinutes < 60L * 24L * 7L -> stringResource(R.string.hub_time_days, diffMinutes / (60L * 24L))
+        else -> remember(parsed) {
+            SimpleDateFormat.getDateInstance(java.text.SimpleDateFormat.SHORT, Locale.getDefault()).format(Date(parsed))
+        }
     }
 }
 
@@ -356,7 +426,7 @@ private fun EmptyProjectsState(isLoading: Boolean, onCreate: () -> Unit) {
             .padding(vertical = 32.dp)
     ) {
         Text(
-            if (isLoading) "Carregando..." else "Nenhum projeto ainda",
+            if (isLoading) stringResource(R.string.hub_loading) else stringResource(R.string.hub_no_projects),
             fontSize = 13.sp,
             color = KenkernTextMid
         )
@@ -372,7 +442,7 @@ private fun EmptyProjectsState(isLoading: Boolean, onCreate: () -> Unit) {
             contentPadding = PaddingValues(horizontal = 12.dp),
             modifier = Modifier.height(40.dp)
         ) {
-            Text("Criar projeto", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.hub_create_project), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -447,7 +517,7 @@ private fun ProjectCard(
                 IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
                     Icon(
                         Icons.Filled.MoreVert,
-                        contentDescription = "Menu de ${project.name}",
+                        contentDescription = stringResource(R.string.hub_menu_of, project.name),
                         tint = KenkernTextMid,
                         modifier = Modifier.size(18.dp)
                     )
@@ -458,35 +528,35 @@ private fun ProjectCard(
                     containerColor = KenkernSurfaceHigh
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Abrir", fontSize = 13.sp, color = KenkernTextHigh) },
+                        text = { Text(stringResource(R.string.hub_open), fontSize = 13.sp, color = KenkernTextHigh) },
                         onClick = {
                             menuOpen = false
                             onOpen()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Renomear", fontSize = 13.sp, color = KenkernTextHigh) },
+                        text = { Text(stringResource(R.string.hub_rename), fontSize = 13.sp, color = KenkernTextHigh) },
                         onClick = {
                             menuOpen = false
                             onRename()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Exportar (.kernpack)", fontSize = 13.sp, color = KenkernTextHigh) },
+                        text = { Text(stringResource(R.string.hub_export), fontSize = 13.sp, color = KenkernTextHigh) },
                         onClick = {
                             menuOpen = false
                             onExportar()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Duplicar", fontSize = 13.sp, color = KenkernTextHigh) },
+                        text = { Text(stringResource(R.string.hub_duplicate), fontSize = 13.sp, color = KenkernTextHigh) },
                         onClick = {
                             menuOpen = false
                             onDuplicate()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Apagar", fontSize = 13.sp, color = KenkernError) },
+                        text = { Text(stringResource(R.string.hub_delete), fontSize = 13.sp, color = KenkernError) },
                         onClick = {
                             menuOpen = false
                             onDelete()
@@ -540,12 +610,12 @@ private fun RenameProjectDialog(
         titleContentColor = KenkernTextHigh,
         textContentColor = KenkernTextMid,
         shape = RoundedCornerShape(16.dp),
-        title = { Text("Renomear projeto", fontWeight = FontWeight.SemiBold) },
+        title = { Text(stringResource(R.string.hub_rename_title), fontWeight = FontWeight.SemiBold) },
         text = {
             OutlinedTextField(
                 value = text,
                 onValueChange = { if (it.length <= 60) text = it },
-                label = { Text("Nome do projeto", fontSize = 12.sp) },
+                label = { Text(stringResource(R.string.hub_project_name), fontSize = 12.sp) },
                 singleLine = true,
                 isError = text.isNotBlank() && !valid
             )
@@ -554,10 +624,10 @@ private fun RenameProjectDialog(
             TextButton(
                 onClick = { if (valid) onRename(text.trim()) },
                 enabled = valid && text.trim() != project.name
-            ) { Text("Renomear", color = KenkernAmber, fontWeight = FontWeight.SemiBold) }
+            ) { Text(stringResource(R.string.hub_rename), color = KenkernAmber, fontWeight = FontWeight.SemiBold) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar", color = KenkernTextMid) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.hub_cancel), color = KenkernTextMid) }
         }
     )
 }
@@ -572,11 +642,11 @@ private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) 
         titleContentColor = KenkernTextHigh,
         textContentColor = KenkernTextMid,
         shape = RoundedCornerShape(16.dp),
-        title = { Text("Novo projeto", fontWeight = FontWeight.SemiBold) },
+        title = { Text(stringResource(R.string.hub_new_title), fontWeight = FontWeight.SemiBold) },
         text = {
             Column {
                 Text(
-                    "A estrutura padrão da engine será criada:",
+                    stringResource(R.string.hub_new_structure),
                     fontSize = 12.sp
                 )
                 Spacer(Modifier.height(8.dp))
@@ -586,7 +656,7 @@ private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) 
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        "assets/   scenes/   nicks/\nscripts/  audio/   animations/\nshaders/  build/\n→ project.kenkern  +  scenes/cena.ck",
+                        stringResource(R.string.hub_new_folders),
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
                         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
@@ -598,11 +668,11 @@ private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) 
                 OutlinedTextField(
                     value = name,
                     onValueChange = { if (it.length <= 60) name = it },
-                    label = { Text("Nome do projeto", fontSize = 12.sp) },
+                    label = { Text(stringResource(R.string.hub_project_name), fontSize = 12.sp) },
                     supportingText = {
                         Text(
-                            if (name.isBlank()) "Ex.: Meu Jogo 3D"
-                            else "pasta: ${ProjectManager.sanitize(name)}",
+                            if (name.isBlank()) stringResource(R.string.hub_name_hint)
+                            else stringResource(R.string.hub_name_folder, ProjectManager.sanitize(name)),
                             fontSize = 12.sp
                         )
                     },
@@ -616,10 +686,10 @@ private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) 
             TextButton(
                 onClick = { if (valid) onCreate(name.trim()) },
                 enabled = valid
-            ) { Text("Criar", color = KenkernAmber, fontWeight = FontWeight.SemiBold) }
+            ) { Text(stringResource(R.string.hub_create), color = KenkernAmber, fontWeight = FontWeight.SemiBold) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar", color = KenkernTextMid) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.hub_cancel), color = KenkernTextMid) }
         }
     )
 }

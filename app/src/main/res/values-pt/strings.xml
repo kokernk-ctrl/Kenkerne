@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kenkern</string>
+
+    <!-- ===================== HUB (HomeScreen) ===================== -->
+    <string name="hub_new_project">Novo projeto</string>
+    <string name="hub_recent_projects">Projetos recentes</string>
+    <string name="hub_no_projects">Nenhum projeto ainda</string>
+    <string name="hub_loading">Carregando…</string>
+    <string name="hub_create_project">Criar projeto</string>
+    <string name="hub_import_cd">Importar projeto (.kernpack)</string>
+    <string name="hub_diagnostico_cd">Diagnóstico</string>
+    <string name="hub_language_cd">Idioma do app</string>
+    <string name="hub_language">Idioma</string>
+    <string name="hub_language_pt">Português</string>
+    <string name="hub_language_en">English</string>
+    <string name="hub_language_device">Idioma do aparelho</string>
+    <string name="hub_menu_of">Menu de %1$s</string>
+    <string name="hub_open">Abrir</string>
+    <string name="hub_rename">Renomear</string>
+    <string name="hub_export">Exportar (.kernpack)</string>
+    <string name="hub_duplicate">Duplicar</string>
+    <string name="hub_delete">Apagar</string>
+    <string name="hub_delete_title">Apagar projeto</string>
+    <string name="hub_delete_text">Apagar “%1$s” e todos os arquivos dele? Esta ação não pode ser desfeita.</string>
+    <string name="hub_rename_title">Renomear projeto</string>
+    <string name="hub_project_name">Nome do projeto</string>
+    <string name="hub_new_title">Novo projeto</string>
+    <string name="hub_new_structure">A estrutura padrão da engine será criada:</string>
+    <string name="hub_new_folders">assets/   scenes/   nicks/\nscripts/  audio/   animations/\nshaders/  build/\n→ project.kenkern  +  scenes/cena.ck</string>
+    <string name="hub_name_hint">Ex.: Meu Jogo 3D</string>
+    <string name="hub_name_folder">pasta: %1$s</string>
+    <string name="hub_create">Criar</string>
+    <string name="hub_cancel">Cancelar</string>
+    <string name="hub_ok">OK</string>
+    <string name="hub_time_now">agora</string>
+    <string name="hub_time_min">há %1$d min</string>
+    <string name="hub_time_hour">há %1$d h</string>
+    <string name="hub_time_yesterday">ontem</string>
+    <string name="hub_time_days">há %1$d dias</string>
+
+    <!-- ===================== EDITOR (TopBar/StatusBar/overlays) ===================== -->
+    <string name="editor_back_hub">Voltar ao Hub</string>
+    <string name="editor_undo">Desfazer</string>
+    <string name="editor_redo">Refazer</string>
+    <string name="editor_play">Reproduzir</string>
+    <string name="editor_pause">Pausar</string>
+    <string name="editor_stop">Parar</string>
+    <string name="editor_import_model">Importar modelo</string>
+    <string name="editor_import_file">Arquivo (.glb, .gltf, .fbx, .zip)</string>
+    <string name="editor_import_folder">Pasta (glTF com .bin e texturas)</string>
+    <string name="editor_move">Mover</string>
+    <string name="editor_rotate">Girar</string>
+    <string name="editor_scale">Escalar</string>
+    <string name="editor_global">Global</string>
+    <string name="editor_local">Local</string>
+    <string name="editor_snap">Snap</string>
+    <string name="editor_flight">Câmera de voo</string>
+    <string name="editor_orbit_back">Voltar à câmera orbital</string>
+    <string name="editor_focus">Focar seleção (F)</string>
+    <string name="editor_touch_diag">Diagnóstico de toque (overlay)</string>
+    <string name="editor_resolution">Resolução %1$d%%</string>
+    <string name="editor_hide_hierarchy">Ocultar Hierarquia</string>
+    <string name="editor_show_hierarchy">Mostrar Hierarquia</string>
+    <string name="editor_hide_inspector">Ocultar Inspetor</string>
+    <string name="editor_show_inspector">Mostrar Inspetor</string>
+    <string name="editor_hint_orbit">1 dedo: orbitar · 2 dedos: mover e zoom</string>
+    <string name="editor_hint_flight">Joystick move · arraste para olhar · botões sobem/descem</string>
+    <string name="editor_recovered">Cena recuperada do auto-save</string>
+    <string name="editor_preparing">Preparando projeto…</string>
+    <string name="editor_status_play">PLAY</string>
+    <string name="editor_status_pause">PAUSA</string>
+    <string name="editor_status_ready">PRONTO</string>
+    <string name="editor_fps">%1$d FPS</string>
+    <string name="editor_nicks_drawn">%1$d nicks · %2$d desenhados</string>
+    <string name="editor_frame_metrics">%1$.1f ms upd · %2$.1f ms draw · %3$d dc</string>
+    <string name="editor_gl_limited">GL limitado (modo seguro)</string>
+    <string name="editor_gizmo_unavailable">Gizmo indisponível (modo vazio)</string>
+    <string name="editor_gl">OpenGL ES</string>
+    <string name="editor_gl_ok">OpenGL ES · .KERN OK</string>
+    <string name="editor_up">Subir</string>
+    <string name="editor_down">Descer</string>
+    <string name="editor_speed">%1$.1f m/s</string>
+
+    <!-- ===================== Import dialogs ===================== -->
+    <string name="import_title">Importar modelo</string>
+    <string name="import_folder_label">Pasta: %1$s</string>
+    <string name="import_file_label">Arquivo: %1$s</string>
+    <string name="import_folder_note">A pasta inteira (modelo + .bin + texturas) é copiada para os assets do projeto.</string>
+    <string name="import_adjust">Ajustar ao tamanho (~2 m)</string>
+    <string name="import_res_limit">Limite de resolução de textura</string>
+    <string name="import_quality_etc2">Qualidade ETC2</string>
+    <string name="import_fast">Rápida (padrão)</string>
+    <string name="import_high">Alta qualidade (T/H)</string>
+    <string name="import_scale_note">O modelo entra com escala 1 e Y para cima; a operação inteira é UM passo de desfazer.</string>
+    <string name="import_btn">Importar</string>
+    <string name="import_cancel">Cancelar</string>
+    <string name="import_running">Importando modelo</string>
+    <string name="import_done">Importação concluída</string>
+    <string name="import_copy_report">Copiar relatório</string>
+    <string name="import_close">Fechar</string>
+    <string name="import_failed_title">Não foi possível importar</string>
+    <string name="import_big_title">Arquivo grande</string>
+    <string name="import_big_text">‘%1$s’ tem %2$.0f MB (acima de 200 MB).\n\nA importação roda em background, mas vai usar bastante memória e tempo. Continuar?</string>
+    <string name="import_big_yes">Importar mesmo assim</string>
+
+    <!-- ===================== Hierarchy panel ===================== -->
+    <string name="hierarchy_create">Criar nick</string>
+    <string name="hierarchy_rename">Renomear</string>
+    <string name="hierarchy_delete">Apagar</string>
+    <string name="hierarchy_up">Subir</string>
+    <string name="hierarchy_down">Descer</string>
+    <string name="hierarchy_reparent">Reparentar</string>
+    <string name="hierarchy_no_scene">Nenhuma cena</string>
+    <string name="hierarchy_rename_title">Renomear Nick</string>
+    <string name="hierarchy_delete_title">Apagar Nick</string>
+    <string name="hierarchy_delete_text">Apagar “%1$s” e toda a sua subárvore? Você pode desfazer com o botão de undo.</string>
+    <string name="hierarchy_move_title">Mover para novo pai</string>
+    <string name="hierarchy_root">Raiz da cena</string>
+    <string name="hierarchy_move">Mover</string>
+    <string name="hierarchy_collapse">Recolher</string>
+    <string name="hierarchy_expand">Expandir</string>
+    <string name="hierarchy_hide">Ocultar</string>
+    <string name="hierarchy_show">Mostrar</string>
+    <string name="hierarchy_children">(%1$d)</string>
+
+    <!-- ===================== Inspector panel ===================== -->
+    <string name="inspector_select_hint">Selecione um Nick na Hierarquia</string>
+    <string name="inspector_name">Nome</string>
+    <string name="inspector_apply_name">Aplicar nome</string>
+    <string name="inspector_revert">Reverter</string>
+    <string name="inspector_active">Ativo</string>
+    <string name="inspector_visible">Visível</string>
+    <string name="inspector_transform">TRANSFORM</string>
+    <string name="inspector_position">Posição</string>
+    <string name="inspector_scale">Escala</string>
+    <string name="inspector_rotation_euler">Rotação (euler)</string>
+    <string name="inspector_rotation_quat">Rotação (quaternion) · somente leitura</string>
+    <string name="inspector_classes">CLASSES</string>
+    <string name="inspector_add_class">Adicionar classe</string>
+    <string name="inspector_no_class">Nenhuma classe</string>
+    <string name="inspector_class_applied">(já aplicada)</string>
+    <string name="inspector_remove_class">Remover classe %1$s</string>
+
+    <!-- ===================== Panels (docked/floating) ===================== -->
+    <string name="panel_options">Opções do painel %1$s</string>
+    <string name="panel_float">Flutuar sobre o viewport</string>
+    <string name="panel_hide">Ocultar painel</string>
+    <string name="panel_dock">Acoplar à lateral</string>
+    <string name="panel_resize">Redimensionar %1$s</string>
+
+    <!-- ===================== Diagnostics screen ===================== -->
+    <string name="diag_title">Diagnóstico</string>
+    <string name="diag_subtitle">checagens da engine neste aparelho</string>
+    <string name="diag_run">Rodar tudo</string>
+    <string name="diag_running">Rodando…</string>
+    <string name="diag_executing">Executando… (%1$d aprovadas até agora)</string>
+    <string name="diag_tap_run">Toque em “Rodar tudo” e envie o print do resultado.</string>
+    <string name="diag_result">Resultado: %1$d aprovadas · %2$d falharam (de %3$d)</string>
+    <string name="diag_console_empty">CONSOLE: sem registros de erro/aviso nesta sessão</string>
+    <string name="diag_console_count">CONSOLE — %1$d registro(s) desta sessão:</string>
+    <string name="diag_check_nativo">Núcleo nativo C++ — biblioteca, eco, handler de sinais</string>
+    <string name="diag_check_etc2_nativo">ETC2 nativo (etcpak) — 1024²: ms · MP/s · PSNR × Kotlin</string>
+    <string name="diag_check_malha_nativa">Malha nativa (meshoptimizer) — dedup+cache+LOD: ms × Kotlin</string>
+    <string name="diag_check_ck">.ck (cena) — ida e volta</string>
+    <string name="diag_check_kern">.KERN (malha) — ida e volta</string>
+    <string name="diag_check_gltf">Importador glTF/GLB → .KERN (meta + integridade)</string>
+    <string name="diag_check_fbx">Importador FBX → .KERN (instâncias + integridade)</string>
+    <string name="diag_check_importar">Botão Importar modelo (pipeline + undo/redo + zip)</string>
+    <string name="diag_check_kimg">.KIMG — ida e volta + mipmaps + limites</string>
+    <string name="diag_check_etc2">ETC2 — upload e leitura de pixel (GL offscreen)</string>
+    <string name="diag_check_tex_cena">Textura na cena — quad com .KIMG (pixel não-preto)</string>
+    <string name="diag_check_cena">Cena = tela — viewport desenha só Nicks (M medido)</string>
+    <string name="diag_check_astc">ASTC — extensão do aparelho (informativo)</string>
+    <string name="diag_check_picking">Matemática de picking (raio de tela)</string>
+    <string name="diag_check_toque">Toque no cubo — API real do TouchController</string>
+    <string name="diag_check_shaders">Compilação de shaders (GLSL ES)</string>
+    <string name="diag_check_buffers">Alocação de buffers (VBO/VAO)</string>
+    <string name="diag_check_glcaps">Capacidades GL (versão/extensões/compute)</string>
+    <string name="diag_check_memoria">Limites de memória do aparelho</string>
+    <string name="diag_check_release">Release minificado — classes críticas + operações mínimas</string>
+
+    <!-- ===================== Crash report dialog ===================== -->
+    <string name="crash_title">O app fechou na última vez</string>
+    <string name="crash_copy">Copiar</string>
+    <string name="crash_copied">Copiado</string>
+    <string name="crash_delete">Apagar</string>
+
+    <!-- ===================== EditorViewModel status messages ===================== -->
+    <string name="vm_create_fail">Não foi possível criar o projeto</string>
+    <string name="vm_invalid">Projeto inválido ou corrompido</string>
+    <string name="vm_open_fail">Falha ao abrir projeto: %1$s</string>
+    <string name="vm_duplicate_ok">Cópia criada: %1$s</string>
+    <string name="vm_duplicate_fail">Não foi possível duplicar o projeto</string>
+    <string name="vm_rename_fail">Não foi possível renomear o projeto</string>
+    <string name="vm_delete_fail">Não foi possível apagar o projeto</string>
+    <string name="vm_export_ok">Projeto exportado</string>
+    <string name="vm_export_empty">Projeto vazio — nada a exportar</string>
+    <string name="vm_export_fail">Falha ao exportar: %1$s</string>
+    <string name="vm_import_ok">%1$s importado (%2$d arquivos)</string>
+    <string name="vm_import_fail">Falha ao importar: %1$s</string>
+    <string name="vm_save_fail">Falha ao salvar: %1$s</string>
+</resources>

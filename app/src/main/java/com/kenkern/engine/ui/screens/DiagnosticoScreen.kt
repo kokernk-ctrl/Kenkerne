@@ -38,11 +38,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kenkern.engine.R
 import com.kenkern.engine.diag.Diagnostico
 import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.ui.theme.KenkernAmber
@@ -57,6 +59,37 @@ import com.kenkern.engine.ui.theme.KenkernTextMid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/**
+ * T0.1: nome da checagem LOCALIZADO por id (o Diagnostico em si roda sem
+ * Context — o nome exibido vem do recurso do idioma atual).
+ */
+@Composable
+private fun nomeChecagem(id: String): String = stringResource(
+    when (id) {
+        "nativo" -> R.string.diag_check_nativo
+        "etc2-nativo" -> R.string.diag_check_etc2_nativo
+        "malha-nativa" -> R.string.diag_check_malha_nativa
+        "ck" -> R.string.diag_check_ck
+        "kern" -> R.string.diag_check_kern
+        "gltf" -> R.string.diag_check_gltf
+        "fbx" -> R.string.diag_check_fbx
+        "importar" -> R.string.diag_check_importar
+        "kimg" -> R.string.diag_check_kimg
+        "etc2" -> R.string.diag_check_etc2
+        "tex-cena" -> R.string.diag_check_tex_cena
+        "cena" -> R.string.diag_check_cena
+        "astc" -> R.string.diag_check_astc
+        "picking" -> R.string.diag_check_picking
+        "toque" -> R.string.diag_check_toque
+        "shaders" -> R.string.diag_check_shaders
+        "buffers" -> R.string.diag_check_buffers
+        "glcaps" -> R.string.diag_check_glcaps
+        "memoria" -> R.string.diag_check_memoria
+        "release" -> R.string.diag_check_release
+        else -> R.string.diag_check_ck
+    }
+)
 
 /**
  * TELA DIAGNÓSTICO (Hub): roda as checagens da engine NO APARELHO e mostra
@@ -116,13 +149,13 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
             IconButton(onClick = onVoltar, modifier = Modifier.size(48.dp)) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Voltar ao Hub",
+                    contentDescription = stringResource(R.string.editor_back_hub),
                     tint = KenkernTextHigh
                 )
             }
             Column(Modifier.weight(1f)) {
                 Text(
-                    "Diagnóstico",
+                    stringResource(R.string.diag_title),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = KenkernTextHigh,
@@ -130,7 +163,7 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    "checagens da engine neste aparelho",
+                    stringResource(R.string.diag_subtitle),
                     fontSize = 11.sp,
                     color = KenkernTextLow,
                     maxLines = 1,
@@ -150,7 +183,10 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                     .height(40.dp)
                     .padding(end = 8.dp)
             ) {
-                Text(if (rodando) "Rodando…" else "Rodar tudo", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (rodando) stringResource(R.string.diag_running) else stringResource(R.string.diag_run),
+                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+                )
             }
         }
         HorizontalDivider(thickness = 1.dp, color = KenkernOutlineSoft)
@@ -165,9 +201,9 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
             val falharam = resultados.count { it.status == Diagnostico.Status.FALHOU }
             item {
                 Text(
-                    if (rodando) "Executando… ($aprovadas aprovadas até agora)"
-                    else if (aprovadas + falharam == 0) "Toque em \u201CRodar tudo\u201D e envie o print do resultado."
-                    else "Resultado: $aprovadas aprovadas · $falharam falharam (de ${resultados.size})",
+                    if (rodando) stringResource(R.string.diag_executing, aprovadas)
+                    else if (aprovadas + falharam == 0) stringResource(R.string.diag_tap_run)
+                    else stringResource(R.string.diag_result, aprovadas, falharam, resultados.size),
                     fontSize = 12.sp,
                     color = if (falharam > 0) KenkernError else KenkernTextMid
                 )
@@ -205,7 +241,7 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                     }
                     Spacer(Modifier.size(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(r.nome, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = KenkernTextHigh)
+                        Text(nomeChecagem(r.id), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = KenkernTextHigh)
                         Spacer(Modifier.height(4.dp))
                         Text(
                             r.detalhe,
@@ -224,8 +260,8 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
             val consoleRegs = KenkernLog.registros().asReversed()
             item {
                 Text(
-                    if (consoleRegs.isEmpty()) "CONSOLE: sem registros de erro/aviso nesta sessão"
-                    else "CONSOLE — ${consoleRegs.size} registro(s) desta sessão:",
+                    if (consoleRegs.isEmpty()) stringResource(R.string.diag_console_empty)
+                    else stringResource(R.string.diag_console_count, consoleRegs.size),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = if (consoleRegs.any { it.nivel == KenkernLog.Nivel.E }) KenkernError else KenkernTextMid,

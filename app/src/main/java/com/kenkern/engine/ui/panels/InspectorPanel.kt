@@ -37,8 +37,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kenkern.engine.R
 import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
@@ -72,7 +74,7 @@ fun InspectorPanel(vm: EditorViewModel) {
     if (nick == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
-                "Selecione um Nick na Hierarquia",
+                stringResource(R.string.inspector_select_hint),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -94,7 +96,7 @@ fun InspectorPanel(vm: EditorViewModel) {
         OutlinedTextField(
             value = nameText,
             onValueChange = { nameText = it },
-            label = { Text("Nome", fontSize = 12.sp) },
+            label = { Text(stringResource(R.string.inspector_name), fontSize = 12.sp) },
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.fillMaxWidth()
@@ -102,23 +104,23 @@ fun InspectorPanel(vm: EditorViewModel) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(onClick = { if (nameText.isNotBlank() && nameText != nick.name) {
                 vm.renameSelected(nameText.trim())
-            } }) { Text("Aplicar nome", fontSize = 12.sp) }
-            TextButton(onClick = { vm.select(nick.id) }) { Text("Reverter", fontSize = 12.sp) }
+            } }) { Text(stringResource(R.string.inspector_apply_name), fontSize = 12.sp) }
+            TextButton(onClick = { vm.select(nick.id) }) { Text(stringResource(R.string.inspector_revert), fontSize = 12.sp) }
         }
 
         // Flags
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Ativo", fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.inspector_active), fontSize = 13.sp, modifier = Modifier.weight(1f))
             Switch(checked = nick.active, onCheckedChange = { vm.setNickActive(nick.id, it) })
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Visível", fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.inspector_visible), fontSize = 13.sp, modifier = Modifier.weight(1f))
             Switch(checked = nick.visible, onCheckedChange = { vm.setNickVisible(nick.id, it) })
         }
 
         // ---------- TRANSFORM (seção recolhível) ----------
-        CollapsibleSection("TRANSFORM") {
-            SectionTitle("Posição")
+        CollapsibleSection(stringResource(R.string.inspector_transform)) {
+            SectionTitle(stringResource(R.string.inspector_position))
             Vec3AxisField(
                 nick.transform.position.x, nick.transform.position.y, nick.transform.position.z
             ) { x, y, z ->
@@ -126,7 +128,7 @@ fun InspectorPanel(vm: EditorViewModel) {
                 vm.setTransform(nick.id, snap.copy(px = x, py = y, pz = z))
             }
 
-            SectionTitle("Escala")
+            SectionTitle(stringResource(R.string.inspector_scale))
             Vec3AxisField(
                 nick.transform.scale.x, nick.transform.scale.y, nick.transform.scale.z
             ) { x, y, z ->
@@ -134,7 +136,7 @@ fun InspectorPanel(vm: EditorViewModel) {
                 vm.setTransform(nick.id, snap.copy(sx = x, sy = y, sz = z))
             }
 
-            SectionTitle("Rotação (euler)")
+            SectionTitle(stringResource(R.string.inspector_rotation_euler))
             val euler = remember(nick.id, vm.revision.intValue) {
                 FloatArray(3).also { nick.transform.rotation.toEulerDegrees(it) }
             }
@@ -145,7 +147,7 @@ fun InspectorPanel(vm: EditorViewModel) {
                 vm.setTransform(nick.id, snap.copy(qx = q.x, qy = q.y, qz = q.z, qw = q.w))
             }
 
-            SectionTitle("Rotação (quaternion) · somente leitura")
+            SectionTitle(stringResource(R.string.inspector_rotation_quat))
             // SOMENTE LEITURA (girar pelo anel do gizmo ou por euler); campos de 28dp,
             // incluindo o W, iguais aos demais. Normalizado ao editar não se aplica.
             Row(
@@ -168,7 +170,7 @@ fun InspectorPanel(vm: EditorViewModel) {
         }
 
         // ---------- CLASSES (seção recolhível) ----------
-        CollapsibleSection("CLASSES") {
+        CollapsibleSection(stringResource(R.string.inspector_classes)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (inst in nick.classes.toList()) {
                     ClassCard(vm, nick.id, inst)
@@ -179,17 +181,22 @@ fun InspectorPanel(vm: EditorViewModel) {
                     TextButton(onClick = { addMenu = true }) {
                         Icon(Icons.Filled.Add, contentDescription = null, Modifier.width(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Adicionar classe", fontSize = 12.sp)
+                        Text(stringResource(R.string.inspector_add_class), fontSize = 12.sp)
                     }
                     DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
                         val available = com.kenkern.engine.core.NickClassRegistry.all()
                         if (available.isEmpty()) {
-                            DropdownMenuItem(text = { Text("Nenhuma classe", fontSize = 12.sp) }, onClick = {})
+                            DropdownMenuItem(text = { Text(stringResource(R.string.inspector_no_class), fontSize = 12.sp) }, onClick = {})
                         }
                         for (def in available) {
                             val already = nick.findClassInstance(def.name) != null
                             DropdownMenuItem(
-                                text = { Text(def.name + if (already) "  (já aplicada)" else "", fontSize = 12.sp) },
+                                text = {
+                                    Text(
+                                        def.name + if (already) "  " + stringResource(R.string.inspector_class_applied) else "",
+                                        fontSize = 12.sp
+                                    )
+                                },
                                 enabled = !already,
                                 onClick = {
                                     addMenu = false
@@ -235,7 +242,7 @@ private fun ClassCard(vm: EditorViewModel, nickId: ReferenceId, inst: NickClassI
             IconButton(onClick = { vm.removeClassFromSelected(inst.typeName) }, modifier = Modifier.size(28.dp)) {
                 Icon(
                     Icons.Filled.Delete,
-                    contentDescription = "Remover classe ${inst.typeName}",
+                    contentDescription = stringResource(R.string.inspector_remove_class, inst.typeName),
                     tint = KenkernTextMid,
                     modifier = Modifier.size(16.dp)
                 )
@@ -280,7 +287,7 @@ private fun ClassCard(vm: EditorViewModel, nickId: ReferenceId, inst: NickClassI
                             )
                             TextButton(onClick = {
                                 vm.setClassField(nickId, inst.typeName, fieldName, NickValue.StringValue(text))
-                            }) { Text("OK", fontSize = 12.sp) }
+                            }) { Text(stringResource(R.string.hub_ok), fontSize = 12.sp) }
                         }
                         is NickValue.Vec3Value -> Column(Modifier.weight(1f)) {
                             Text(fieldName, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

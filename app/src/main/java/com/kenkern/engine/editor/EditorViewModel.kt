@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.kenkern.engine.R
 import com.kenkern.engine.projects.Kernpack
 import com.kenkern.engine.projects.SafFolderResolver
 import com.kenkern.engine.autosave.AutoSaveManager
@@ -147,7 +148,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             }
             isLoading.value = false
             if (handle == null) {
-                statusMessage.value = ProjectManager.lastError ?: "Não foi possível criar o projeto"
+                statusMessage.value =
+                    ProjectManager.lastError ?: getApplication<Application>().getString(R.string.vm_create_fail)
                 return@launch
             }
             loadIntoEditor(handle)
@@ -168,7 +170,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             }
             isLoading.value = false
             if (valid == null) {
-                statusMessage.value = "Projeto inválido ou corrompido"
+                statusMessage.value = getApplication<Application>().getString(R.string.vm_invalid)
                 refreshProjects()
                 return@launch
             }
@@ -206,7 +208,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             }.onFailure {
                 Log.e(TAG, "Falha ao abrir projeto", it)
                 KenkernLog.e(TAG, "Falha ao abrir projeto", it)
-                statusMessage.value = "Falha ao abrir projeto: ${it.message ?: "erro desconhecido"}"
+                statusMessage.value = getApplication<Application>()
+                    .getString(R.string.vm_open_fail, it.message ?: "erro desconhecido")
             }
             isLoading.value = false
         }
@@ -238,7 +241,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             }
             if (updated == null) {
                 statusMessage.value =
-                    ProjectManager.lastError ?: "Não foi possível renomear o projeto"
+                    ProjectManager.lastError ?: getApplication<Application>().getString(R.string.vm_rename_fail)
             }
             refreshProjects()
         }
@@ -253,9 +256,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val copia = withContext(Dispatchers.IO) { ProjectManager.duplicateProject(handle) }
             statusMessage.value = if (copia != null) {
-                "Cópia criada: ${copia.name}"
+                getApplication<Application>().getString(R.string.vm_duplicate_ok, copia.name)
             } else {
-                ProjectManager.lastError ?: "Não foi possível duplicar o projeto"
+                ProjectManager.lastError ?: getApplication<Application>().getString(R.string.vm_duplicate_fail)
             }
             refreshProjects()
         }
@@ -279,8 +282,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
             statusMessage.value = ok.fold(
-                onSuccess = { gravou -> if (gravou) "Projeto exportado" else "Projeto vazio — nada a exportar" },
-                onFailure = { "Falha ao exportar: ${it.message}" }
+                onSuccess = { gravou ->
+                    val app = getApplication<Application>()
+                    if (gravou) app.getString(R.string.vm_export_ok) else app.getString(R.string.vm_export_empty)
+                },
+                onFailure = { getApplication<Application>().getString(R.string.vm_export_fail, it.message ?: "") }
             )
         }
     }
@@ -305,7 +311,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                         } ?: error("não foi possível abrir o pacote")
                         val handle = ProjectManager.openProject(app, pasta)
                             ?: error("pacote sem project.kenkern válido")
-                        "${handle.name} importado ($arquivos arquivos)"
+                        getApplication<Application>().getString(R.string.vm_import_ok, handle.name, arquivos)
                     } catch (e: Exception) {
                         pasta.deleteRecursively() // não deixa migalha de pacote ruim
                         throw e
@@ -317,7 +323,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             }
             statusMessage.value = resultado.fold(
                 onSuccess = { it },
-                onFailure = { "Falha ao importar: ${it.message ?: it.javaClass.simpleName}" }
+                onFailure = {
+                    getApplication<Application>().getString(
+                        R.string.vm_import_fail, it.message ?: it.javaClass.simpleName
+                    )
+                }
             )
             refreshProjects()
         }
@@ -340,7 +350,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             val ok = withContext(Dispatchers.IO) { ProjectManager.deleteProject(handle) }
             if (!ok) {
                 statusMessage.value =
-                    ProjectManager.lastError ?: "Não foi possível apagar o projeto"
+                    ProjectManager.lastError ?: getApplication<Application>().getString(R.string.vm_delete_fail)
             }
             refreshProjects()
         }
@@ -369,7 +379,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             // SAVE silencioso era a pior perda possível (regra nova: registrar sempre).
             Log.e(TAG, "saveNow falhou — cena pode não ter sido salva", it)
             KenkernLog.e(TAG, "Falha ao salvar o projeto (saveNow)", it)
-            statusMessage.value = "Falha ao salvar: ${it.message ?: it.javaClass.simpleName}"
+            statusMessage.value = getApplication<Application>()
+                .getString(R.string.vm_save_fail, it.message ?: it.javaClass.simpleName)
         }
     }
 

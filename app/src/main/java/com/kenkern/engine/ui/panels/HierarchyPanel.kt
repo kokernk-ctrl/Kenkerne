@@ -48,9 +48,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kenkern.engine.R
 import com.kenkern.engine.core.Nick
 import com.kenkern.engine.editor.EditorViewModel
 import com.kenkern.engine.ui.theme.KenkernAmber
@@ -102,22 +104,22 @@ fun HierarchyPanel(vm: EditorViewModel) {
                 .padding(horizontal = 4.dp)
         ) {
             IconButton(onClick = { vm.addNick() }, enabled = scene != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Add, "Criar nick", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.Add, stringResource(R.string.hierarchy_create), tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = { showRename = true }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Edit, "Renomear", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.Edit, stringResource(R.string.hierarchy_rename), tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = { showDelete = true }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Delete, "Apagar", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.Delete, stringResource(R.string.hierarchy_delete), tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = { selection?.let { vm.reorderSelected(-1) } }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.KeyboardArrowUp, "Subir", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.KeyboardArrowUp, stringResource(R.string.hierarchy_up), tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = { selection?.let { vm.reorderSelected(1) } }, enabled = selection != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.KeyboardArrowDown, "Descer", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.KeyboardArrowDown, stringResource(R.string.hierarchy_down), tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = { showReparent = true }, enabled = selection != null && scene != null, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.AccountTree, "Reparentar", tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.AccountTree, stringResource(R.string.hierarchy_reparent), tint = KenkernTextHigh, modifier = Modifier.size(20.dp))
             }
         }
 
@@ -125,7 +127,7 @@ fun HierarchyPanel(vm: EditorViewModel) {
 
         if (scene == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Nenhuma cena", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.hierarchy_no_scene), style = MaterialTheme.typography.labelMedium)
             }
         } else {
             // Flatten da árvore (feito por recomposição; UI thread apenas)
@@ -162,7 +164,7 @@ fun HierarchyPanel(vm: EditorViewModel) {
         var text by remember(selection) { mutableStateOf(nick?.name ?: "") }
         AlertDialog(
             onDismissRequest = { showRename = false },
-            title = { Text("Renomear Nick") },
+            title = { Text(stringResource(R.string.hierarchy_rename_title)) },
             text = {
                 OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true)
             },
@@ -170,10 +172,10 @@ fun HierarchyPanel(vm: EditorViewModel) {
                 TextButton(onClick = {
                     if (text.isNotBlank()) vm.renameSelected(text.trim())
                     showRename = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.hub_ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { showRename = false }) { Text("Cancelar") }
+                TextButton(onClick = { showRename = false }) { Text(stringResource(R.string.hub_cancel)) }
             }
         )
     }
@@ -182,11 +184,10 @@ fun HierarchyPanel(vm: EditorViewModel) {
         val nick = scene?.findNick(selection)
         AlertDialog(
             onDismissRequest = { showDelete = false },
-            title = { Text("Apagar Nick") },
+            title = { Text(stringResource(R.string.hierarchy_delete_title)) },
             text = {
                 Text(
-                    "Apagar \"${nick?.name}\" e toda a sua subárvore? " +
-                        "Você pode desfazer com o botão de undo.",
+                    stringResource(R.string.hierarchy_delete_text, nick?.name ?: ""),
                     fontSize = 13.sp
                 )
             },
@@ -194,10 +195,10 @@ fun HierarchyPanel(vm: EditorViewModel) {
                 TextButton(onClick = {
                     vm.deleteSelected()
                     showDelete = false
-                }) { Text("Apagar", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.hierarchy_delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showDelete = false }) { Text("Cancelar") }
+                TextButton(onClick = { showDelete = false }) { Text(stringResource(R.string.hub_cancel)) }
             }
         )
     }
@@ -215,7 +216,7 @@ fun HierarchyPanel(vm: EditorViewModel) {
         var chosen by remember(selection) { mutableStateOf<Nick?>(null) }
         AlertDialog(
             onDismissRequest = { showReparent = false },
-            title = { Text("Mover para novo pai") },
+            title = { Text(stringResource(R.string.hierarchy_move_title)) },
             text = {
                 Column {
                     Row(
@@ -223,7 +224,7 @@ fun HierarchyPanel(vm: EditorViewModel) {
                         modifier = Modifier.fillMaxWidth().clickable { chosen = null }
                     ) {
                         RadioButton(selected = chosen == null, onClick = { chosen = null })
-                        Text("Raiz da cena", fontSize = 13.sp)
+                        Text(stringResource(R.string.hierarchy_root), fontSize = 13.sp)
                     }
                     LazyColumn(Modifier.height(240.dp)) {
                         items(candidates, key = { it.id.value }) { cand ->
@@ -244,10 +245,10 @@ fun HierarchyPanel(vm: EditorViewModel) {
                 TextButton(onClick = {
                     vm.reparentSelected(chosen?.id)
                     showReparent = false
-                }) { Text("Mover") }
+                }) { Text(stringResource(R.string.hierarchy_move)) }
             },
             dismissButton = {
-                TextButton(onClick = { showReparent = false }) { Text("Cancelar") }
+                TextButton(onClick = { showReparent = false }) { Text(stringResource(R.string.hub_cancel)) }
             }
         )
     }
@@ -297,7 +298,8 @@ private fun HierarchyRow(
             ) {
                 Icon(
                     if (entry.expanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowRight,
-                    contentDescription = if (entry.expanded) "Recolher" else "Expandir",
+                    contentDescription = if (entry.expanded) stringResource(R.string.hierarchy_collapse)
+                    else stringResource(R.string.hierarchy_expand),
                     tint = KenkernTextMid,
                     modifier = Modifier.size(16.dp)
                 )
@@ -316,7 +318,7 @@ private fun HierarchyRow(
         Spacer(Modifier.width(4.dp))
 
         Text(
-            nick.name + if (nick.children.isNotEmpty()) "  (${nick.children.size})" else "",
+            nick.name + (if (nick.children.isNotEmpty()) "  " + stringResource(R.string.hierarchy_children, nick.children.size) else ""),
             fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -335,7 +337,8 @@ private fun HierarchyRow(
         ) {
             Icon(
                 if (nick.visible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                contentDescription = if (nick.visible) "Ocultar" else "Mostrar",
+                contentDescription = if (nick.visible) stringResource(R.string.hierarchy_hide)
+                else stringResource(R.string.hierarchy_show),
                 tint = if (nick.visible) KenkernTextMid else KenkernTextHigh,
                 modifier = Modifier.size(16.dp)
             )
