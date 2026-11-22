@@ -1,8 +1,12 @@
-# KENKERN — ROADMAP (PROMPT MESTRE v3)
+# KENKERN — ROADMAP (PROMPT MESTRE v3 + ADENDO v4)
 
 Game engine 3D mobile-first, só Android nesta etapa. Kotlin + Compose (Material 3),
 OpenGL ES 3.x até a Fase 12, Vulkan (NDK/JNI) na Fase 13 atrás de `RenderBackend`.
 Escopo termina na Fase 13: PC, multiplayer, rede, serviços online e loja estão FORA.
+
+**Adendo v4 (2026-11-22)**: NICKS (catálogo vivo em `NICKS.md`, DECISIONS
+#24–#31), IDIOMAS en/pt (recursos Android), UI (árvore 2D própria do TELAR,
+abas/workspaces) e MUNDO. Sem Unity/Godot/Unreal nos nomes.
 
 Status: `FEITA` (TODOS os itens de aceite implementados + tag `fase-N-ok` publicada) ·
 `EM CURSO` (fase aberta) · `PLANEJADA`.
@@ -39,6 +43,35 @@ Status: `FEITA` (TODOS os itens de aceite implementados + tag `fase-N-ok` public
   tela Diagnóstico). Auditoria viva: `docs/RUNCATCHING_AUDIT.md`.
 - Toda fase adiciona checagens à tela Diagnóstico.
 - Versão PC, multiplayer, rede, serviços online e loja: NÃO planejar, NÃO codificar.
+
+## Ordem de execução (adendo v4 — atualizada 2026-11-22)
+
+0. **v0.1.17** — FEITA (Release `v0.1.17-fase2-teste`: bugs A/B do aparelho +
+   núcleo nativo C++ com etcpak e meshoptimizer; aguardando aceite no aparelho).
+1. **BLOCO 0 (produto)** — uma tarefa por commit, CI verde, paradas para o
+   usuário testar: T0.1 idiomas en/pt · T0.2 NickKindRegistry + CK2 + migração
+   CK1 + NICKS.md · T0.3 janela Adicionar Nick + cabeçalho de tipo no Inspetor
+   + seletor de forma do collider (**PARADA 1**) · T0.4 fidelidade de importação
+   (PBR completo glTF/FBX, textura "Original" até o limite do aparelho +
+   presets 512/1024/2048) · T0.5 Hub novo (fundo 2.5D com paralaxe, buraco
+   negro com disco de acreção, wordmark + versão, recentes, seletor de idioma,
+   Diagnóstico, atalhos Modelar/Animar/Texturizar com projeto "Sandbox";
+   ≤ 30 FPS, pausa quando invisível, respeita economia de bateria e "reduzir
+   animações") (**PARADA 2**).
+2. **MARCO JOGÁVEL (M1)** — M1.1–M1.8 com os Nicks reais (Player Body,
+   Collider Body, Area, Spawn Point, Follow Camera); M1.3 inclui o Joystick
+   Nick + campo "Controla" + botões de ação + API Lua `input.joystick` + modo
+   "Seguir Nick" (DECISIONS #31; detalhar os M1.x na abertura do marco).
+3. **DEPOIS, nesta ordem**: resto da Fase 2 (streaming F2.11, navegador F2.12,
+   pré-visualização F2.13, prefabs F2.14, registro de assets F2.15) · Fase 3
+   completa (LENTE, LUME, colliders editáveis) · animação, ossatura e animação
+   por partes · Lua completo, LINKERF, editor de código · TELAR, vídeo e
+   Diálogos (FALA) · Mundo (terreno e pincel 3D, vegetação, ambiente, clima,
+   água, vento, partículas) · FORJA, TRAMA e materiais · áudio e música ·
+   KENA · KELU · Vulkan e exportação.
+
+Cada parada tem relatório de no máximo 15 linhas e o passo a passo em
+TESTES_PENDENTES.md. Nenhum item vira VALIDADO sem teste do usuário no aparelho.
 
 ## Histórico de renumeração (2026-11-21)
 

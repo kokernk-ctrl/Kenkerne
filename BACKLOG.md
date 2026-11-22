@@ -70,6 +70,42 @@ camada Deflate em disco). Alavancas pendentes para chegar a 5×: decimação do
 LOD0, índices u16 com remap por parte, manter JPEG de origem em disco (Sponza
 1,88× hoje; ver CHANGELOG v0.1.15 e DECISIONS #22).
 
+## BLOCO 0 — produto (adendo v4; uma tarefa por commit com CI verde)
+
+| ID | Tarefa | Depende de | Status |
+|----|--------|-----------|--------|
+| T0.1 | **Idiomas en/pt**: infra de recursos (`strings.xml` + `values-pt`), migração das strings atuais das telas, seletor no Hub (padrão = idioma do aparelho, troca imediata), checagem de CI que reprova texto literal em `Text("...")` (lista de exceções) | — | DOING |
+| T0.2 | **NickKindRegistry + CK2 + migração do CK1 + NICKS.md**: registro de tipos (chave estável, rótulos en/pt, ícone, grupo, classes/filhos padrão — DECISIONS #24), formato CK2 com campo `kind` (CK1 → `nick.empty`/`nick.mesh`, DECISIONS #25), `name` nulo = rótulo do tipo no idioma atual + migração de nomes automáticos (DECISIONS #26), tipos iniciais IMPLEMENTADOS: nick.empty, nick.group, nick.mesh, light.directional, light.point, light.spot, camera.basic, body.static, body.rigid, body.collider, body.character, body.player, body.enemy, body.npc, area.volume, area.signal, area.spawn | T0.1 | TODO |
+| T0.3 | **Janela "Adicionar Nick"** (busca, abas por grupo, Recentes e Favoritos, cartões com ícone/nome/descrição, opção filho-do-selecionado/na-raiz, nasce selecionado no centro projetado no chão, UM Command) + cabeçalho com ícone e rótulo do tipo no Inspetor + botão "Adicionar classe" agrupado + **seletor de forma do collider** (Caixa/Esfera/Cápsula/Cilindro/Convexo/Malha, ajusta à AABB, gizmo/visualização atualizam, troca é Command). **PARADA 1** (relatório ≤ 15 linhas + TESTES_PENDENTES.md) | T0.2 | TODO |
+| T0.4 | **Fidelidade de importação**: PBR completo (glTF e FBX — metálico/rugosidade/normal/oclusão/emissivo/alfa/dupla face), opção de textura "Original" (até o limite do aparelho) e presets 512/1024/2048 | F2.17 | TODO |
+| T0.5 | **Hub novo** (seção 7 do adendo: fundo 2.5D com paralaxe, buraco negro com disco de acreção, wordmark + versão, Novo projeto compacto, recentes, seletor de idioma, Diagnóstico, atalhos Modelar/Animar/Texturizar com "Sandbox" automático; custo baixo: ≤ 30 FPS, pausa quando invisível, respeita bateria e "reduzir animações"). **PARADA 2** | T0.1 | TODO |
+
+## MARCO JOGÁVEL (M1) — com os Nicks reais (adendo v4)
+
+Detalhar M1.1–M1.8 na abertura do marco (regra do ROADMAP). Escopo conhecido:
+física de corpos (estático/rígido/cinemático), colisão com as formas do
+collider, áreas e sinais, spawn point, Follow Camera, Player Body (Character +
+input + câmera seguidora), Enemy/NPC e um jogo teste de ponta a ponta.
+**M1.3 inclui o INPUT DE TELA** (adendo de input): Joystick Nick editável pelo
+Inspetor (tipo Fixo/Flutuante/Dinâmico, tamanho, opacidade, zona morta, âncora),
+campo "Controla" para o Player Body Nick, botões de ação ligados a ações
+nomeadas, API Lua `input.joystick("nome")` e modo "Seguir Nick" (DECISIONS
+#31). Testes de JVM: normalização, zona morta, curva de resposta, travar em 8
+direções, multitoque com dois dedos, projeção do Nick para a tela; checagem
+"joystick" no Diagnóstico (toques sintéticos conferem x/y).
+
+## Ordem depois do M1 (adendo v4)
+
+resto da Fase 2 (F2.11–F2.15) · Fase 3 completa (LENTE, LUME, colliders
+editáveis) · animação, ossatura e animação por partes · Lua completo, LINKERF,
+editor de código · TELAR, vídeo e Diálogos (FALA) · Mundo (terreno e pincel 3D,
+vegetação, ambiente, clima, água, vento, partículas) · FORJA, TRAMA e materiais
+· áudio e música · KENA · KELU · Vulkan e exportação. Lacunas do adendo
+(Configurações, perfis de aparelho, mapeamento de input/Bluetooth, save/load do
+jogo, tabelas de dados, tr() do Lua, prefabs com variantes, templates por
+gênero, tutorial, exportação APK/AAB com ícone/splash, histórico/backup,
+acessibilidade, profiler, biblioteca embutida) entram nas fases respectivas.
+
 ## Fase 3 — LENTE + LUME + colisão + input (PLANEJADA — detalhar no início)
 
 Sketch: LENTA (câmera de jogo como Nick) · LUME (luzes como Nicks:

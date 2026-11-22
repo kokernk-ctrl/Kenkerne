@@ -98,6 +98,78 @@ Formato: decisão · motivo · alternativa descartada.
 
 23. **-keep para TODO o org.luaj.** (D2, v0.1.16) — a conclusão da auditoria V1 ("zero reflexão, R8 refutado") valia SÓ para o código com.kenkern.engine e estava ERRADA para o LuaJ. Prova no bytecode do luaj-jse 3.0.1 (javap): `Bit32Lib.call()` resolve as classes internas por NOME (`Class.forName "org.luaj.vm2.lib.Bit32Lib$Bit32LibV"`, padrão class$ do javac) e `LibFunction.bind()` instancia cada função de biblioteca com `Class.newInstance()` — reflexão em TODAS as libs (bit32/math/string/table). No release o R8 renomeava org.luaj.* (141 classes → a2.*) e o newInstance quebrou no aparelho Mali-G57 (exceção em Bit32Lib$Bit32LibV na checagem "release"). Correções: (a) `-keep class org.luaj.** { *; }` com motivo no proguard-rules.pro (custo ~0,3 MB de dex); (b) auditoria dos TERCEIROS: org.json e mockito são testImplementation (não entram no APK); androidx/kotlinx publicam consumer-rules próprios — LuaJ era o único reflexivo no APK; (c) a checagem "release" agora roda um script Lua REAL (print + função com math, bit32 e string) e confere o VALOR retornado (28 = floor(abs(-2.5)+4.5) + bor(lshift(1,4),3) + len(format("%x",19)) = 7+19+2; +1 no on_update = 29) — um script que só soma floats passaria e esconderia o bug; (d) por que o CI NÃO roda a suíte contra o JAR minificado pelo R8: o R8 produz dex/ART para o runtime Android, não um JAR da JVM — unit tests JVM rodam sobre as classes compiladas; rodar contra o artefato minificado exigiria instrumentação em emulador (connectedAndroidTest, indisponível no CI atual) — a prova definitiva continua sendo a checagem "release" no APARELHO (TESTES_PENDENTES.md).
 
+## Adendo v4 — NICKS, IDIOMAS, UI, MUNDO (2026-11-22, decisão do usuário)
+
+24. **Tipo de Nick = preset de DADOS em um registro (`NickKindRegistry`), não
+    classe de código por tipo** — cada tipo é um registro com chave estável em
+    inglês (ex.: `body.player`), rótulos en/pt, ícone, grupo, classes padrão e
+    filhos padrão. Motivo: o catálogo tem 80+ tipos; uma classe Kotlin por tipo
+    explosionaria o código sem ganho. Alternativa descartada: hierarquia de
+    classes `NickPlayer : Nick` (acoplamento e custo de manutenção).
+
+25. **O `.ck` guarda a CHAVE estável do tipo em inglês, nunca o rótulo —
+    formato CK2 com o campo `kind`** — CK1 (sem kind) carrega com
+    `kind = nick.empty`, ou `nick.mesh` se o Nick tem a classe Malha; o parser
+    antigo continua funcionando (DECISIONS #3 preservada: texto, versionável,
+    tolerante a corrupção linha a linha). Motivo: rótulo muda com o idioma;
+    chave estável garante projetos portáveis entre idiomas e versões.
+    Alternativa descartada: gravar o rótulo (quebraria ao trocar idioma).
+
+26. **`name` nulo = exibe o rótulo do tipo no idioma atual; renomeação do
+    usuário é gravada e NUNCA traduzida** — migração CK1→CK2: nomes automáticos
+    antigos ("Mundo", "Cubo", "Nick N") viram nulos quando exatamente iguais ao
+    padrão do template; nome diferente do padrão é do usuário e fica. Motivo:
+    nomes automáticos devem seguir o idioma do app; só texto digitado pelo
+    usuário pertence ao projeto. Alternativa descartada: manter "Mundo"/"Cubo"
+    fixos em português no template (deixaria o app meio traduzido).
+
+27. **Idiomas do app: Inglês (en) e Português (pt), recursos Android
+    (`res/values/strings.xml` + `res/values-pt/strings.xml`)** — padrão = idioma
+    do aparelho; seletor no Hub (e futuro painel Configurações) com troca
+    imediata (`recreate` da Activity com `createConfigurationContext`). Toda
+    string de interface vem de recursos; o CI falha se houver texto literal em
+    `Text("...")` nas telas (fora da lista de exceções do script
+    `scripts/check_i18n.sh`: dados técnicos/monoespaçados do overlay de debug,
+    formatos numéricos e siglas). Traduções cobrem tipos de Nick, classes,
+    campos do Inspetor, mensagens e relatórios (cada sistema migra para o
+    recurso ao tocar em strings). Alternativa descartada: sistema de tradução
+    próprio em Kotlin (reinventar o que o Android resolve por recurso).
+
+28. **A janela "Adicionar Nick" lista SOMENTE tipos IMPLEMENTADOS; o catálogo
+    completo vive em `NICKS.md`** (status PLANEJADO/IMPLEMENTADO/VALIDADO por
+    tipo; um tipo só muda de status com o sistema dele existindo). Motivo:
+    prometer na UI o que não existe quebra confiança; o documento é a fonte da
+    verdade. Alternativa descartada: listar tudo com badge "planejado" (ruído).
+
+29. **Nicks de UI (2D) ficam numa árvore PRÓPRIA do TELAR (arquivos em `ui/`);
+    a Hierarquia 3D mostra apenas um Nick de Tela** — motivo: a árvore 3D
+    continua enxuta (cena); a árvore 2D tem outro modelo (camadas, ordem Z,
+    paralaxe). Alternativa descartada: uma árvore só com nós 2D e 3D misturados.
+
+30. **Modelar (FORJA), Animar (LINHA/OSSATURA) e Texturizar (TRAMA) são ABAS
+    (workspaces) do editor que REAPROVEITAM o viewport e trocam os painéis** —
+    seletor na TopBar; o Hub tem atalhos que abrem a aba num projeto "Sandbox"
+    criado automaticamente. Painéis continuam acopláveis, redimensionáveis e
+    ocultáveis. Alternativa descartada: uma Activity/tela por workspace (perde
+    o viewport compartilhado e o estado de painéis).
+
+31. **Input de tela (joystick/botões) é Nick de UI com propriedades editáveis
+    e CAMPO "Controla" sem script** — o Joystick Nick expõe x/y/força/ângulo/
+    pressionado (eventos on_press/on_move/on_release), multitoque com posse de
+    dedo por controle (cada dedo pertence ao controle onde começou), toque em
+    dp, zero alocação por frame e nunca bloqueia a câmera do editor fora do
+    Play. O campo "Controla" liga o joystick a um Nick (normalmente Player
+    Body): movimento relativo à câmera ou ao mundo, velocidade, girar o
+    personagem para a direção, ação do toque (pular/atacar) para botões; o
+    segundo joystick pode controlar câmera/olhar/mira. Modo "Seguir Nick"
+    ancora a base na posição do Nick projetada na tela (vale para rótulos,
+    barras de vida e ícones de UI). AÇÕES de input nomeadas (mover, pular,
+    atacar) são o vocabulário comum de joystick, botões, teclado e controle
+    Bluetooth; Lua (`input.joystick("nome")`, sem alocar tabela) e LINKERF
+    (portas de saída) leem AÇÕES, não dispositivos. Alternativa descartada:
+    input global lendo estado de controles por nome mágico (sem editor, sem
+    ligação visível).
+
 ## Correções históricas (resumo; detalhes no CHANGELOG)
 
 - v0.1.12: yaw do voo lia `yawDegrees` do orbital em `computeBasis` (causa (b)).
