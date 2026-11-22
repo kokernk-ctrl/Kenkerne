@@ -36,32 +36,47 @@ class Etc2QualidadeParaleloTest {
 
     @Test
     fun modoRapidoGeraMesmoTamanhoEArtistasDePSNERazoaveis() {
-        val rgba = padraoRealista(64, 64)
-        val rapido = Etc2.codificarRgb(rgba, 64, 64, qualidade = Etc2.Qualidade.RAPIDA)
-        val alta = Etc2.codificarRgb(rgba, 64, 64, qualidade = Etc2.Qualidade.ALTA)
-        // Tamanho de saída IDÊNTICO (mesmo número de blocos, 8 bytes cada)
-        assertEquals("tamanho de saída idêntico entre modos", alta.size, rapido.size)
-        assertEquals(16 * 16 * 8, rapido.size)
-        // PSNR: ALTA ≥ RÁPIDA (T/H só ajuda); RÁPIDA continua razoável em
-        // textura realista (gradiente + ruído leve)
-        val psnrRapido = Etc2.psnr(rgba, Etc2.decodificarRgb(rapido, 64, 64))
-        val psnrAlta = Etc2.psnr(rgba, Etc2.decodificarRgb(alta, 64, 64))
-        assertTrue("PSNR alta ($psnrAlta dB) ≥ rápida ($psnrRapido dB)", psnrAlta >= psnrRapido - 1e-9)
-        assertTrue("PSNR rápida razoável em textura realista: $psnrRapido dB", psnrRapido > 20.0)
+        // Propriedade do encoder KOTLIN (ALTA ⊇ modos da RAPIDA por construção →
+        // PSNR monotônico). Com a biblioteca NATIVA carregada (B4) força o
+        // Kotlin: o etcpak usa HEURÍSTICAS diferentes por modo e não garante
+        // monotonicidade por textura (o requisito real dele — PSNR ≥ Kotlin −
+        // 1 dB — é coberto em Etc2NativoComparacaoTest, que PASSOU no CI).
+        Etc2.testeForcarKotlin = true
+        try {
+            val rgba = padraoRealista(64, 64)
+            val rapido = Etc2.codificarRgb(rgba, 64, 64, qualidade = Etc2.Qualidade.RAPIDA)
+            val alta = Etc2.codificarRgb(rgba, 64, 64, qualidade = Etc2.Qualidade.ALTA)
+            // Tamanho de saída IDÊNTICO (mesmo número de blocos, 8 bytes cada)
+            assertEquals("tamanho de saída idêntico entre modos", alta.size, rapido.size)
+            assertEquals(16 * 16 * 8, rapido.size)
+            // PSNR: ALTA ≥ RÁPIDA (T/H só ajuda); RÁPIDA continua razoável em
+            // textura realista (gradiente + ruído leve)
+            val psnrRapido = Etc2.psnr(rgba, Etc2.decodificarRgb(rapido, 64, 64))
+            val psnrAlta = Etc2.psnr(rgba, Etc2.decodificarRgb(alta, 64, 64))
+            assertTrue("PSNR alta ($psnrAlta dB) ≥ rápida ($psnrRapido dB)", psnrAlta >= psnrRapido - 1e-9)
+            assertTrue("PSNR rápida razoável em textura realista: $psnrRapido dB", psnrRapido > 20.0)
+        } finally {
+            Etc2.testeForcarKotlin = false
+        }
     }
 
     @Test
     fun modoRapidoESilenciosoSobreTHMaisRapidoOuIgual() {
-        // O modo rápido NÃO roda T/H: no pior caso demora o mesmo (planar +
-        // ind/dif são comuns), nunca menos. Medimos em 64×64 realista.
-        val rgba = padraoRealista(64, 64)
-        val tRapida = System.nanoTime()
-        Etc2.codificarRgb(rgba, 64, 64, qualidade = Etc2.Qualidade.RAPIDA)
-        val msRapida = (System.nanoTime() - tRapida) / 1_000_000L
-        val tAlta = System.nanoTime()
-        Etc2.codificarRgb(rgba, 64, 64, qualidade = Etc2.Qualidade.ALTA)
-        val msAlta = (System.nanoTime() - tAlta) / 1_000_000L
-        assertTrue("rápida ($msRapida ms) ≤ alta ($msAlta ms) com folga", msRapida <= msAlta + 50)
+        // Timing do encoder KOTLIN (forçado — com o nativo ambas as chamadas
+        // são uma codificação etcpak e o tempo não mede a busca T/H do Kotlin).
+        Etc2.testeForcarKotlin = true
+        try {
+            val rgba = padraoRealista(64, 64)
+            val tRapida = System.nanoTime()
+            Etc2.codificarRgb(rgba, 64, 64, qualidade = Etc2.Qualidade.RAPIDA)
+            val msRapida = (System.nanoTime() - tRapida) / 1_000_000L
+            val tAlta = System.nanoTime()
+            Etc2.codificarRgb(rgba, 64, 64, qualidade = Etc2.Qualidade.ALTA)
+            val msAlta = (System.nanoTime() - tAlta) / 1_000_000L
+            assertTrue("rápida ($msRapida ms) ≤ alta ($msAlta ms) com folga", msRapida <= msAlta + 50)
+        } finally {
+            Etc2.testeForcarKotlin = false
+        }
     }
 
     @Test
