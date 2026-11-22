@@ -109,7 +109,13 @@ class ImportSummary(
     /** Texturas de origem coletadas (ETAPA C converte para .KIMG com esses bytes). */
     val texturasExtraidas: List<TexturaImportada> = emptyList(),
     /** Relatórios de conversão de texturas preenchidos pelo chamador (ETAPA C). */
-    val texturasRelatorio: MutableList<String> = mutableListOf()
+    val texturasRelatorio: MutableList<String> = mutableListOf(),
+    /**
+     * B1 (v0.1.17): tabela de tempo por etapa (ms e % do total) medida pelo
+     * [CronometroImport] durante TODA a importação — preenchida pelo chamador
+     * ao concluir; entra no textoRelatorio() e no Console.
+     */
+    var tabelaTempo: String = ""
 ) {
     /** Razão origem/.KERN (ex.: 5.0 = 100 MB viraram 20 MB — meta do ROADMAP). */
     val razao: Float get() = if (bytesKern > 0) bytesOrigem / bytesKern.toFloat() else 0f
@@ -128,6 +134,11 @@ class ImportSummary(
             (if (problemasIntegridade.isNotEmpty()) " — " + problemasIntegridade.joinToString("; ") else "") +
             " · erro máx de quantização %.2f passo(s)".format(java.util.Locale.US, erroMaxQuantizacao))
         appendLine("Tempo: %d ms · pico de memória ≈ %.0f MB".format(java.util.Locale.US, tempoMs, picoMemoriaMb))
+        if (tabelaTempo.isNotEmpty()) {
+            appendLine()
+            append(tabelaTempo.trimEnd())
+            appendLine()
+        }
         if (contemEsqueleto) appendLine("AVISO: contém esqueleto: ignorado nesta fase (Fase 8 OSSATURA)")
         for (a in avisos) appendLine("AVISO: $a")
         for (r in texturasRelatorio) appendLine("TEXTURA: $r")
@@ -199,6 +210,8 @@ object ModelImporter {
      * [bytesOrigem] é o conteúdo do arquivo de origem JÁ lido (uma única vez).
      * [resolutorExterno] resolve os arquivos externos de um .gltf vindo de PASTA
      * (SAF) — para .zip o resolver é construído aqui, das entradas do pacote.
+     * [cronometro] (B1): mede parse, dedup, LODs, serialização .KERN e validação
+     * — a tabela final vai para o ImportReport e para o Console.
      */
     fun importarModelo(
         nomeArquivo: String,
@@ -206,7 +219,8 @@ object ModelImporter {
         opcoes: Opcoes = Opcoes(),
         onEtapa: (String) -> Unit = {},
         cancelado: () -> Boolean = { false },
-        resolutorExterno: ResolvedorExterno? = null
+        resolutorExterno: ResolvedorExterno? = null,
+        cronometro: CronometroImport? = null
     ): ImportSummary {
         val t0 = System.nanoTime()
         val rt = Runtime.getRuntime()
@@ -224,33 +238,12 @@ object ModelImporter {
         try {
             onEtapa("triangulando")
             formato = detectarFormato(bytesOrigem)
-            when (formato) {
-                TipoFormato.GLB, TipoFormato.GLTF_JSON ->
-                    resultado = GltfImporter.importar(
-                        bytesOrigem, resolutorExterno, nomeArquivo, opcoes.manterTangentes
-                    )
-                TipoFormato.ZIP -> {
-                    val zip = ResolvedorZip.ler(bytesOrigem)
-                    val nomeModelo = zip.entradas.keys.firstOrNull {
-                        it.endsWith(".glb", ignoreCase = true) || it.endsWith(".gltf", ignoreCase = true)
-                    } ?: throw ImportException(
-                        "o .zip não contém nenhum .glb/.gltf — para FBX use o arquivo .fbx direto (não zipe)"
-                    )
-                    val bytesModelo = zip.entradas[nomeModelo]
-                        ?: throw ImportException("entrada '$nomeModelo' não encontrada no zip")
-                    resultado = GltfImporter.importar(
-                        bytesModelo,
-                        ResolvedorZip(zip.entradas, nomeModelo.substringBeforeLast('/')),
-                        nomeModelo,
-                        opcoes.manterTangentes
-                    )
-                    avisos.add("modelo importado de dentro do zip ('$nomeModelo')")
-                }
-                TipoFormato.FBX_BIN, TipoFormato.FBX_ASCII -> resultado = FbxImporter.importar(bytesOrigem)
-                TipoFormato.DESCONHECIDO -> throw ImportException(
-                    "formato não reconhecido pela assinatura de '$nomeArquivo' — use .glb, .gltf, .fbx ou um .zip com glTF dentro"
-                )
-            }
+            resultado = cronometro?.medir(
+                "parse ${formato.rotulo}",
+                "${bytesOrigem.size} bytes"
+            ) {
+                importarFormato(formato, bytesOrigem, resolutorExterno, nomeArquivo, opcoes)
+            } ?: importarFormato(formato, bytesOrigem, resolutorExterno, nomeArquivo, opcoes)
         } catch (e: GltfImportException) {
             throw ImportException("glTF inválido: ${e.message}")
         } catch (e: FbxImportException) {
@@ -268,22 +261,33 @@ object ModelImporter {
 
         // Avisos dos importadores (B.3/B.6: texturas faltando, camadas extras…)
         avisos.addAll(resultado.avisos)
+        if (formato == TipoFormato.ZIP) {
+            avisos.add("modelo importado de dentro do zip")
+        }
 
         if (cancelado()) throw ImportException("importação cancelada pelo usuário")
         onEtapa("triangulando: dedup + LODs")
         // PÓS-PROCESSAMENTO (B.4/B.5): dedup de vértices + LODs (3 níveis)
-        val malhaFinal = PosProcessamento.aplicar(resultado.mesh)
+        // B1: PosProcessamento mede dedup e LODs SEPARADAMENTE no cronômetro.
+        val malhaFinal = PosProcessamento.aplicar(resultado.mesh, cronometro)
         val texturasFinais = resultado.texturas
         medirPico()
 
         if (cancelado()) throw ImportException("importação cancelada pelo usuário")
         onEtapa("gravando .KERN")
-        val bytesKern = com.kenkern.engine.assets.mesh.KernWriter.write(malhaFinal)
+        val bytesKern = cronometro?.medir(
+            "serialização .KERN",
+            "${malhaFinal.vertexCount} vértices"
+        ) {
+            com.kenkern.engine.assets.mesh.KernWriter.write(malhaFinal)
+        } ?: com.kenkern.engine.assets.mesh.KernWriter.write(malhaFinal)
         medirPico()
 
         if (cancelado()) throw ImportException("importação cancelada pelo usuário")
         onEtapa("validando")
-        val problemas = KernIntegrity.verificar(malhaFinal, bytesKern)
+        val problemas = cronometro?.medir("validação de integridade", "KernIntegrity") {
+            KernIntegrity.verificar(malhaFinal, bytesKern)
+        } ?: KernIntegrity.verificar(malhaFinal, bytesKern)
         val erroMax = try {
             KernIntegrity.medirErroMaximo(malhaFinal, bytesKern)
         } catch (e: Exception) {
@@ -345,6 +349,46 @@ object ModelImporter {
             escalaSugerida = escalaSugerida,
             texturasExtraidas = texturasFinais
         )
+    }
+
+    /**
+     * Despacho por formato detectado (B1: extraído para o cronômetro medir o
+     * parse INTEIRO — zip, glTF e FBX — como UMA etapa).
+     */
+    private fun importarFormato(
+        formato: TipoFormato,
+        bytesOrigem: ByteArray,
+        resolutorExterno: ResolvedorExterno?,
+        nomeArquivo: String,
+        opcoes: Opcoes
+    ): ImportResult {
+        return when (formato) {
+            TipoFormato.GLB, TipoFormato.GLTF_JSON ->
+                GltfImporter.importar(
+                    bytesOrigem, resolutorExterno, nomeArquivo, opcoes.manterTangentes
+                )
+            TipoFormato.ZIP -> {
+                val zip = ResolvedorZip.ler(bytesOrigem)
+                val nomeModelo = zip.entradas.keys.firstOrNull {
+                    it.endsWith(".glb", ignoreCase = true) || it.endsWith(".gltf", ignoreCase = true)
+                } ?: throw ImportException(
+                    "o .zip não contém nenhum .glb/.gltf — para FBX use o arquivo .fbx direto (não zipe)"
+                )
+                val bytesModelo = zip.entradas[nomeModelo]
+                    ?: throw ImportException("entrada '$nomeModelo' não encontrada no zip")
+                val r = GltfImporter.importar(
+                    bytesModelo,
+                    ResolvedorZip(zip.entradas, nomeModelo.substringBeforeLast('/')),
+                    nomeModelo,
+                    opcoes.manterTangentes
+                )
+                r
+            }
+            TipoFormato.FBX_BIN, TipoFormato.FBX_ASCII -> FbxImporter.importar(bytesOrigem)
+            TipoFormato.DESCONHECIDO -> throw ImportException(
+                "formato não reconhecido pela assinatura de '$nomeArquivo' — use .glb, .gltf, .fbx ou um .zip com glTF dentro"
+            )
+        }
     }
 
     /**

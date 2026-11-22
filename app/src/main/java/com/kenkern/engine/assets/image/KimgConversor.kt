@@ -2,6 +2,7 @@ package com.kenkern.engine.assets.image
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import com.kenkern.engine.assets.import.CronometroImport
 import com.kenkern.engine.diag.KenkernLog
 import java.io.File
 
@@ -13,6 +14,9 @@ import java.io.File
  * CACHE (C.5): o arquivo destino é assets/textures/<sha1>.kimg — SE JÁ EXISTE,
  * a conversão é PULADA (reabrir o projeto não reconverte). Os relatórios de
  * conversão vão para o ImportReport (tamanho, razão, PSNR, tempo).
+ *
+ * B1 (v0.1.17): [cronometro] mede decodificação e gravação .KIMG POR TEXTURA;
+ * o mime de origem (PNG/JPEG) vai no relatório junto da resolução original.
  */
 object KimgConversor {
 
@@ -35,7 +39,9 @@ object KimgConversor {
         limiteTextura: Int,
         comprimirEmDisco: Boolean = true,
         cancelado: () -> Boolean = { false },
-        onProgresso: (Float) -> Unit = {}
+        onProgresso: (Float) -> Unit = {},
+        cronometro: CronometroImport? = null,
+        rotuloTextura: String = "textura"
     ): Resultado {
         val pasta = File(raizProjeto, "assets/textures")
         if (!pasta.exists() && !pasta.mkdirs()) {
@@ -45,36 +51,52 @@ object KimgConversor {
         if (destino.exists()) {
             // CACHE: hash de conteúdo + versão do formato — já convertido antes.
             val kimg = KimgReader.read(destino.readBytes())
+            cronometro?.registrar("$rotuloTextura: conversão", 0, "em cache (${kimg.largura}×${kimg.altura}) — não reconverteu")
             return Resultado(
                 "textura $sha1 em cache (${kimg.largura}×${kimg.altura} ${kimg.formato.rotulo}) — não reconverteu",
                 "assets/textures/$sha1.kimg"
             )
         }
 
-        val decodificada = decodificar(bytesOrigem)
-            ?: throw KimgException(
-                "formato de imagem não suportado (não é PNG/JPEG decodificável) — textura vira cor sólida"
-            )
+        val decodificada = (if (cronometro != null) {
+            cronometro.medir("$rotuloTextura: decodificação de imagem", "${bytesOrigem.size} bytes") {
+                decodificar(bytesOrigem)
+            }
+        } else {
+            decodificar(bytesOrigem)
+        }) ?: throw KimgException(
+            "formato de imagem não suportado (não é PNG/JPEG decodificável) — textura vira cor sólida"
+        )
         val (bytes, relatorio) = KimgPipeline.converter(
             decodificada.bytes, decodificada.largura, decodificada.altura,
             srgb = true, normalMap = false,
             limiteTextura = limiteTextura,
             comprimirEmDisco = comprimirEmDisco,
             cancelado = cancelado,
-            onProgresso = onProgresso
+            onProgresso = onProgresso,
+            cronometro = cronometro,
+            rotuloTextura = rotuloTextura,
+            mimeOrigem = decodificada.mime
         )
-        destino.writeBytes(bytes)
+        if (cronometro != null) {
+            cronometro.medir("$rotuloTextura: gravação .KIMG", "${bytes.size} bytes") {
+                destino.writeBytes(bytes)
+            }
+        } else {
+            destino.writeBytes(bytes)
+        }
         KenkernLog.w(TAG, relatorio.resumo()) // informação útil no console (nível W)
         return Resultado(relatorio.resumo(), "assets/textures/$sha1.kimg")
     }
 
-    private class Decodificada(val bytes: ByteArray, val largura: Int, val altura: Int)
+    private class Decodificada(val bytes: ByteArray, val largura: Int, val altura: Int, val mime: String)
 
     /** PNG/JPEG → RGBA8888 (android.graphics). Null = formato não decodificável. */
     private fun decodificar(bytes: ByteArray): Decodificada? {
         val opcoes = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opcoes)
         if (opcoes.outWidth <= 0 || opcoes.outHeight <= 0) return null
+        val mime = opcoes.outMimeType ?: "" // "image/png" | "image/jpeg"
         val opcoes2 = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opcoes2)
             ?: return null
@@ -91,6 +113,6 @@ object KimgConversor {
             rgba[i * 4 + 2] = (p and 0xFF).toByte()          // B
             rgba[i * 4 + 3] = ((p shr 24) and 0xFF).toByte() // A
         }
-        return Decodificada(rgba, w, h)
+        return Decodificada(rgba, w, h, mime)
     }
 }

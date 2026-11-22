@@ -540,11 +540,16 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         importJob = viewModelScope.launch {
             var origemRel: String? = null
             var kernRel: String? = null
+            // B1 (v0.1.17): cronômetro da importação INTEIRA — toda etapa pesada é
+            // medida no ponto exato onde roda; a tabela (ms + % do total) vai para
+            // o ImportReport e para o Console (KenkernLog).
+            val cronometro = com.kenkern.engine.assets.import.CronometroImport()
             try {
                 // ---------------- FASE 1: ler (cópia em streaming, sem carregar 2×)
                 importEtapa.value = "lendo"
                 val (nomeFonte, bytesModelo, resolver) = withContext(Dispatchers.IO) {
-                    if (pasta) {
+                    cronometro.medir("leitura do arquivo (cópia + leitura)", if (pasta) "pasta SAF" else "arquivo") {
+                        if (pasta) {
                         // PASTA SAF (glTF com .bin + texturas): copia a árvore inteira
                         // para origem/<nome>/ e resolve externos contra a pasta SAF.
                         val resolverSaf = SafFolderResolver(getApplication(), uri)
@@ -587,6 +592,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                         } ?: throw ImportException("não foi possível abrir o arquivo escolhido (o SAF recusou)")
                         Triple(nomeUnico, destino.readBytes(), null as com.kenkern.engine.assets.import.ResolvedorExterno?)
                     }
+                    }
                 }.also { origemRel = caminhoOrigemRelativo(pasta, it.first) }
 
                 if (importCancelado.get()) throw ImportException("importação cancelada pelo usuário")
@@ -598,7 +604,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                         ModelImporter.Opcoes(ajustar),
                         onEtapa = { etapa -> importEtapa.value = etapa },
                         cancelado = { importCancelado.get() },
-                        resolutorExterno = resolver
+                        resolutorExterno = resolver,
+                        cronometro = cronometro
                     )
                 }
 
@@ -607,7 +614,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 withContext(Dispatchers.IO) {
                     val base = nomeFonte.substringBeforeLast('.')
                     val nomeKern = AssetLayout.nomeUnico(File(raiz, AssetLayout.DIR_MODELOS), base, "KERN")
-                    File(File(raiz, AssetLayout.DIR_MODELOS), nomeKern).writeBytes(summary.bytesKernData)
+                    cronometro.medir("gravação .KERN em disco", "${summary.bytesKernData.size} bytes") {
+                        File(File(raiz, AssetLayout.DIR_MODELOS), nomeKern).writeBytes(summary.bytesKernData)
+                    }
                     kernRel = "${AssetLayout.DIR_MODELOS}/$nomeKern"
                 }
                 summary.caminhoKernRelativo = kernRel!!
@@ -615,25 +624,31 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
                 // Texturas → .KIMG (ETAPA C): hash = nome do arquivo (cache por conteúdo);
                 // falha de UMA textura não derruba a importação — vira AVISO no relatório.
+                // B1: cada textura é medida com rótulo próprio ("textura i/n") — decode,
+                // redimensionamento, mipmaps, ETC2 e gravação .KIMG separados.
                 if (summary.texturasExtraidas.isNotEmpty()) {
                     importEtapa.value = "convertendo texturas"
                     val limite = maxTexturaDoAparelho()
-                    for (textura in summary.texturasExtraidas) {
+                    val totalTexturas = summary.texturasExtraidas.size
+                    for ((idx, textura) in summary.texturasExtraidas.withIndex()) {
                         if (importCancelado.get()) throw ImportException("importação cancelada pelo usuário")
+                        val rotulo = "textura ${idx + 1}/$totalTexturas"
                         try {
                             val sha1 = com.kenkern.engine.assets.import.AssetLayout.sha1Hex(textura.bytes)
                             val resultado = withContext(Dispatchers.IO) {
                                 com.kenkern.engine.assets.image.KimgConversor.converter(
                                     raiz, sha1, textura.bytes, limite,
                                     comprimirEmDisco = true, // DECISIONS #22 (V2.4)
-                                    cancelado = { importCancelado.get() }
+                                    cancelado = { importCancelado.get() },
+                                    cronometro = cronometro,
+                                    rotuloTextura = rotulo
                                 )
                             }
-                            summary.texturasRelatorio.add(resultado.relatorio)
+                            summary.texturasRelatorio.add("$rotulo (${textura.nomeOrigem}): ${resultado.relatorio}")
                         } catch (e: Exception) {
                             KenkernLog.e(TAG, "conversão de textura falhou (${textura.nomeOrigem})", e)
                             summary.texturasRelatorio.add(
-                                "textura '${textura.nomeOrigem}' NÃO convertida: ${e.message ?: e.javaClass.simpleName} — material vira cor sólida"
+                                "$rotulo: textura '${textura.nomeOrigem}' NÃO convertida: ${e.message ?: e.javaClass.simpleName} — material vira cor sólida"
                             )
                         }
                     }
@@ -648,7 +663,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 )
                 val parent = selection.value?.let { scene.findNick(it) } ?: scene.roots.firstOrNull()
                 val nomeNick = nomeFonte.substringBeforeLast('.')
-                run(ImportModelCommand(scene, parent?.id, nomeNick, raiz, listOf(kernRel!!, origemRel!!), classe))
+                cronometro.medir("criação do Nick (Command)", nomeNick) {
+                    run(ImportModelCommand(scene, parent?.id, nomeNick, raiz, listOf(kernRel!!, origemRel!!), classe))
+                }
 
                 // Seleciona o novo Nick e aplica a escala de enquadramento (opção).
                 val criado = scene.findNickByNameAnywhere(nomeNick)
@@ -661,6 +678,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                     select(criado.id)
                 }
                 bump()
+                // B1: tabela de tempo por etapa (ms + % do total) no ImportReport E no
+                // Console — sem medição, nenhuma afirmação sobre o gargalo.
+                val tabela = cronometro.tabela()
+                summary.tabelaTempo = tabela
+                KenkernLog.w(TAG, "ImportReport de '$nomeFonte' — tempo por etapa:\n${tabela.trimEnd()}")
+                val gargalo = cronometro.gargalo()
+                if (gargalo != null && gargalo.ms > 0) {
+                    KenkernLog.w(TAG, "gargalo da importação: ${gargalo.nome} (${gargalo.ms} ms)")
+                }
                 importRelatorio.value = summary
             } catch (e: ImportException) {
                 // Erro CLARO: nome + causa + o que fazer (A.6) — nunca crash, nunca silêncio.

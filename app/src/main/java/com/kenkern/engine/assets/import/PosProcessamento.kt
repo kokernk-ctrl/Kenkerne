@@ -25,10 +25,18 @@ import com.kenkern.engine.core.math.Vec3
  */
 object PosProcessamento {
 
-    /** Aplica dedup + LODs e devolve a malha final pronta para o KernWriter. */
-    fun aplicar(mesh: KernMesh): KernMesh {
-        val dedup = deduplicarVertices(mesh)
-        return gerarLods(dedup)
+    /**
+     * Aplica dedup + LODs e devolve a malha final pronta para o KernWriter.
+     * [cronometro] (B1, v0.1.17): mede dedup e LODs SEPARADAMENTE — a tabela
+     * do ImportReport aponta o gargalo com número, não com achismo.
+     */
+    fun aplicar(mesh: KernMesh, cronometro: CronometroImport? = null): KernMesh {
+        val dedup = cronometro?.medir("dedup de vértices", "${mesh.vertexCount} vértices") {
+            deduplicarVertices(mesh)
+        } ?: deduplicarVertices(mesh)
+        return cronometro?.medir("LODs (simplificação por grade)", "${dedup.indices.size / 3} triângulos") {
+            gerarLods(dedup)
+        } ?: gerarLods(dedup)
     }
 
     // ---------------------------------------------------------------- dedup
