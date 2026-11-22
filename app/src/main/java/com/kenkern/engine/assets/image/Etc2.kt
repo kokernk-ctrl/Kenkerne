@@ -78,6 +78,14 @@ object Etc2 {
     /** True quando o encoder roda com mais de 1 thread (para o Diagnóstico). */
     fun paralelo(): Boolean = pool != null
 
+    /**
+     * SEAM DE TESTE (B4, v0.1.17): força o caminho KOTLIN mesmo com o núcleo
+     * nativo carregado — os testes do encoder Kotlin rodam com a biblioteca
+     * do HOST carregada (mesmo padrão do ImportModelCommand.testeFalhaNoMove).\n     * Nunca setado em produção.
+     */
+    @Volatile
+    internal var testeForcarKotlin = false
+
     // ------------------------------------------------------------- tabelas
 
     /** Modificadores: cw c (3 bits) → linha c*4 .. c*4+3 do array. */
@@ -337,6 +345,9 @@ object Etc2 {
      * cancelamento checado a cada linha (responde < 1 s); qualidade RÁPIDA
      * por padrão (individual + diferencial + planar; T/H só em ALTA).
      *
+     * B4 (v0.1.17): ENCODER NATIVO (etcpak) PRIMEIRO; falha = fallback Kotlin
+     * com o motivo no Console (Etc2Nativo.codificar registra).
+     *
      * CORREÇÃO DE ORDEM (v0.1.17): o laço antigo era bx-externo/by-interno
      * (blocos em COLUNA-major) enquanto o decoder e o glCompressedTexImage2D
      * esperam LINHA-major — texturas com alfa > 4 px saíam com os blocos
@@ -349,6 +360,18 @@ object Etc2 {
         cancelado: () -> Boolean = { false },
         qualidade: Qualidade = Qualidade.RAPIDA
     ): ByteArray {
+        // B4: etcpak nativo (multithread em C++) quando disponível. Cancelamento:
+        // checado ANTES e DEPOIS da chamada nativa (a chamada em si é uma
+        // codificação completa — em 1024² leva milissegundos, dentro da meta
+        // de resposta < 1 s).
+        if (!testeForcarKotlin) {
+            if (cancelado()) throw KimgException("compressão ETC2 cancelada pelo usuário")
+            val nativo = com.kenkern.engine.nativecore.Etc2Nativo.codificar(
+                rgba, largura, altura, temAlfa = true, qualidadeRapida = qualidade == Qualidade.RAPIDA
+            )
+            if (cancelado()) throw KimgException("compressão ETC2 cancelada pelo usuário")
+            if (nativo != null) return nativo
+        }
         val blocosX = blocosDe(largura)
         val blocosY = blocosDe(altura)
         val saida = ByteArray(blocosX * blocosY * 16)
@@ -380,6 +403,7 @@ object Etc2 {
      * Codifica RGBA8888 (4 bytes/texel; alfa ignorado) → blocos ETC2 RGB8
      * (8 bytes/bloco, LINHA-MAJOR — padrão do hardware). Paralelo em faixas
      * de linhas (B2c), cancelamento por linha (B2d), qualidade por parâmetro (B2b).
+     * B4: etcpak nativo primeiro; falha = fallback Kotlin com motivo no Console.
      */
     fun codificarRgb(
         rgb: ByteArray,
@@ -388,6 +412,15 @@ object Etc2 {
         cancelado: () -> Boolean = { false },
         qualidade: Qualidade = Qualidade.RAPIDA
     ): ByteArray {
+        // B4: etcpak nativo primeiro (com cancelamento checado antes/depois).
+        if (!testeForcarKotlin) {
+            if (cancelado()) throw KimgException("compressão ETC2 cancelada pelo usuário")
+            val nativo = com.kenkern.engine.nativecore.Etc2Nativo.codificar(
+                rgb, largura, altura, temAlfa = false, qualidadeRapida = qualidade == Qualidade.RAPIDA
+            )
+            if (cancelado()) throw KimgException("compressão ETC2 cancelada pelo usuário")
+            if (nativo != null) return nativo
+        }
         val blocosX = blocosDe(largura)
         val blocosY = blocosDe(altura)
         val saida = ByteArray(blocosX * blocosY * 8)

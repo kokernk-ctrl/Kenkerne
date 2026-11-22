@@ -191,31 +191,43 @@ class KimgTest {
 
     @Test
     fun `planar ganha em gradiente suave e decodifica coerente`() {
-        val src = ByteArray(16 * 4)
-        for (x in 0 until 4) {
-            for (y in 0 until 4) {
-                val i = (y * 4 + x) * 4
-                src[i] = ((x * 255) / 3).toByte()
-                src[i + 1] = ((x * 255) / 3).toByte()
-                src[i + 2] = ((x * 255) / 3).toByte()
-                src[i + 3] = 255.toByte()
+        // Testa o encoder KOTLIN (modo planar em gradiente suave): com a
+        // biblioteca NATIVA do host carregada (B4), força o caminho Kotlin —
+        // a qualidade do etcpak é medida à parte em Etc2NativoComparacaoTest.
+        Etc2.testeForcarKotlin = true
+        try {
+            val src = ByteArray(16 * 4)
+            for (x in 0 until 4) {
+                for (y in 0 until 4) {
+                    val i = (y * 4 + x) * 4
+                    src[i] = ((x * 255) / 3).toByte()
+                    src[i + 1] = ((x * 255) / 3).toByte()
+                    src[i + 2] = ((x * 255) / 3).toByte()
+                    src[i + 3] = 255.toByte()
+                }
             }
-        }
-        val blocos = Etc2.codificarRgb(src, 4, 4)
-        val volta = Etc2.decodificarRgb(blocos, 4, 4)
-        val psnr = Etc2.psnr(src, volta)
-        assertTrue("gradiente 1D bem comprimido (PSNR $psnr)", psnr > 20.0)
-        for (i in 0 until 16) {
-            for (c in 0 until 3) {
-                val origem = src[i * 4 + c].toInt() and 0xFF
-                val rec = volta[i * 4 + c].toInt() and 0xFF
-                assertTrue("texel $i canal $c: $origem vs $rec", abs(origem - rec) <= 16)
+            val blocos = Etc2.codificarRgb(src, 4, 4)
+            val volta = Etc2.decodificarRgb(blocos, 4, 4)
+            val psnr = Etc2.psnr(src, volta)
+            assertTrue("gradiente 1D bem comprimido (PSNR $psnr)", psnr > 20.0)
+            for (i in 0 until 16) {
+                for (c in 0 until 3) {
+                    val origem = src[i * 4 + c].toInt() and 0xFF
+                    val rec = volta[i * 4 + c].toInt() and 0xFF
+                    assertTrue("texel $i canal $c: $origem vs $rec", abs(origem - rec) <= 16)
+                }
             }
+        } finally {
+            Etc2.testeForcarKotlin = false
         }
     }
 
     @Test
     fun `xadrez preto e branco fica com erro baixo e 16 cores vivas não crasham`() {
+        // Encoder KOTLIN (separação claro/escuro por bloco): força o caminho
+        // Kotlin — o nativo é medido à parte (Etc2NativoComparacaoTest).
+        Etc2.testeForcarKotlin = true
+        try {
         // xadrez 2×2 preto/branco: caso onde o bloco tem que separar claro/escuro
         val xadrez = ByteArray(16 * 4)
         for (x in 0 until 4) {
@@ -253,6 +265,9 @@ class KimgTest {
         for (v in voltaVivas) {
             val valor = v.toInt() and 0xFF
             assertTrue("pixel dentro da faixa", valor in 0..255)
+        }
+        } finally {
+            Etc2.testeForcarKotlin = false
         }
     }
 

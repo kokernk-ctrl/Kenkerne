@@ -46,6 +46,13 @@ android {
                 "kenkern.modelos.dir",
                 System.getProperty("kenkern.modelos.dir") ?: ""
             )
+            // B4 (v0.1.17): caminho do libkenkern.so compilado para o HOST
+            // (task compilarNativoHost) — os testes JVM carregam a MESMA
+            // fonte nativa (etcpak) e comparam nativo × Kotlin.
+            teste.systemProperty(
+                "kenkern.native.hostpath",
+                File(buildDir, "host-native/libkenkern.so").absolutePath
+            )
         }
     }
 
@@ -135,4 +142,46 @@ dependencies {
     testImplementation(libs.mockito.core)
     // Importador glTF (F2.7): mesmo package org.json do Android, só nos testes JVM.
     testImplementation(libs.org.json)
+}
+
+// =====================================================================
+// B4 (v0.1.17): compila a MESMA fonte do núcleo nativo (kenkern_native.cpp +
+// kenkern_etc2.cpp + etcpak) para o HOST (g++, x86-64). Os testes JVM carregam
+// esse libkenkern.so via -Dkenkern.native.hostpath e comparam o encoder ETC2
+// NATIVO × Kotlin (PSNR, tamanhos, 4×4, não-múltiplo de 4) — o mesmo código C++
+// que roda no arm64 do APK. Precisa de g++ (presente no CI ubuntu e no dev).
+// =====================================================================
+val compilarNativoHost by tasks.registering {
+    description = "Compila libkenkern.so do HOST (g++) para os testes JVM do encoder ETC2 nativo"
+    val dirSaida = File(buildDir, "host-native")
+    val arquivoSaida = File(dirSaida, "libkenkern.so")
+    outputs.file(arquivoSaida)
+    inputs.files(
+        file("src/main/cpp/kenkern_native.cpp"),
+        file("src/main/cpp/kenkern_etc2.cpp"),
+        file("../third_party/etcpak/ProcessRGB.cpp"),
+        file("../third_party/etcpak/Tables.cpp")
+    )
+    doLast {
+        dirSaida.mkdirs()
+        val javaHome = System.getProperty("java.home")
+        exec {
+            commandLine(
+                "g++", "-std=c++17", "-O2", "-fPIC", "-shared",
+                "-I$javaHome/include",
+                "-I$javaHome/include/linux",
+                "-I${rootProject.projectDir}/third_party",
+                file("src/main/cpp/kenkern_native.cpp").absolutePath,
+                file("src/main/cpp/kenkern_etc2.cpp").absolutePath,
+                File(rootProject.projectDir, "third_party/etcpak/ProcessRGB.cpp").absolutePath,
+                File(rootProject.projectDir, "third_party/etcpak/Tables.cpp").absolutePath,
+                "-o", arquivoSaida.absolutePath
+            )
+        }
+        logger.lifecycle("nativo do HOST compilado: ${arquivoSaida.absolutePath}")
+    }
+}
+
+tasks.matching { it.name == "testDebugUnitTest" || it.name == "testReleaseUnitTest" }.configureEach {
+    dependsOn(compilarNativoHost)
 }

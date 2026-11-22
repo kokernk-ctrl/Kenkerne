@@ -23,9 +23,18 @@
  */
 
 #include <jni.h>
-#include <android/log.h>
+
+#ifdef __ANDROID__
+#  include <android/log.h>
+#  define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
+#else
+// HOST (testes JVM): a MESMA fonte compila com g++ para o teste nativo×Kotlin —
+// sem logcat, o aviso já volta pelo código de retorno do JNI.
+#  define LOGW(...) do { } while (0)
+#endif
 
 #include <csignal>
+#include <cstdint>
 #include <cstring>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -35,7 +44,6 @@
 
 #define KENKERN_NATIVE_VERSAO "1.0.0"
 #define TAG "Kenkern/NativeCore"
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 
 namespace {
 

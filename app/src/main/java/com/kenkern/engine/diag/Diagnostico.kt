@@ -101,6 +101,7 @@ class Diagnostico(private val appContext: Context) {
 
     fun novaLista(): List<Checagem> = listOf(
         Checagem("nativo", "Núcleo nativo C++ — biblioteca, eco, handler de sinais"),
+        Checagem("etc2-nativo", "ETC2 nativo (etcpak) — 1024²: ms · MP/s · PSNR × Kotlin"),
         Checagem("ck", ".ck (cena) — ida e volta"),
         Checagem("kern", ".KERN (malha) — ida e volta"),
         Checagem("gltf", "Importador glTF/GLB → .KERN (meta + integridade)"),
@@ -127,7 +128,7 @@ class Diagnostico(private val appContext: Context) {
      * Nunca lança.
      */
     fun executar(onAtualiza: (Checagem) -> Unit) {
-        val rapidas = listOf("nativo", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release")
+        val rapidas = listOf("nativo", "etc2-nativo", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release")
         val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "astc")
 
         for (id in rapidas) rodarUma(id, onAtualiza)
@@ -161,6 +162,7 @@ class Diagnostico(private val appContext: Context) {
         runCatching {
             when (id) {
                 "nativo" -> checarNativo(c)
+                "etc2-nativo" -> checarEtc2Nativo(c)
                 "ck" -> checarCk(c)
                 "kern" -> checarKern(c)
                 "gltf" -> checarGltf(c)
@@ -223,6 +225,77 @@ class Diagnostico(private val appContext: Context) {
             c.aprovado(
                 "libkenkern.so carregada · versão $versao · ABI $abi · eco(21)=$eco ✓ · " +
                     "handler de sinais instalado (SIGSEGV/SIGABRT/SIGBUS/SIGFPE → crash_logs/native_crash.txt)"
+            )
+        } else {
+            c.falhou(problemas.joinToString("; "))
+        }
+    }
+
+    /**
+     * Checagem "etc2 nativo" (B4, v0.1.17) — ENCODER ETC2 NATIVO × KOTLIN no
+     * APARELHO: codifica 1024×1024 REALISTA (gradiente + ruído, semente fixa)
+     * nos DOIS encoders e mostra ms, MP/s e PSNR dos dois + tamanho idêntico.
+     * APROVADO exige: etcpak carregado, mesmo tamanho de saída e PSNR do
+     * nativo ≥ PSNR do Kotlin − 1 dB (o etcpak não pode ser pior de verdade).
+     * Meta B5 (texto do relatório): o número de ms aqui é a prova no aparelho.
+     */
+    private fun checarEtc2Nativo(c: Checagem) {
+        val w = 1024
+        val h = 1024
+        val rgba = ByteArray(w * h * 4)
+        var semente = 424242L
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val i = (y * w + x) * 4
+                semente = semente * 6364136223846793005L + 1442695040888963407L
+                val ruido = ((semente ushr 33) % 11).toInt() - 5
+                rgba[i] = (110 + x / 4 + ruido).coerceIn(0, 255).toByte()
+                rgba[i + 1] = (90 + y / 4 + ruido).coerceIn(0, 255).toByte()
+                rgba[i + 2] = (150 + (x + y) / 8).coerceIn(0, 255).toByte()
+                rgba[i + 3] = 255.toByte()
+            }
+        }
+
+        if (!com.kenkern.engine.nativecore.Etc2Nativo.disponivel()) {
+            c.falhou("encoder etcpak indisponível (ver CONSOLE) — a importação segue no encoder Kotlin")
+            return
+        }
+
+        // ---------- NATIVO (etcpak, multithread em C++) ----------
+        val tNativo0 = System.nanoTime()
+        val nativo = com.kenkern.engine.nativecore.Etc2Nativo.codificar(rgba, w, h, temAlfa = false, qualidadeRapida = true)
+        val nativoMs = (System.nanoTime() - tNativo0) / 1_000_000L
+        if (nativo == null) {
+            c.falhou("etcpak devolveu null (ver CONSOLE) — encoder Kotlin assume")
+            return
+        }
+        val psnrNativo = com.kenkern.engine.assets.image.Etc2.psnr(rgba, com.kenkern.engine.assets.image.Etc2.decodificarRgb(nativo, w, h))
+
+        // ---------- KOTLIN (encoder atual, modo rápido, paralelo) ----------
+        com.kenkern.engine.assets.image.Etc2.testeForcarKotlin = true
+        val kotlinBlocos: ByteArray
+        val kotlinMs: Long
+        try {
+            val tKotlin0 = System.nanoTime()
+            kotlinBlocos = com.kenkern.engine.assets.image.Etc2.codificarRgb(rgba, w, h, qualidade = com.kenkern.engine.assets.image.Etc2.Qualidade.RAPIDA)
+            kotlinMs = (System.nanoTime() - tKotlin0) / 1_000_000L
+        } finally {
+            com.kenkern.engine.assets.image.Etc2.testeForcarKotlin = false
+        }
+        val psnrKotlin = com.kenkern.engine.assets.image.Etc2.psnr(rgba, com.kenkern.engine.assets.image.Etc2.decodificarRgb(kotlinBlocos, w, h))
+
+        // ---------- veredito ----------
+        val mp = w.toLong() * h / 1_000_000.0
+        val aceleracao = if (kotlinMs > 0) kotlinMs.toDouble() / nativoMs.coerceAtLeast(1) else 0.0
+        val problemas = ArrayList<String>(2)
+        if (nativo.size != kotlinBlocos.size) problemas.add("tamanhos divergem: nativo ${nativo.size} × kotlin ${kotlinBlocos.size}")
+        if (psnrNativo < psnrKotlin - 1.0) problemas.add("PSNR nativo ${"%.1f".format(java.util.Locale.US, psnrNativo)} dB < kotlin ${"%.1f".format(java.util.Locale.US, psnrKotlin)} dB − 1")
+
+        if (problemas.isEmpty()) {
+            c.aprovado(
+                "1024² · nativo ${nativoMs} ms (%.1f MP/s) · kotlin ${kotlinMs} ms (%.1f MP/s) · %.0f× mais rápido · PSNR nativo %.1f dB × kotlin %.1f dB · saída ${nativo.size} B idêntica".format(
+                    java.util.Locale.US, mp / (nativoMs / 1000.0), mp / (kotlinMs / 1000.0), aceleracao, psnrNativo, psnrKotlin
+                )
             )
         } else {
             c.falhou(problemas.joinToString("; "))

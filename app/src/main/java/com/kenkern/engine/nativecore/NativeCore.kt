@@ -47,13 +47,24 @@ object NativeCore {
      * Carrega a biblioteca (idempotente). Chamado no Application.onCreate e
      * pela checagem "nativo" do Diagnóstico. Falha = registro no Console +
      * isAvailable false (módulos nativos seguem em fallback Kotlin).
+     *
+     * SEAM DE TESTE (B4, v0.1.17): a propriedade de sistema
+     * `kenkern.native.hostpath` carrega a MESMA fonte nativa compilada para
+     * o HOST (g++, x86-64) — os testes JVM exercitam o etcpak nativo×Kotlin
+     * sem aparelho. Nunca setada em produção (mesmo padrão do
+     * ImportModelCommand.testeFalhaNoMove).
      */
     @Synchronized
     fun carregar(): Boolean {
         if (cargaTentada) return isAvailable
         cargaTentada = true
         try {
-            System.loadLibrary("kenkern")
+            val caminhoHost = System.getProperty("kenkern.native.hostpath")
+            if (caminhoHost != null && java.io.File(caminhoHost).isFile) {
+                System.load(caminhoHost)
+            } else {
+                System.loadLibrary("kenkern")
+            }
             isAvailable = true
             versao = versaoNativa()
             KenkernLog.w(TAG, "núcleo nativo carregado: versão $versao · ABI $abi")

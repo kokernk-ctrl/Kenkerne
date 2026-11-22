@@ -69,36 +69,43 @@ class Etc2QualidadeParaleloTest {
         // O caminho paralelo (pool com availableProcessors − 1 threads quando
         // existem ≥ 8 linhas de blocos) tem que devolver EXATAMENTE os mesmos
         // bytes do sequencial — faixas disjuntas, sem trava, determinístico.
-        val w = 64
-        val h = 64
-        val rgba = padraoRealista(w, h)
-        val viaEncoder = Etc2.codificarRgb(rgba, w, h, qualidade = Etc2.Qualidade.RAPIDA)
+        // B4: com a biblioteca NATIVA do host carregada, este teste força o
+        // caminho KOTLIN (o nativo é comparado à parte em Etc2NativoComparacaoTest).
+        Etc2.testeForcarKotlin = true
+        try {
+            val w = 64
+            val h = 64
+            val rgba = padraoRealista(w, h)
+            val viaEncoder = Etc2.codificarRgb(rgba, w, h, qualidade = Etc2.Qualidade.RAPIDA)
 
-        // Referência SEQUENCIAL manual: bloco a bloco, linha-major.
-        val blocosX = (w + 3) / 4
-        val blocosY = (h + 3) / 4
-        val sequencial = ByteArray(blocosX * blocosY * 8)
-        val r = IntArray(16); val g = IntArray(16); val b = IntArray(16); val a = IntArray(16)
-        val bloco = Etc2.BlocoEntrada(r, g, b, a)
-        for (by in 0 until blocosY) {
-            for (bx in 0 until blocosX) {
-                for (x in 0 until 4) {
-                    for (y in 0 until 4) {
-                        val sx = minOf(bx * 4 + x, w - 1)
-                        val sy = minOf(by * 4 + y, h - 1)
-                        val p = (sy * w + sx) * 4
-                        val i = x * 4 + y
-                        r[i] = rgba[p].toInt() and 0xFF
-                        g[i] = rgba[p + 1].toInt() and 0xFF
-                        b[i] = rgba[p + 2].toInt() and 0xFF
-                        a[i] = 255
+            // Referência SEQUENCIAL manual: bloco a bloco, linha-major.
+            val blocosX = (w + 3) / 4
+            val blocosY = (h + 3) / 4
+            val sequencial = ByteArray(blocosX * blocosY * 8)
+            val r = IntArray(16); val g = IntArray(16); val b = IntArray(16); val a = IntArray(16)
+            val bloco = Etc2.BlocoEntrada(r, g, b, a)
+            for (by in 0 until blocosY) {
+                for (bx in 0 until blocosX) {
+                    for (x in 0 until 4) {
+                        for (y in 0 until 4) {
+                            val sx = minOf(bx * 4 + x, w - 1)
+                            val sy = minOf(by * 4 + y, h - 1)
+                            val p = (sy * w + sx) * 4
+                            val i = x * 4 + y
+                            r[i] = rgba[p].toInt() and 0xFF
+                            g[i] = rgba[p + 1].toInt() and 0xFF
+                            b[i] = rgba[p + 2].toInt() and 0xFF
+                            a[i] = 255
+                        }
                     }
+                    val bytes = Etc2.codificarBlocoRgb(bloco, Etc2.Qualidade.RAPIDA)
+                    System.arraycopy(bytes, 0, sequencial, (by * blocosX + bx) * 8, 8)
                 }
-                val bytes = Etc2.codificarBlocoRgb(bloco, Etc2.Qualidade.RAPIDA)
-                System.arraycopy(bytes, 0, sequencial, (by * blocosX + bx) * 8, 8)
             }
+            assertTrue("paralelo == sequencial byte a byte", viaEncoder.contentEquals(sequencial))
+        } finally {
+            Etc2.testeForcarKotlin = false
         }
-        assertTrue("paralelo == sequencial byte a byte", viaEncoder.contentEquals(sequencial))
     }
 
     @Test
