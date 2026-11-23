@@ -6,6 +6,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -387,8 +390,12 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                         }
 
                         // Controles da câmera de VOO (joystick, subir/descer, velocidade)
+                        // G3 (v0.1.19): com a janela Adicionar Nick aberta (qualquer
+                        // painel modal), os controles de voo SOMEM — o joystick e os
+                        // botões ficam por baixo do painel e não podem reagir a toques
+                        // que eram para a janela.
                         val svForFlight = surfaceView
-                        if (cameraMode == CameraMode.FLIGHT && svForFlight != null) {
+                        if (cameraMode == CameraMode.FLIGHT && svForFlight != null && !addNickVisivel) {
                             FlightControls(svForFlight)
                         }
 
@@ -1291,6 +1298,9 @@ private fun buildDebugLines(sv: KenkernSurfaceView, viewPx: android.util.Size): 
  *  - joystick virtual à esquerda: frente/trás/lados;
  *  - dois botões à direita: subir e descer;
  *  - slider de velocidade em escala logarítmica (0,1 a 100 m/s) no centro.
+ * G3 (v0.1.19): o Box inteiro vive na ÁREA SEGURA (insets safeDrawing) — nada
+ * cortado pela barra de gestos; e o composable só existe quando NÃO há painel
+ * modal aberto (a condição está no EditorScreen).
  * O Box externo NÃO captura toques (só os controles): o resto da tela continua
  * entregando eventos ao viewport (arrastar gira o olhar via TouchController).
  */
@@ -1326,7 +1336,11 @@ private fun FlightControls(sv: KenkernSurfaceView) {
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    // G3 (v0.1.19): TODOS os controles dentro da ÁREA SEGURA — o Box aplica os
+    // insets (safeDrawing é consumption-aware: TopBar/StatusBar já consumidos
+    // pela Column raiz entram como 0); antes o controle de velocidade ficava
+    // cortado embaixo pela barra de gestos do sistema.
+    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
         // ---------- Joystick virtual (canto inferior esquerdo) ----------
         Box(
             modifier = Modifier
@@ -1374,11 +1388,14 @@ private fun FlightControls(sv: KenkernSurfaceView) {
         }
 
         // ---------- Slider de velocidade (canto inferior central) ----------
+        // G3: padding inferior garantido dentro da área segura (o controle
+        // INTEIRO — rótulo + trilha + polegar — sempre visível).
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 16.dp)
                 .width(200.dp)
         ) {
             Text(speedLabel, fontSize = 12.sp, color = KenkernTextMid)
