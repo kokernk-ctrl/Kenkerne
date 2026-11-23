@@ -1,9 +1,12 @@
 package com.kenkern.engine.assets.mesh
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.sqrt
 
 /**
@@ -126,6 +129,7 @@ class KernRoundtripTest {
         val b = cubo()
         b.lods.add(KernLod(0, 36, com.kenkern.engine.core.math.Vec3(-1f, -1f, -1f), com.kenkern.engine.core.math.Vec3(1f, 1f, 1f)))
         b.lods.add(KernLod(36, 18, com.kenkern.engine.core.math.Vec3(-0.5f, -0.5f, -0.5f), com.kenkern.engine.core.math.Vec3(0.5f, 0.5f, 0.5f)))
+        repeat(6) { b.triangle(0, 1, 2) } // índices do segundo LOD também existem no stream
         val original = b.build()
         val lida = KernReader.read(KernWriter.write(original))
         assertEquals(2, lida.lods.size)
@@ -184,12 +188,92 @@ class KernRoundtripTest {
         assertLanca(ByteArray(0), "arquivo vazio")
     }
 
+    @Test
+    fun `header e contagens sao validados antes de criar arrays da malha`() {
+        val valid = KernWriter.write(cubo().build())
+        assertLanca(ByteArray(KernFormat.HEADER_SIZE - 1), "header truncado")
+        assertLancaHeader(ByteArray(KernFormat.HEADER_SIZE - 1), "header truncado")
+
+        val vertexCountImpossivel = valid.copyOf()
+        putInt(vertexCountImpossivel, 32, Int.MAX_VALUE)
+        assertLanca(vertexCountImpossivel, "vertexCount sem bloco correspondente")
+
+        val indexCountImpossivel = valid.copyOf()
+        putInt(indexCountImpossivel, 36, 2_000_000_001) // múltiplo de 3; corpo declarado não cabe
+        assertLanca(indexCountImpossivel, "indexCount sem bytes correspondentes")
+        assertLanca(valid.copyOf(valid.size - 1), "último byte truncado")
+    }
+
+    @Test
+    fun `LOD e indices fora de range sao rejeitados`() {
+        val valid = KernWriter.write(cubo().build())
+        val vertexCount = ByteBuffer.wrap(valid).order(ByteOrder.LITTLE_ENDIAN).getInt(32)
+        val indexCount = ByteBuffer.wrap(valid).order(ByteOrder.LITTLE_ENDIAN).getInt(36)
+        val lodStart = KernFormat.HEADER_SIZE + vertexCount * KernFormat.VERTEX_SIZE
+
+        val lodFora = valid.copyOf()
+        putInt(lodFora, lodStart + 4, indexCount + 3)
+        assertLanca(lodFora, "range de LOD fora do bloco de índices")
+
+        val indicesStart = lodStart + KernFormat.LOD_ENTRY_SIZE
+        val indexFora = valid.copyOf()
+        putShort(indexFora, indicesStart, vertexCount.toShort())
+        assertLanca(indexFora, "índice fora do range de vértices")
+    }
+
+    @Test
+    fun `clusters com material usam offset correto e leem offset legado conhecido`() {
+        val b = cubo()
+        b.clusters = byteArrayOf(9, 8, 7, 6)
+        b.material(KernMaterial(
+            "mat", 0.8f, 0.4f, 0.2f, 1f, 0.1f, 0.7f,
+            false, false, false, "base.kimg", ""
+        ))
+        b.materialGroup(0, 36, 0)
+        val bytes = KernWriter.write(b.build())
+        val lida = KernReader.read(bytes)
+        assertArrayEquals(byteArrayOf(9, 8, 7, 6), lida.clusters!!)
+        assertEquals(1, lida.materiais.size)
+        assertEquals(1, lida.gruposMaterial.size)
+
+        // Compatibilidade com writer antigo: clusterOffset = início do cluster
+        // + tamanho do bloco de materiais (layout físico continua conhecido).
+        val tamanhoClusters = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getLong(58)
+        val legado = bytes.copyOf()
+        putLong(legado, 50, bytes.size.toLong() - tamanhoClusters)
+        val lidaLegada = KernReader.read(legado)
+        assertArrayEquals(byteArrayOf(9, 8, 7, 6), lidaLegada.clusters!!)
+        assertEquals(1, lidaLegada.materiais.size)
+
+        assertLanca(bytes.copyOf(bytes.size - 1), "tabela material truncada")
+    }
+
     private fun assertLanca(bytes: ByteArray, caso: String) {
         try {
             KernReader.read(bytes)
             fail("deveria lançar com $caso")
-        } catch (expected: Exception) {
+        } catch (expected: IllegalArgumentException) {
         }
+    }
+
+    private fun assertLancaHeader(bytes: ByteArray, caso: String) {
+        try {
+            KernReader.readHeader(bytes)
+            fail("readHeader deveria lançar com $caso")
+        } catch (expected: IllegalArgumentException) {
+        }
+    }
+
+    private fun putInt(bytes: ByteArray, offset: Int, value: Int) {
+        ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).putInt(offset, value)
+    }
+
+    private fun putShort(bytes: ByteArray, offset: Int, value: Short) {
+        ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).putShort(offset, value)
+    }
+
+    private fun putLong(bytes: ByteArray, offset: Int, value: Long) {
+        ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).putLong(offset, value)
     }
 
     @Test

@@ -116,37 +116,53 @@ object KernWriter {
             }
         } else emptyList()
         val matsOut = if (temMateriais) mesh.materiais.ifEmpty { listOf(materiaVazia()) } else emptyList()
+        require(mesh.lods.size in 1..255) { "KERN exige de 1 a 255 LODs" }
+        require(gruposOut.size <= 65535 && matsOut.size <= 65535) {
+            "tabelas KERN excedem o limite de 65535 entradas"
+        }
 
-        var materialBlockSize = 0
+        var materialBlockSize = 0L
         if (temMateriais) {
-            materialBlockSize += 2 + gruposOut.size * 12
-            materialBlockSize += 2
+            materialBlockSize += 2L + gruposOut.size.toLong() * 12L
+            materialBlockSize += 2L
             for (m in matsOut) {
-                materialBlockSize += 1 + m.nome.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
-                materialBlockSize += 4 // baseColor RGBA u8
-                materialBlockSize += 4 + 4 // metallic/roughness f32
-                materialBlockSize += 1 // flags
-                materialBlockSize += 1 + m.texturaBasePath.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
-                materialBlockSize += 1 + m.texturaNormalPath.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
+                materialBlockSize += 1L + m.nome.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
+                materialBlockSize += 4L // baseColor RGBA u8
+                materialBlockSize += 4L + 4L // metallic/roughness f32
+                materialBlockSize += 1L // flags
+                materialBlockSize += 1L + m.texturaBasePath.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
+                materialBlockSize += 1L + m.texturaNormalPath.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
             }
         }
 
-        val vertexBlockSize = mesh.vertexCount * KernFormat.VERTEX_SIZE
-        val lodTableSize = mesh.lods.size * KernFormat.LOD_ENTRY_SIZE
-        val indexBlockSize = mesh.indices.size * if (indexType == KernFormat.INDEX_TYPE_U16) 2 else 4
+        val vertexBlockSizeLong = mesh.vertexCount.toLong() * KernFormat.VERTEX_SIZE
+        require(vertexBlockSizeLong <= Int.MAX_VALUE) { "bloco de vértices KERN excede o limite do formato" }
+        val vertexBlockSize = vertexBlockSizeLong.toInt()
+        val lodTableSize = mesh.lods.size.toLong() * KernFormat.LOD_ENTRY_SIZE
+        val indexBlockSize = mesh.indices.size.toLong() *
+            (if (indexType == KernFormat.INDEX_TYPE_U16) 2L else 4L)
 
         val boneCount = mesh.bones.size
-        var boneBlockSize = 0
+        var boneBlockSize = 0L
         for (bone in mesh.bones) {
             val nameBytes = bone.name.toByteArray(Charsets.UTF_8)
-            boneBlockSize += 4 + 2 + nameBytes.size + 64
+            require(nameBytes.size <= 65535 && bone.inverseBind.size == 16) {
+                "osso KERN tem nome ou inverseBind incompatível com o formato"
+            }
+            boneBlockSize += 4L + 2L + nameBytes.size + 64L
         }
 
         val clusterSize: Long = mesh.clusters?.size?.toLong() ?: 0L
-        val staticSize: Long =
-            (KernFormat.HEADER_SIZE + vertexBlockSize + lodTableSize + indexBlockSize + boneBlockSize + materialBlockSize).toLong()
-        val clusterOffset: Long = if (clusterSize > 0) staticSize else 0L
-        val totalSize: Long = if (clusterSize > 0) staticSize + clusterSize else staticSize
+        // Clusters vêm imediatamente depois dos ossos; a tabela de materiais
+        // é gravada DEPOIS dos clusters. O offset do header aponta para o início
+        // físico do bloco, não para o tamanho total incluindo materiais.
+        val antesClusters: Long = KernFormat.HEADER_SIZE.toLong() + vertexBlockSizeLong +
+            lodTableSize + indexBlockSize + boneBlockSize
+        val clusterOffset: Long = if (clusterSize > 0) antesClusters else 0L
+        val totalSize: Long = antesClusters + clusterSize + materialBlockSize
+        require(totalSize in KernFormat.HEADER_SIZE.toLong()..Int.MAX_VALUE.toLong()) {
+            "arquivo KERN excede o limite de tamanho do formato ($totalSize bytes)"
+        }
 
         val buffer = ByteBuffer.allocate(totalSize.toInt()).order(ByteOrder.LITTLE_ENDIAN)
 
