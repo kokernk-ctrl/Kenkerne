@@ -164,9 +164,9 @@ object ViewportSession {
  */
 @Composable
 fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
-    // Marcador de progresso (diagnóstico de crash nativo): esta tela COMPOSTOU.
-    // remember = grava 1x por composição, não a cada recomposição.
-    remember { BootTrace.mark("EditorScreen composto") }
+    // Registra após uma composição bem-sucedida; LaunchedEffect executa uma vez
+    // por instância da tela, sem gravar no BootTrace durante a composição.
+    LaunchedEffect(Unit) { BootTrace.mark("EditorScreen composto") }
     var surfaceView by remember { mutableStateOf<KenkernSurfaceView?>(null) }
     val sceneRevision = vm.revision.intValue
     val hasActivePlayer = remember(vm.scene.value, sceneRevision) {

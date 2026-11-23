@@ -57,7 +57,8 @@ android {
     }
 
     // Assinatura de release lida de variáveis de ambiente (mesma estratégia usada no CI).
-    // Se as variáveis não existirem, o release usa a chave debug para não travar builds locais.
+    // Builds locais podem usar a chave debug, mas tags v* definem
+    // KENKERN_REQUIRE_RELEASE_SIGNING=true e nunca podem cair nesse fallback.
     signingConfigs {
         val ksPath = System.getenv("KEYSTORE_PATH")
         val ksPass = System.getenv("KEYSTORE_PASSWORD")
@@ -88,6 +89,14 @@ android {
             isShrinkResources = true
             isDebuggable = false
             val releaseSigning = signingConfigs.findByName("release")
+            val requireReleaseSigning =
+                System.getenv("KENKERN_REQUIRE_RELEASE_SIGNING").equals("true", ignoreCase = true)
+            if (requireReleaseSigning && releaseSigning == null) {
+                throw GradleException(
+                    "Assinatura de release obrigatória, mas KEYSTORE_PATH, " +
+                        "KEYSTORE_PASSWORD, KEY_ALIAS e KEY_PASSWORD não estão configurados."
+                )
+            }
             signingConfig = releaseSigning ?: signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -110,9 +119,9 @@ android {
         buildConfig = true
     }
     lint {
-        // Lint roda separadamente no CI; evita OOM em máquinas com pouca RAM.
-        checkReleaseBuilds = false
-        abortOnError = false
+        // O lint de release é gate no CI; erros não podem ser ignorados.
+        checkReleaseBuilds = true
+        abortOnError = true
     }
     packaging {
         resources {
