@@ -28,6 +28,7 @@ import com.kenkern.engine.commands.ReparentCommand
 import com.kenkern.engine.commands.SetClassFieldCommand
 import com.kenkern.engine.commands.SetColliderShapeCommand
 import com.kenkern.engine.commands.SetFlagCommand
+import com.kenkern.engine.commands.SetLentePrincipalCommand
 import com.kenkern.engine.commands.TransformCommand
 import com.kenkern.engine.commands.TransformDragCommand
 import com.kenkern.engine.core.NickKindRegistry
@@ -524,6 +525,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setClassField(id: ReferenceId, typeName: String, fieldName: String, value: NickValue) {
         run(SetClassFieldCommand(sceneRef ?: return, id, typeName, fieldName, value))
+    }
+
+    /**
+     * H3 (v0.1.20): "Câmera principal — SÓ UMA por cena" em UM Command
+     * (SetLentePrincipalCommand): marca o Nick escolhido e desmarca os
+     * demais camera.*; undo devolve TODOS os flags de uma vez.
+     */
+    fun setLentePrincipal(id: ReferenceId, principal: Boolean) {
+        run(SetLentePrincipalCommand(sceneRef ?: return, id, principal))
     }
 
     fun setPlayState(state: PlayState) {

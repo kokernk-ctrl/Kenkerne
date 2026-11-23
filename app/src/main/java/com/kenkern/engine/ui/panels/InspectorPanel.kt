@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kenkern.engine.R
+import com.kenkern.engine.core.LenteNick
 import com.kenkern.engine.core.LuzNick
 import com.kenkern.engine.core.MalhaNick
 import com.kenkern.engine.core.NickClassInstance
@@ -314,6 +315,94 @@ fun InspectorPanel(vm: EditorViewModel) {
             }
         }
 
+        // ---------- H3 (v0.1.20): CÂMERA DA LENTE — Inspetor en/pt ----------
+        // fov, near, far, ortográfica com tamanho, "Câmera principal" (só uma
+        // por cena — SetLentePrincipalCommand) e os campos da seguidora
+        // (alvo/distância/altura). Nick antigo sem a classe: default + aplicar.
+        if (nick.kind.startsWith("camera.")) {
+            val instLente = nick.findClassInstance(LenteNick.CLASSE)
+            CollapsibleSection(stringResource(R.string.camera_section)) {
+                if (instLente == null) {
+                    Text(stringResource(R.string.camera_missing), fontSize = 12.sp, color = KenkernTextMid)
+                    TextButton(onClick = { vm.addClassToSelected(LenteNick.CLASSE) }) {
+                        Text(stringResource(R.string.camera_apply), color = KenkernAmber, fontSize = 12.sp)
+                    }
+                } else {
+                    val lente = remember(nick.id, vm.revision.intValue) {
+                        LenteNick.Valores().also { LenteNick.ler(nick, it) }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.camera_main), fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = lente.principal,
+                            onCheckedChange = { vm.setLentePrincipal(nick.id, it) }
+                        )
+                    }
+                    FloatField(
+                        stringResource(R.string.camera_fov), lente.fov,
+                        { v -> vm.setClassField(nick.id, LenteNick.CLASSE, LenteNick.CAMPO_FOV, NickValue.FloatValue(v)) },
+                        Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FloatField(
+                            stringResource(R.string.camera_near), lente.near,
+                            { v -> vm.setClassField(nick.id, LenteNick.CLASSE, LenteNick.CAMPO_NEAR, NickValue.FloatValue(v)) },
+                            Modifier.weight(1f)
+                        )
+                        FloatField(
+                            stringResource(R.string.camera_far), lente.far,
+                            { v -> vm.setClassField(nick.id, LenteNick.CLASSE, LenteNick.CAMPO_FAR, NickValue.FloatValue(v)) },
+                            Modifier.weight(1f)
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.camera_ortho), fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = lente.ortografica,
+                            onCheckedChange = {
+                                vm.setClassField(nick.id, LenteNick.CLASSE, LenteNick.CAMPO_ORTOGRAFICA, NickValue.BoolValue(it))
+                            }
+                        )
+                    }
+                    if (lente.ortografica) {
+                        FloatField(
+                            stringResource(R.string.camera_ortho_size), lente.tamanhoOrto,
+                            { v -> vm.setClassField(nick.id, LenteNick.CLASSE, LenteNick.CAMPO_TAMANHO_ORTO, NickValue.FloatValue(v)) },
+                            Modifier.fillMaxWidth()
+                        )
+                    }
+                    // Seguidora: alvo (ReferenceId), distância e altura — usados em Play.
+                    SectionTitle(stringResource(R.string.camera_follow_title))
+                    var alvoTexto by remember(nick.id, lente.alvo) { mutableStateOf(lente.alvo) }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        OutlinedTextField(
+                            value = alvoTexto,
+                            onValueChange = { alvoTexto = it },
+                            label = { Text(stringResource(R.string.camera_target), fontSize = 11.sp) },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = {
+                            vm.setClassField(nick.id, LenteNick.CLASSE, LenteNick.CAMPO_ALVO, NickValue.StringValue(alvoTexto.trim()))
+                        }) { Text(stringResource(R.string.hub_ok), fontSize = 12.sp) }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FloatField(
+                            stringResource(R.string.camera_distance), lente.distancia,
+                            { v -> vm.setClassField(nick.id, LenteNick.CLASSE, LenteNick.CAMPO_DISTANCIA, NickValue.FloatValue(v)) },
+                            Modifier.weight(1f)
+                        )
+                        FloatField(
+                            stringResource(R.string.camera_height), lente.altura,
+                            { v -> vm.setClassField(nick.id, LenteNick.CLASSE, LenteNick.CAMPO_ALTURA, NickValue.FloatValue(v)) },
+                            Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+
         // ---------- CLASSES (seção recolhível) ----------
         CollapsibleSection(stringResource(R.string.inspector_classes)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -396,6 +485,7 @@ private fun categoriaLocalizada(categoria: String): String = stringResource(
         "geometria" -> R.string.class_cat_geometria
         "fisica" -> R.string.class_cat_fisica
         "iluminacao" -> R.string.class_cat_iluminacao
+        "camera" -> R.string.class_cat_camera
         else -> R.string.class_cat_geral
     }
 )

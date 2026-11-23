@@ -34,6 +34,25 @@ class Mat4 {
         return this
     }
 
+    /**
+     * Projeção ORTOGRÁFICA (column-major; H3 v0.1.20 — Nick de câmera
+     * ortográfica): [meiaAltura] é a meia-altura do frustum em unidades de
+     * mundo (o "tamanho" do campo Tamanho do Inspetor); meia-largura =
+     * meiaAltura × aspect. Depth segue a mesma convenção do setPerspective.
+     */
+    fun setOrtho(meiaAltura: Float, aspect: Float, near: Float, far: Float): Mat4 {
+        val h = if (meiaAltura.isFinite() && meiaAltura > 1e-4f) meiaAltura else 1f
+        val a = aspect.coerceAtLeast(0.1f)
+        val n = if (near.isFinite() && near > 0f) near else 0.1f
+        val f = if (far.isFinite() && far > n) far else n + 1f
+        val nf = 1f / (n - f)
+        m[0] = 1f / (h * a); m[1] = 0f; m[2] = 0f; m[3] = 0f
+        m[4] = 0f; m[5] = 1f / h; m[6] = 0f; m[7] = 0f
+        m[8] = 0f; m[9] = 0f; m[10] = 2f * nf; m[11] = 0f
+        m[12] = 0f; m[13] = 0f; m[14] = (f + n) * nf; m[15] = 1f
+        return this
+    }
+
     /** Matriz de câmera look-at (column-major). Não aloca. */
     fun setLookAt(eye: Vec3, center: Vec3, up: Vec3): Mat4 {
         sF.set(center).sub(eye).normalize()

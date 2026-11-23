@@ -186,6 +186,26 @@
     <string name="light_missing">Esta luz é anterior ao LUME — aplique a classe Luz para editar.</string>
     <string name="light_apply">Aplicar classe Luz</string>
 
+
+    <!-- ===================== Câmera da LENTE (H3) ===================== -->
+    <string name="camera_section">Câmera</string>
+    <string name="camera_main">Câmera principal (só uma por cena)</string>
+    <string name="camera_fov">Campo de visão (graus)</string>
+    <string name="camera_near">Plano próximo (m)</string>
+    <string name="camera_far">Plano distante (m)</string>
+    <string name="camera_ortho">Ortográfica</string>
+    <string name="camera_ortho_size">Tamanho orto (meia-altura, m)</string>
+    <string name="camera_follow_title">Câmera seguidora (alvo, distância, altura)</string>
+    <string name="camera_target">Id do Nick alvo (vazio = 1º jogador)</string>
+    <string name="camera_distance">Distância (m)</string>
+    <string name="camera_height">Altura (m)</string>
+    <string name="camera_missing">Esta câmera é anterior à LENTE — aplique a classe Lente para editar.</string>
+    <string name="camera_apply">Aplicar classe Lente</string>
+    <string name="camera_preview">Ver pela câmera</string>
+    <string name="camera_preview_on">Vendo pela câmera: %1$s</string>
+    <string name="camera_preview_exit">Sair da visão da câmera</string>
+    <string name="class_cat_camera">Câmeras</string>
+
     <!-- ===================== Panels (docked/floating) ===================== -->
     <string name="panel_options">Opções do painel %1$s</string>
     <string name="panel_float">Flutuar sobre o viewport</string>

@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
@@ -54,6 +55,7 @@ import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
@@ -118,6 +120,7 @@ import com.kenkern.engine.render.GizmoSpace
 import com.kenkern.engine.render.KenkernSurfaceView
 import com.kenkern.engine.render.TransformGizmo
 import java.util.Locale
+import com.kenkern.engine.ui.nickDisplayName
 import com.kenkern.engine.ui.panels.AddNickPanel
 import com.kenkern.engine.ui.panels.DockedPanel
 import com.kenkern.engine.ui.panels.FloatingPanel
@@ -199,6 +202,41 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     val alternarAuxiliares: (Boolean) -> Unit = { ligado ->
         mostrarAuxiliares = ligado
         surfaceView?.mostrarAuxiliares = ligado
+    }
+
+    // H3 (v0.1.20): "Ver pela câmera" — preview pela câmera do Nick SELECIONADO
+    // (camera.*) ou da CÂMERA PRINCIPAL; sair volta à câmera do editor sem
+    // perder a posição (a OrbitCamera não é tocada durante o preview).
+    var verPelaCamera by rememberSaveable { mutableStateOf(false) }
+    val cameraAlvoPreview: Nick? = remember(vm.scene.value, sceneRevision, vm.selection.value) {
+        val s = vm.scene.value
+        if (s == null) null else {
+            val sel = vm.selection.value?.let { s.findNick(it) }
+            when {
+                sel != null && sel.kind.startsWith("camera.") -> sel
+                else -> {
+                    var achou: Nick? = null
+                    val pilha = ArrayList<Nick>(16)
+                    for (r in s.roots) pilha.add(r)
+                    var head = 0
+                    while (head < pilha.size && achou == null) {
+                        val n2 = pilha[head++]
+                        if (n2.active && n2.kind.startsWith("camera.")) {
+                            val v = com.kenkern.engine.core.LenteNick.Valores()
+                            com.kenkern.engine.core.LenteNick.ler(n2, v)
+                            if (v.principal) achou = n2
+                        }
+                        for (c in n2.children) pilha.add(c)
+                    }
+                    achou
+                }
+            }
+        }
+    }
+    LaunchedEffect(verPelaCamera, cameraAlvoPreview, vm.playState.value) {
+        surfaceView?.setPreviewCamera(
+            if (verPelaCamera && vm.playState.value == PlayState.STOPPED) cameraAlvoPreview?.id else null
+        )
     }
 
     // E4: orientação atual — o layout dos painéis (posição/tamanho flutuantes)
@@ -290,6 +328,9 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 onResetarLayout = resetarLayout,
                 mostrarAuxiliares = mostrarAuxiliares,
                 onMostrarAuxiliaresChange = alternarAuxiliares,
+                verPelaCamera = verPelaCamera,
+                verPelaCameraDisponivel = cameraAlvoPreview != null,
+                onVerPelaCameraChange = { verPelaCamera = it },
                 resolutionScale = resolutionScale,
                 onResolutionChange = { resolutionScale = it },
                 gizmoMode = gizmoMode,
@@ -396,6 +437,43 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     fontSize = 12.sp,
                                     color = KenkernTextMid
                                 )
+                            }
+                        }
+
+                        // H3: MOLDURA DO PREVIEW "Ver pela câmera" — contorno da
+                        // área da câmera (a proporção do render = do viewport) +
+                        // rótulo com o nome da câmera e o botão de SAIR.
+                        if (verPelaCamera && cameraAlvoPreview != null && vm.playState.value == PlayState.STOPPED) {
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(8.dp)
+                                    .border(2.dp, KenkernAmber, RoundedCornerShape(4.dp))
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(10.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(KenkernSurface.copy(alpha = 0.85f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Videocam,
+                                    contentDescription = null,
+                                    tint = KenkernAmber,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    stringResource(R.string.camera_preview_on, nickDisplayName(cameraAlvoPreview)),
+                                    fontSize = 12.sp,
+                                    color = KenkernTextHigh
+                                )
+                                TextButton(onClick = { verPelaCamera = false }) {
+                                    Text(stringResource(R.string.camera_preview_exit), fontSize = 12.sp, color = KenkernAmber)
+                                }
                             }
                         }
 
@@ -837,6 +915,9 @@ private fun EditorTopBar(
     onResetarLayout: () -> Unit,
     mostrarAuxiliares: Boolean,
     onMostrarAuxiliaresChange: (Boolean) -> Unit,
+    verPelaCamera: Boolean,
+    verPelaCameraDisponivel: Boolean,
+    onVerPelaCameraChange: (Boolean) -> Unit,
     resolutionScale: Float,
     onResolutionChange: (Float) -> Unit,
     gizmoMode: GizmoMode,
@@ -974,6 +1055,17 @@ private fun EditorTopBar(
 
                     // FOCAR (F): enquadra o Nick selecionado (duplo toque no vazio = cena toda)
                     TopBarIcon(Icons.Filled.CenterFocusStrong, stringResource(R.string.editor_focus)) { onFocusClick() }
+
+                    // H3 (v0.1.20): VER PELA CÂMERA — preview pela câmera do Nick
+                    // selecionado (camera.*) ou da CÂMERA PRINCIPAL; toggle com
+                    // moldura no viewport; sair volta à câmera do editor intacta.
+                    TopBarIcon(
+                        Icons.Filled.Videocam,
+                        if (verPelaCamera) stringResource(R.string.camera_preview_exit)
+                        else stringResource(R.string.camera_preview),
+                        enabled = verPelaCameraDisponivel,
+                        active = verPelaCamera
+                    ) { onVerPelaCameraChange(!verPelaCamera) }
 
                     TopBarSeparator()
 

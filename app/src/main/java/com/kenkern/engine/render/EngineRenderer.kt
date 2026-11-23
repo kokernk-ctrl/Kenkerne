@@ -88,6 +88,41 @@ class EngineRenderer {
     private class ParLuzAux(val normal: Int, val sel: Int, val nNormal: Int, val nSel: Int)
     private val luzAuxCache = LinkedHashMap<String, ParLuzAux>()
 
+    /** H3: valores de UMA câmera lidos por frame no draw dos auxiliares (reuso). */
+    private val lenteValoresAux = com.kenkern.engine.core.LenteNick.Valores()
+
+    /**
+     * H2/H3: buffer de linhas do auxiliar por CHAVE (alcance/ângulo de luz ou
+     * fov de câmera) — cache FIFO de [LUZ_AUX_CACHE_MAX]; só reconstrói quando
+     * a chave muda. Handles destruídos no initialize (contexto GL novo).
+     */
+    private fun bufferAuxiliarPorChave(
+        backend: RenderBackend,
+        chave: String,
+        kind: String,
+        construir: (FloatArray) -> FloatArray
+    ): ParLuzAux {
+        luzAuxCache[chave]?.let { return it }
+        if (luzAuxCache.size >= LUZ_AUX_CACHE_MAX) {
+            var primeira: Map.Entry<String, ParLuzAux>? = null
+            for (e in luzAuxCache.entries) { primeira = e; break }
+            if (primeira != null) {
+                luzAuxCache.remove(primeira.key)
+                if (primeira.value.normal != 0) backend.destroyLineBuffer(primeira.value.normal)
+                if (primeira.value.sel != 0) backend.destroyLineBuffer(primeira.value.sel)
+            }
+        }
+        EditorHelpers.corDoGrupo(kind, helperCor)
+        val dN = construir(helperCor)
+        val dS = construir(floatArrayOf(outlineR, outlineG, outlineB))
+        val par = ParLuzAux(
+            backend.createColoredLineBuffer(dN), backend.createColoredLineBuffer(dS),
+            dN.size / 6, dS.size / 6
+        )
+        luzAuxCache[chave] = par
+        return par
+    }
+
     /** H2: conjunto de iluminação do frame (pré-alocado, reaproveitado). */
     private val luzFrame = LumeCena.Frame()
 
@@ -362,10 +397,48 @@ class EngineRenderer {
         selectedId: ReferenceId?,
         gizmoState: GizmoSharedState? = null
     ) {
+        // H3: a OrbitCamera continua sendo a câmera do editor — aqui ela é
+        // convertida para matrizes explícitas (mesmo caminho do preview).
+        val aspectEditor = backend.viewportWidth.toFloat() /
+            backend.viewportHeight.toFloat().coerceAtLeast(1f)
+        camera.projection(projEditor, aspectEditor)
+        camera.view(viewEditor)
+        camera.eyePoint(eyeEditor)
+        renderFrameComMatrizes(
+            backend, scene, projEditor, viewEditor,
+            eyeEditor.x, eyeEditor.y, eyeEditor.z, camera.fovDegrees,
+            engineTime, selectedId, gizmoState
+        )
+    }
+
+    // Pré-alocados da conversão OrbitCamera → matrizes (thread GL).
+    private val projEditor = Mat4()
+    private val viewEditor = Mat4()
+    private val eyeEditor = Vec3()
+
+    /**
+     * H3 (v0.1.20): render por MATRIZES EXPLÍCITAS — usado pelo preview
+     * "Ver pela câmera" e pela Câmera principal (fov/near/far/ortográfica do
+     * Nick de câmera) em Play. A câmera do editor passa pelo overload acima.
+     */
+    fun renderFrameComMatrizes(
+        backend: RenderBackend,
+        scene: Scene?,
+        proj: Mat4,
+        view: Mat4,
+        eyeX: Float, eyeY: Float, eyeZ: Float,
+        fovDegrees: Float,
+        engineTime: Float,
+        selectedId: ReferenceId?,
+        gizmoState: GizmoSharedState?
+    ) {
         updateFps(System.nanoTime())
         val drawStart = System.nanoTime()
         try {
-            renderFrameInner(backend, scene, camera, engineTime, selectedId, gizmoState)
+            renderFrameInner(
+                backend, scene, proj, view, eyeX, eyeY, eyeZ, fovDegrees,
+                engineTime, selectedId, gizmoState
+            )
         } catch (e: Throwable) {
             // Última linha de defesa: nenhum erro de GL/frame derruba o processo.
             Log.e(TAG, "Frame descartado", e)
@@ -380,7 +453,10 @@ class EngineRenderer {
     private fun renderFrameInner(
         backend: RenderBackend,
         scene: Scene?,
-        camera: OrbitCamera,
+        proj: Mat4,
+        view: Mat4,
+        eyeX: Float, eyeY: Float, eyeZ: Float,
+        fovDegrees: Float,
         engineTime: Float,
         selectedId: ReferenceId?,
         gizmoState: GizmoSharedState?
@@ -406,14 +482,11 @@ class EngineRenderer {
         var malhasDrawnThisFrame = 0
 
         val aspect = backend.viewportWidth.toFloat() / backend.viewportHeight.toFloat()
-        camera.projection(proj, aspect)
-        camera.view(view)
         viewProj.multiply(proj, view)
 
         // Base da câmera derivada da matriz de view (linhas = eixos da câmera em mundo).
         camFwd.set(-view.m[2], -view.m[6], -view.m[10])
-        // Olho correto nos DOIS modos (orbital e voo).
-        camera.eyePoint(camEye)
+        camEye.set(eyeX, eyeY, eyeZ)
 
         // H2 (v0.1.20): luzes dos NICKS coletadas ANTES do céu — a direcional
         // substitui o sol (o disco do céu segue a direção do Nick) e as
@@ -442,7 +515,7 @@ class EngineRenderer {
                 camFwd.x, camFwd.y, camFwd.z,
                 view.m[0], view.m[4], view.m[8],
                 view.m[1], view.m[5], view.m[9],
-                tanHalfFov(camera.fovDegrees), aspect,
+                tanHalfFov(fovDegrees), aspect,
                 sunDir.x, sunDir.y, sunDir.z
             )
             skyDrawn = 1
@@ -568,7 +641,7 @@ class EngineRenderer {
             camFwd.x, camFwd.y, camFwd.z,
             view.m[0], view.m[4], view.m[8],
             view.m[1], view.m[5], view.m[9],
-            tanHalfFov(camera.fovDegrees), aspect,
+            tanHalfFov(fovDegrees), aspect,
             camEye.x, camEye.y, camEye.z
         )
         gridDrawn = 1
@@ -619,7 +692,7 @@ class EngineRenderer {
         // alterada pelo Play; Play/Pausa só SUPRIMEM, Stop restaura.
         if (mostrarAuxiliares && !emJogo && auxCount > 0) {
             // Pirâmide da câmera: reconstruída SÓ quando o FOV REAL/aspect mudam.
-            val chavePiramide = "${camera.fovDegrees}|${aspect}"
+            val chavePiramide = "${fovDegrees}|${aspect}"
             if (chavePiramide != helperPiramideKey) {
                 if (helperHandles[EditorHelpers.FORMA_PIRAMIDE] != 0) {
                     backend.destroyLineBuffer(helperHandles[EditorHelpers.FORMA_PIRAMIDE])
@@ -628,22 +701,38 @@ class EngineRenderer {
                     backend.destroyLineBuffer(helperHandlesSel[EditorHelpers.FORMA_PIRAMIDE])
                 }
                 EditorHelpers.corDoGrupo("camera.basic", helperCor)
-                val p = EditorHelpers.buildPiramide(helperCor, camera.fovDegrees, aspect)
+                val p = EditorHelpers.buildPiramide(helperCor, fovDegrees, aspect)
                 helperVertexCount[EditorHelpers.FORMA_PIRAMIDE] = p.size / 6
                 helperHandles[EditorHelpers.FORMA_PIRAMIDE] = backend.createColoredLineBuffer(p)
                 val ps = EditorHelpers.buildPiramide(
-                    floatArrayOf(outlineR, outlineG, outlineB), camera.fovDegrees, aspect
+                    floatArrayOf(outlineR, outlineG, outlineB), fovDegrees, aspect
                 )
                 helperHandlesSel[EditorHelpers.FORMA_PIRAMIDE] = backend.createColoredLineBuffer(ps)
                 helperPiramideKey = chavePiramide
             }
-            val meiaFovTan = tanHalfFov(camera.fovDegrees)
+            val meiaFovTan = tanHalfFov(fovDegrees)
             for (ai in 0 until auxCount) {
                 val nick = auxNicks[ai] ?: continue
                 val forma = EditorHelpers.formaDo(nick.kind)
                 val selecionado = nick.id == selectedId
-                val handle = if (selecionado) helperHandlesSel[forma] else helperHandles[forma]
-                if (handle == 0 || helperVertexCount[forma] == 0) continue
+
+                // H3 (v0.1.20): pirâmide da CÂMERA com o FOV REAL DO NICK —
+                // FOV editado atualiza o auxiliar no mesmo frame (buffer por
+                // chave "P|fov|aspect" no mesmo cache FIFO das luzes).
+                var handle = if (selecionado) helperHandlesSel[forma] else helperHandles[forma]
+                var contagem = helperVertexCount[forma]
+                if (forma == EditorHelpers.FORMA_PIRAMIDE && nick.kind.startsWith("camera.")) {
+                    com.kenkern.engine.core.LenteNick.ler(nick, lenteValoresAux)
+                    val fovNick = if (lenteValoresAux.ortografica)
+                        Math.toDegrees(2.0 * kotlin.math.atan(lenteValoresAux.tamanhoOrto.toDouble())).toFloat()
+                    else lenteValoresAux.fov
+                    val parP = bufferAuxiliarPorChave(backend, "P|$fovNick|$aspect", nick.kind) { cor ->
+                        EditorHelpers.buildPiramide(cor, fovNick, aspect)
+                    }
+                    handle = if (selecionado) parP.sel else parP.normal
+                    contagem = if (selecionado) parP.nSel else parP.nNormal
+                }
+                if (handle == 0 || contagem == 0) continue
                 val wm = nick.transform.worldMatrix
                 helperPos.set(wm.m[12], wm.m[13], wm.m[14])
                 val dist = camEye.distanceTo(helperPos).coerceAtLeast(0.5f)
@@ -652,47 +741,22 @@ class EngineRenderer {
                 helperScaleVec.set(escala, escala, escala)
                 helperModel.setTRS(helperPos, helperRot, helperScaleVec)
                 helperMvp.multiply(viewProj, helperModel)
-                backend.drawWorldLines(handle, helperVertexCount[forma], helperMvp)
+                backend.drawWorldLines(handle, contagem, helperMvp)
                 helperDc++
 
                 // H2 (v0.1.20): pontual/spot também desenham a visualização com
                 // ALCANCE e ÂNGULO REAIS em escala de MUNDO (sem escala de tela
                 // constante): esfera de raio = alcance (pontual) e cone com a
-                // abertura externa real e altura = alcance (spot). Buffer por
-                // chave, reconstruído só quando alcance/ângulo mudam (cache FIFO).
+                // abertura externa real e altura = alcance (spot).
                 val ehPontual = nick.kind == "light.point"
                 val ehSpot = nick.kind == "light.spot"
                 if (ehPontual || ehSpot) {
                     com.kenkern.engine.core.LuzNick.ler(nick, luzValoresAux)
                     val chave = if (ehPontual) "E|${luzValoresAux.alcance}"
                         else "C|${luzValoresAux.anguloExterno}|${luzValoresAux.alcance}"
-                    var par = luzAuxCache[chave]
-                    if (par == null) {
-                        if (luzAuxCache.size >= LUZ_AUX_CACHE_MAX) {
-                            var primeira: Map.Entry<String, ParLuzAux>? = null
-                            for (e in luzAuxCache.entries) { primeira = e; break }
-                            if (primeira != null) {
-                                luzAuxCache.remove(primeira.key)
-                                if (primeira.value.normal != 0) backend.destroyLineBuffer(primeira.value.normal)
-                                if (primeira.value.sel != 0) backend.destroyLineBuffer(primeira.value.sel)
-                            }
-                        }
-                        EditorHelpers.corDoGrupo(nick.kind, helperCor)
-                        val ambar = floatArrayOf(outlineR, outlineG, outlineB)
-                        val dN: FloatArray
-                        val dS: FloatArray
-                        if (ehPontual) {
-                            dN = EditorHelpers.buildEsferaAlcance(helperCor, luzValoresAux.alcance)
-                            dS = EditorHelpers.buildEsferaAlcance(ambar, luzValoresAux.alcance)
-                        } else {
-                            dN = EditorHelpers.buildConeAlcance(helperCor, luzValoresAux.anguloExterno, luzValoresAux.alcance)
-                            dS = EditorHelpers.buildConeAlcance(ambar, luzValoresAux.anguloExterno, luzValoresAux.alcance)
-                        }
-                        par = ParLuzAux(
-                            backend.createColoredLineBuffer(dN), backend.createColoredLineBuffer(dS),
-                            dN.size / 6, dS.size / 6
-                        )
-                        luzAuxCache[chave] = par
+                    val par = bufferAuxiliarPorChave(backend, chave, nick.kind) { cor ->
+                        if (ehPontual) EditorHelpers.buildEsferaAlcance(cor, luzValoresAux.alcance)
+                        else EditorHelpers.buildConeAlcance(cor, luzValoresAux.anguloExterno, luzValoresAux.alcance)
                     }
                     val handleReal = if (selecionado) par.sel else par.normal
                     val contagemReal = if (selecionado) par.nSel else par.nNormal
@@ -718,7 +782,10 @@ class EngineRenderer {
             if (nick != null && nick.active && nick.visible) {
                 val wm = nick.transform.worldMatrix
                 tgWorldPos.set(wm.m[12], wm.m[13], wm.m[14])
-                val ss = g.screenScaleFor(camera, tgWorldPos)
+                // H3: escala de tela constante do gizmo inline (mesma fórmula do
+                // screenScaleFor) — o preview usa matriz de câmera do Nick.
+                val ss = camEye.distanceTo(tgWorldPos).coerceAtLeast(0.5f) *
+                    tanHalfFov(fovDegrees) * 2f * TransformGizmo.SCREEN_FRACTION
                 extractWorldRotation(wm, tgWorldRot)
                 if (gizmoState.space == GizmoSpace.LOCAL) {
                     tgScaleVec.set(ss, ss, ss)

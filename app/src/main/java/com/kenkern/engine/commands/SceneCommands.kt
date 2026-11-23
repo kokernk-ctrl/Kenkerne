@@ -1,6 +1,7 @@
 package com.kenkern.engine.commands
 
 import com.kenkern.engine.core.MalhaNick
+import com.kenkern.engine.core.LenteNick
 import com.kenkern.engine.core.Nick
 import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickClassRegistry
@@ -337,5 +338,55 @@ class SetColliderShapeCommand(
         antigaForma?.let { inst.fields["forma"] = NickValue.StringValue(it) }
         antigoCentro?.let { inst.fields["centro"] = it.copyValue() as NickValue.Vec3Value }
         antigoTamanho?.let { inst.fields["tamanho"] = it.copyValue() as NickValue.Vec3Value }
+    }
+}
+
+/**
+ * H3 (v0.1.20): "CÂMERA PRINCIPAL — SÓ UMA POR CENA" em UM Command: marca o
+ * Nick escolhido com principal=true e DESMARCA todos os outros camera.* com
+ * principal=true; o UNDO devolve TODOS os flags de uma vez.
+ */
+class SetLentePrincipalCommand(
+    private val scene: Scene,
+    private val nickId: ReferenceId,
+    private val principal: Boolean
+) : Command {
+    override val label: String get() = "Câmera principal"
+
+    // Flags ANTERIORES de todos os camera.* (id → principal) capturados no 1º execute.
+    private val flagsAnteriores = LinkedHashMap<ReferenceId, Boolean>()
+    private var capturado = false
+
+    private fun capturar() {
+        if (capturado) return
+        capturado = true
+        val pilha = ArrayList<Nick>(16)
+        for (r in scene.roots) pilha.add(r)
+        var head = 0
+        while (head < pilha.size) {
+            val nick = pilha[head++]
+            if (nick.kind.startsWith("camera.")) {
+                val inst = nick.findClassInstance(LenteNick.CLASSE)
+                flagsAnteriores[nick.id] = inst?.getBool(LenteNick.CAMPO_PRINCIPAL, false) ?: false
+            }
+            for (c in nick.children) pilha.add(c)
+        }
+    }
+
+    override fun execute() {
+        capturar()
+        aplicar(nickId, principal)
+        for ((id, _) in flagsAnteriores) {
+            if (id != nickId) aplicar(id, false)
+        }
+    }
+
+    override fun undo() {
+        for ((id, flag) in flagsAnteriores) aplicar(id, flag)
+    }
+
+    private fun aplicar(id: ReferenceId, valor: Boolean) {
+        val inst = scene.findNick(id)?.findClassInstance(LenteNick.CLASSE) ?: return
+        inst.fields[LenteNick.CAMPO_PRINCIPAL] = NickValue.BoolValue(valor)
     }
 }

@@ -92,8 +92,8 @@ alcance; cone com a abertura externa real e altura = alcance). Checagem
 
 | Chave | Inglês | Português | Papel do tipo (previsto) | Grupo | Status | Entra em |
 |-------|--------|-----------|-------------------------|-------|--------|----------|
-| camera.basic | Camera Nick | Nick de Câmera | Câmera de jogo; projeção e modo de visão são propriedades configuráveis. | Câmera | IMPLEMENTADO (T0.2; auxiliar de editor PIRÂMIDE no E5, com o FOV da câmera da engine — campo próprio no LENTE) | T0.2 |
-| camera.follow | Follow Camera Nick | Nick de Câmera Seguidora | Câmera que acompanha o jogador, preservando o deslocamento inicial. | Câmera | IMPLEMENTADO (recorte M1; alvo fixo no primeiro jogador ativo) | M1 |
+| camera.basic | Camera Nick | Nick de Câmera | Câmera de jogo; projeção e modo de visão são propriedades configuráveis. | Câmera | IMPLEMENTADO (T0.2; pirâmide E5; **H3 v0.1.20: classe LENTE — fov/near/far/ortográfica+tamanho, "Câmera principal" (só uma por cena) + "Ver pela câmera" na TopBar com moldura; em Play, a principal renderiza com a matriz DO NICK**) | T0.2 |
+| camera.follow | Follow Camera Nick | Nick de Câmera Seguidora | Câmera que acompanha o jogador, preservando o deslocamento inicial. | Câmera | IMPLEMENTADO (M1; **H3 v0.1.20: campos Alvo (ReferenceId), distância e altura na classe Lente, usados em Play; sem campos preenchidos mantém o deslocamento inicial**) | M1 |
 | camera.cinematic | Cinematic Camera Nick | Nick de Câmera Cinemática | Câmera para tomadas/cenas dirigidas por animação ou timeline. | Câmera | PLANEJADO | anim.timeline |
 
 ## CORPOS

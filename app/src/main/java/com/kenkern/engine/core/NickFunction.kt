@@ -149,6 +149,28 @@ object KenkernBuiltInClasses {
                 categoria = "iluminacao"
             )
         )
+        // H3 (v0.1.20): classe LENTE dos Nicks de câmera — fov/near/far/
+        // ortográfica+tamanho, "Câmera principal" (SÓ UMA por cena) e os
+        // campos do Follow Camera (alvo, distância, altura). Os 2 tipos
+        // camera.* ganham a instância padrão; Nick antigo usa os defaults.
+        NickClassRegistry.register(
+            NickClassDefinition(
+                "Lente",
+                "Câmera do Nick (fov, near, far, orto, principal, alvo)",
+                listOf(
+                    NickFieldDefinition("fov", "FLOAT", NickValue.FloatValue(60f)),
+                    NickFieldDefinition("near", "FLOAT", NickValue.FloatValue(0.1f)),
+                    NickFieldDefinition("far", "FLOAT", NickValue.FloatValue(500f)),
+                    NickFieldDefinition("ortografica", "BOOL", NickValue.BoolValue(false)),
+                    NickFieldDefinition("tamanhoOrto", "FLOAT", NickValue.FloatValue(5f)),
+                    NickFieldDefinition("principal", "BOOL", NickValue.BoolValue(false)),
+                    NickFieldDefinition("alvo", "STRING", NickValue.StringValue("")),
+                    NickFieldDefinition("distancia", "FLOAT", NickValue.FloatValue(6f)),
+                    NickFieldDefinition("altura", "FLOAT", NickValue.FloatValue(3f))
+                ),
+                categoria = "camera"
+            )
+        )
         NickFunctionRegistry.register(SpinFunction)
         NickFunctionRegistry.register(BobFunction)
     }

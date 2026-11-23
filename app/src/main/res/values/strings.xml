@@ -186,6 +186,26 @@
     <string name="light_missing">This light predates the LUME — apply the Light class to edit it.</string>
     <string name="light_apply">Apply Light class</string>
 
+
+    <!-- ===================== Câmera da LENTE (H3) ===================== -->
+    <string name="camera_section">Camera</string>
+    <string name="camera_main">Main camera (only one per scene)</string>
+    <string name="camera_fov">Field of view (deg)</string>
+    <string name="camera_near">Near plane (m)</string>
+    <string name="camera_far">Far plane (m)</string>
+    <string name="camera_ortho">Orthographic</string>
+    <string name="camera_ortho_size">Ortho size (half height, m)</string>
+    <string name="camera_follow_title">Follow camera (target, distance, height)</string>
+    <string name="camera_target">Target nick id (empty = first player)</string>
+    <string name="camera_distance">Distance (m)</string>
+    <string name="camera_height">Height (m)</string>
+    <string name="camera_missing">This camera predates the LENS — apply the Lens class to edit it.</string>
+    <string name="camera_apply">Apply Lens class</string>
+    <string name="camera_preview">View by camera</string>
+    <string name="camera_preview_on">Viewing by camera: %1$s</string>
+    <string name="camera_preview_exit">Exit camera view</string>
+    <string name="class_cat_camera">Cameras</string>
+
     <!-- ===================== Panels (docked/floating) ===================== -->
     <string name="panel_options">Panel options of %1$s</string>
     <string name="panel_float">Float over viewport</string>

@@ -148,7 +148,8 @@ object NickKindCatalog {
                 key = "camera.basic", labelEn = "Camera Nick", labelPt = "Nick de Câmera",
                 descEn = "Game camera (modes are a property: 1st/3rd person, ortho, top)",
                 descPt = "Câmera de jogo (modos são propriedade: 1ª/3ª pessoa, ortogonal, topo)",
-                group = NickKindGroup.CAMERA, iconKey = "camera.basic"
+                group = NickKindGroup.CAMERA, iconKey = "camera.basic",
+                defaultClasses = listOf("Lente")
             )
         )
         NickKindRegistry.register(
@@ -156,7 +157,8 @@ object NickKindCatalog {
                 key = "camera.follow", labelEn = "Follow Camera Nick", labelPt = "Nick de Câmera Seguidora",
                 descEn = "Follows the active player in Play using its starting offset",
                 descPt = "Segue o jogador ativo em Play usando a distância e posição iniciais",
-                group = NickKindGroup.CAMERA, iconKey = "camera.follow"
+                group = NickKindGroup.CAMERA, iconKey = "camera.follow",
+                defaultClasses = listOf("Lente")
             )
         )
 

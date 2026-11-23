@@ -346,6 +346,15 @@ class KenkernSurfaceView(
     /** MALHAS desenhadas no último frame (M da StatusBar "N nicks · M malhas", E6). */
     fun rendererMalhasDesenhadas(tick: Int): Int = glRenderer.currentMalhasDesenhadas()
 
+    /**
+     * H3 (v0.1.20): preview "Ver pela câmera" — id do Nick de câmera (escrito
+     * pela UI, lido pelo thread GL); null desliga o preview e devolve a câmera
+     * do editor SEM alterar sua posição.
+     */
+    fun setPreviewCamera(id: ReferenceId?) {
+        glRenderer.setPreviewCamera(id)
+    }
+
     /** True se o roundtrip .KERN (gravar/ler malha) passou nesta sessão de render. */
     fun isKernOk(): Boolean = glRenderer.isKernRoundtripOk()
 
@@ -1014,11 +1023,28 @@ class KenkernSurfaceView(
         private var playRuntime: NickPlayRuntime? = null
         private var playCamera: NickPlayCamera? = null
 
+        // H3 (v0.1.20): preview "Ver pela câmera" (editor) — id do Nick de
+        // câmera escolhido (selecionado ou o principal); null = desligado.
+        // Escrito pela UI, lido pelo thread GL.
+        @Volatile
+        var previewLenteId: com.kenkern.engine.core.ReferenceId? = null
+        private val lenteProj = Mat4()
+        private val lenteView = Mat4()
+        private val lenteValores = com.kenkern.engine.core.LenteNick.Valores()
+
+        /** H3: aviso "sem câmera" UMA VEZ por sessão de Play (regra da tarefa). */
+        private var avisoSemCameraFeito = false
+
+        fun setPreviewCamera(id: com.kenkern.engine.core.ReferenceId?) {
+            previewLenteId = id
+        }
+
         fun clearPlaySession() {
             editorScene = null
             playScene = null
             playRuntime = null
             playCamera = null
+            avisoSemCameraFeito = false
         }
 
         private fun sceneForFrame(source: Scene?): Scene? {
@@ -1033,9 +1059,77 @@ class KenkernSurfaceView(
                 playScene = copy
                 playRuntime = copy?.let { NickPlayRuntime(it) }
                 copy?.updateWorldTransforms()
-                playCamera = playRuntime?.let { NickPlayCamera(it.player, it.followCamera, it.basicCamera) }
+                playCamera = copy?.let { c ->
+                    playRuntime?.let { r -> NickPlayCamera(c, r.player, r.followCamera, r.basicCamera) }
+                }
             }
             return playScene
+        }
+
+        /**
+         * H3 (v0.1.20): caminho de CÂMERA do frame —
+         *  1. PREVIEW "Ver pela câmera" (só no editor): render pela matriz do
+         *     Nick de câmera (fov/near/far/orto); a câmera do editor NÃO muda —
+         *     sair do preview volta exatamente onde estava;
+         *  2. PLAY pela CÂMERA PRINCIPAL (matriz própria do Nick);
+         *  3. Play pela câmera do runtime (follow/fixa — M1);
+         *  4. Play sem NENHUMA câmera: câmera do editor + AVISO UMA VEZ.
+         */
+        private fun desenharFrame(scene: Scene?, gameCamera: NickPlayCamera?) {
+            val s = scene
+            val emJogo = engineRenderer.emJogo
+            val rw = backend.viewportWidth.coerceAtLeast(1)
+            val rh = backend.viewportHeight.coerceAtLeast(1)
+            val aspect = rw.toFloat() / rh.toFloat()
+
+            val previewId = previewLenteId
+            if (!emJogo && previewId != null && s != null) {
+                val nick = s.findNick(previewId)
+                if (nick != null && nick.kind.startsWith("camera.")) {
+                    com.kenkern.engine.core.LenteNick.ler(nick, lenteValores)
+                    val fov = LenteNickMatriz.projecaoDe(lenteValores, aspect, lenteProj)
+                    LenteNickMatriz.view(nick, lenteView)
+                    val wm = nick.transform.worldMatrix.m
+                    engineRenderer.renderFrameComMatrizes(
+                        backend, s, lenteProj, lenteView,
+                        wm[12], wm[13], wm[14], fov,
+                        loop.engineTime, selectionProvider(), gizmoState
+                    )
+                    return
+                }
+            }
+
+            if (gameCamera?.active == true) {
+                if (gameCamera.usaMatrizPropria) {
+                    // CÂMERA PRINCIPAL (H3): fov/near/far/ortográfica do Nick.
+                    gameCamera.prepararProjecaoPropria(aspect)
+                    val viewP = gameCamera.viewPropria.m
+                    engineRenderer.renderFrameComMatrizes(
+                        backend, s, gameCamera.projPropria, gameCamera.viewPropria,
+                        viewP[12], viewP[13], viewP[14], gameCamera.fovPropria,
+                        loop.engineTime, null, gizmoState
+                    )
+                } else {
+                    engineRenderer.renderFrame(
+                        backend, s, gameCamera.camera,
+                        loop.engineTime, if (emJogo) null else selectionProvider(), gizmoState
+                    )
+                }
+                return
+            }
+
+            // Play sem NENHUMA câmera: câmera do editor + aviso UMA VEZ (H3).
+            if (emJogo && !avisoSemCameraFeito) {
+                avisoSemCameraFeito = true
+                KenkernLog.w(
+                    TAG,
+                    "Play sem Nick de câmera (nenhuma principal/follow/fixa) — usando a câmera do editor"
+                )
+            }
+            engineRenderer.renderFrame(
+                backend, s, camera,
+                loop.engineTime, if (emJogo) null else selectionProvider(), gizmoState
+            )
         }
 
         override fun onDrawFrame(gl: javax.microedition.khronos.opengles.GL10?) {
@@ -1088,11 +1182,7 @@ class KenkernSurfaceView(
                         if (!engineRenderer.emJogo && s != null) runCatching { applyFocus(s) }
                             .onFailure { KenkernLog.w(TAG, "foco de câmera falhou", it) }
                     }
-                    engineRenderer.renderFrame(
-                        backend, scene,
-                        if (gameCamera?.active == true) gameCamera.camera else camera,
-                        loop.engineTime, if (engineRenderer.emJogo) null else selectionProvider(), gizmoState
-                    )
+                    desenharFrame(scene, gameCamera)
                     // Publicação de debug (overlay de toque): alças em px de
                     // framebuffer + tamanho do render. Só quando o overlay está ON.
                     if (debugState.enabled) {
