@@ -28,6 +28,7 @@ import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickKindRegistry
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.Scene
+import com.kenkern.engine.editor.AddNickLayout
 import com.kenkern.engine.editor.TopBarLayout
 import kotlin.math.roundToInt
 import com.kenkern.engine.core.linkerf.LinkerfLink
@@ -284,7 +285,7 @@ class Diagnostico(private val appContext: Context) {
                             "astc" -> checarAstc(c)
                             "memoria" -> checarMemoria(c)
                             "release" -> checarRelease(c)
-                            "layout" -> checarLayoutTopBar(c)
+                            "layout" -> checarLayout(c)
                         }
                     }.onFailure {
                         c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
@@ -1590,32 +1591,47 @@ class Diagnostico(private val appContext: Context) {
     // ---------------------------------------------------------------- layout
 
     /**
-     * Checagem "layout" (G1, v0.1.19) — MATEMÁTICA PURA do layout: a TopBar tem
-     * seções FIXAS (Voltar no início; Hierarquia/Inspetor/Resetar no fim) com
-     * larguras conhecidas (TopBarLayout); a soma delas tem que caber na largura
-     * real do aparelho, sobrando área rolável utilizável. Se não couber, o
-     * aparelho está abaixo do mínimo da engine (800dp × 360dp de referência) e
-     * o resultado diz isso explicitamente — nunca "layout quebrado sem motivo".
+     * Checagem "layout" (G1+G2, v0.1.19) — MATEMÁTICA PURA do layout em
+     * paisagem 800×360 (referência do usuário, ~240dp de viewport útil):
+     *  - TopBar: seções FIXAS (Voltar; Hierarquia/Inspetor/Resetar) com larguras
+     *    conhecidas (TopBarLayout) — a soma tem que caber na largura do aparelho
+     *    sobrando área rolável utilizável;
+     *  - Adicionar Nick: cabeçalho fixo de 48dp ≤ 20% da altura útil e lista
+     *    mínima (chips + abas + 1 cartão + padding inferior) + último tipo do
+     *    catálogo alcançáveis com a altura útil real (TopBar 48 + StatusBar 24 +
+     *    reserva de 24dp para as barras do sistema).
      */
-    private fun checarLayoutTopBar(c: Checagem) {
+    private fun checarLayout(c: Checagem) {
         val dm = appContext.resources.displayMetrics
         val larguraTelaDp = dm.widthPixels / dm.density
         val alturaTelaDp = dm.heightPixels / dm.density
+        val orientacao = if (alturaTelaDp >= larguraTelaDp) "retrato" else "paisagem"
+
         val fixa = TopBarLayout.larguraTotalFixaDp()
         val rolavel = TopBarLayout.larguraRolavelDp(larguraTelaDp)
         val cabe = TopBarLayout.cabemSecoesFixas(larguraTelaDp)
         val suficiente = TopBarLayout.rolavelSuficiente(larguraTelaDp)
-        val orientacao = if (alturaTelaDp >= larguraTelaDp) "retrato" else "paisagem"
-        if (cabe && suficiente) {
+
+        // Altura útil do viewport: tela − TopBar 48 − StatusBar 24 − reserva das
+        // barras do sistema 24 (conservador: displayMetrics já pode excluí-las).
+        val alturaUtilDp = alturaTelaDp - 48f - 24f - 24f
+        val cabecalhoOk = AddNickLayout.alturaCabecalhoNoLimite(alturaUtilDp)
+        val listaOk = AddNickLayout.listaMinimaVisivel(alturaUtilDp)
+        val ultimoOk = AddNickLayout.ultimoTipoAlcancavel(alturaUtilDp, 24f)
+
+        if (cabe && suficiente && cabecalhoOk && listaOk && ultimoOk) {
             c.aprovado(
                 "tela ${larguraTelaDp.roundToInt()}×${alturaTelaDp.roundToInt()}dp ($orientacao) · " +
                     "TopBar fixa ${fixa.roundToInt()}dp → rolável ${rolavel.roundToInt()}dp ✓ · " +
-                    "Hierarquia/Inspetor/Resetar sempre visíveis ✓"
+                    "altura útil ${alturaUtilDp.roundToInt()}dp · cabeçalho AddNick " +
+                    "${AddNickLayout.CABECALHO_DP.roundToInt()}dp ≤ 20% ✓ · lista mínima " +
+                    "${(alturaUtilDp - AddNickLayout.alturaMinimaListaDp() - AddNickLayout.CABECALHO_DP).roundToInt()}dp de folga ✓ · último tipo alcançável ✓"
             )
         } else {
             c.falhou(
                 "tela ${larguraTelaDp.roundToInt()}×${alturaTelaDp.roundToInt()}dp ($orientacao) · " +
-                    "TopBar fixa ${fixa.roundToInt()}dp cabe=$cabe · rolável ${rolavel.roundToInt()}dp suficiente=$suficiente"
+                    "TopBar fixa ${fixa.roundToInt()}dp cabe=$cabe · rolável ${rolavel.roundToInt()}dp suficiente=$suficiente · " +
+                    "altura útil ${alturaUtilDp.roundToInt()}dp · cabeçalho≤20%=$cabecalhoOk · lista=$listaOk · último=$ultimoOk"
             )
         }
     }

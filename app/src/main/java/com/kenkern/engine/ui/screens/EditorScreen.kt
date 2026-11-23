@@ -392,27 +392,6 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             FlightControls(svForFlight)
                         }
 
-                        // ---------- Janela "Adicionar Nick" (T0.3) ----------
-                        // Painel lateral de ~40% da largura da TELA dentro do viewport:
-                        // nunca cobre a Hierarquia, a TopBar nem a StatusBar.
-                        if (addNickVisivel) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.CenterStart)
-                                    .fillMaxHeight()
-                                    .width(
-                                        (viewportWpx / density.density * 0.4f).dp
-                                            .coerceIn(240.dp, 420.dp)
-                                    )
-                            ) {
-                                AddNickPanel(
-                                    vm = vm,
-                                    spawnXz = spawnXz,
-                                    onFechar = { addNickVisivel = false }
-                                )
-                            }
-                        }
-
                         // Telas estreitas: painel "acoplado" vira overlay de lateral
                         if (!wide && hShown && hierarchy.docked.value) {
                             DockedPanel(
@@ -524,6 +503,36 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
             }
 
             EditorStatusBar(vm, surfaceView, fpsTick)
+        }
+
+        // ---------- Janela "Adicionar Nick" (G2, v0.1.19) ----------
+        // Modal na RAIZ (fora da Row central): usa a ALTURA TODA do viewport e,
+        // com largura de 60% da tela, pode PASSAR POR CIMA do Inspetor acoplado —
+        // o usuário decide quando abrir. TopBar (48dp) e StatusBar (24dp) ficam
+        // visíveis; toques só dentro da janela (barreira de toque no painel).
+        if (addNickVisivel) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 48.dp, bottom = 24.dp)
+                        .fillMaxHeight()
+                        .width(
+                            (LocalConfiguration.current.screenWidthDp * 0.6f).dp
+                                .coerceIn(240.dp, 640.dp)
+                        )
+                ) {
+                    AddNickPanel(
+                        vm = vm,
+                        spawnXz = spawnXz,
+                        onFechar = { addNickVisivel = false }
+                    )
+                }
+            }
         }
 
         // Poll de FPS sem acoplar Compose ao thread GL.
