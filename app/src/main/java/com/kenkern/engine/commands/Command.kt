@@ -27,15 +27,19 @@ class CommandHistory(private val limit: Int = 100) {
     }
 
     fun undo(): Command? {
-        val cmd = undoStack.removeLastOrNull() ?: return null
+        val cmd = undoStack.lastOrNull() ?: return null
+        // Só transfere para redo depois de sucesso. Comandos com I/O podem
+        // falhar; nesse caso o usuário ainda precisa conseguir tentar de novo.
         cmd.undo()
+        undoStack.removeLast()
         redoStack.addLast(cmd)
         return cmd
     }
 
     fun redo(): Command? {
-        val cmd = redoStack.removeLastOrNull() ?: return null
+        val cmd = redoStack.lastOrNull() ?: return null
         cmd.execute()
+        redoStack.removeLast()
         undoStack.addLast(cmd)
         return cmd
     }

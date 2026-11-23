@@ -21,6 +21,14 @@ class Scene(var name: String = "Cena") {
     val references = ReferenceSystem()
     val linkerf = LinkerfGraph()
 
+    /** Uma subárvore destacada, pronta para ser reanexada pelo undo. */
+    class DetachedSubtree internal constructor(
+        val nick: Nick,
+        val parent: Nick?,
+        val index: Int,
+        internal val linkerf: LinkerfGraph.Snapshot
+    )
+
     fun createRootNick(
         name: String?,
         id: ReferenceId = ReferenceId.generate(),
@@ -62,27 +70,46 @@ class Scene(var name: String = "Cena") {
     fun findNick(id: ReferenceId): Nick? = references.resolve(id)
 
     /** Remove o nick e toda a sua subárvore. Retorna true se removeu. */
-    fun removeNick(nick: Nick): Boolean {
+    fun removeNick(nick: Nick): Boolean = detachSubtree(nick) != null
+
+    /**
+     * Desanexa uma subárvore sem a destruir. Relações pai/filhos internas são
+     * preservadas para undo; referências ativas e dados LINKERF dos owners
+     * são retirados e guardados no snapshot reversível.
+     */
+    fun detachSubtree(nick: Nick): DetachedSubtree? {
         val parent = nick.parent
-        val removed = if (parent != null) parent.children.remove(nick) else roots.remove(nick)
-        if (!removed) return false
+        val siblings = parent?.children ?: roots
+        val index = siblings.indexOf(nick)
+        if (index < 0) return null
+        siblings.removeAt(index)
         nick.parent = null
-        unregisterSubtree(nick)
-        return true
+        references.unregisterNick(nick)
+
+        val owners = LinkedHashSet<ReferenceId>()
+        val pending = ArrayList<Nick>()
+        pending.add(nick)
+        while (pending.isNotEmpty()) {
+            val current = pending.removeAt(pending.lastIndex)
+            owners.add(current.id)
+            for (child in current.children) pending.add(child)
+        }
+        val graphSnapshot = linkerf.removeOwners(owners)
+        return DetachedSubtree(nick, parent, index, graphSnapshot)
     }
 
-    private fun unregisterSubtree(nick: Nick) {
-        references.unregisterNick(nick)
-        linkerf.removeOwner(nick.id)
-        for (c in nick.children) {
-            c.parent = null
-            unregisterSubtree(c)
-        }
-        nick.children.clear()
+    /** Reinsere uma subárvore destacada, incluindo as ligações LINKERF. */
+    fun attachSubtree(detached: DetachedSubtree) {
+        attachSubtree(detached.nick, detached.parent, detached.index, detached.linkerf)
     }
 
     /** Reinsere uma subárvore previamente removida (usada pelo undo de exclusão). */
-    fun attachSubtree(nick: Nick, parent: Nick?, index: Int) {
+    fun attachSubtree(
+        nick: Nick,
+        parent: Nick?,
+        index: Int,
+        linkerfSnapshot: LinkerfGraph.Snapshot? = null
+    ) {
         if (parent == null) {
             val at = index.coerceIn(0, roots.size)
             roots.add(at, nick)
@@ -92,6 +119,7 @@ class Scene(var name: String = "Cena") {
         }
         nick.parent = parent
         references.registerNick(nick)
+        linkerfSnapshot?.let(linkerf::restore)
     }
 
     fun reparent(nick: Nick, newParent: Nick?): Boolean {
