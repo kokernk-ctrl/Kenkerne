@@ -371,7 +371,7 @@ object ProjectManager {
             val inst = NickClassRegistry.createInstance("Script")
             if (inst != null) {
                 inst.fields["fonte"] = NickValue.StringValue(
-                    "// coleta: soma no contador e desaparece\n" +
+                    "-- coleta: soma no contador e desaparece\n" +
                         "on_trigger = function(outro)\n" +
                         "  ui.contagem(\"moedas\", 1)\n" +
                         "  nick.destroy()\n" +

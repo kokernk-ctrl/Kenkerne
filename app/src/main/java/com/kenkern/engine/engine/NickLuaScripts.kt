@@ -86,6 +86,9 @@ class NickLuaScripts(private val scene: Scene) {
         return saida
     }
 
+    /** M1.7 (debug/testes): instâncias vivas. */
+    fun instanciasPublicas(): List<Instancia> = instancias.toList()
+
     /** Instância pelo nome de exibição do Nick (testes e diagnóstico). */
     fun instanciaDe(nomeNick: String): Instancia? =
         instancias.firstOrNull { (it.nick.name ?: it.nick.kind) == nomeNick }
