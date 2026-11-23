@@ -1,4 +1,4 @@
-# KERN — Formato de malha 3D da KENKERN (versão 1)
+# KERN — Formato de malha 3D da KENKERN (versões 1 e 2)
 
 KERN é o formato leve de malha 3D da engine KENKERN, desenhado para mobile:
 vértices quantizados, índices 16/32 bits conforme o tamanho, tabela de LODs e
@@ -16,8 +16,8 @@ campos já reservados para SKINNING/ESQUELETO e para o futuro bloco de CLUSTERS
 | Offset | Tipo     | Campo             | Descrição                                            |
 |--------|----------|-------------------|------------------------------------------------------|
 | 0x00   | char[4]  | magic             | `"KERN"`                                             |
-| 0x04   | u16      | version           | `1` nesta fase                                       |
-| 0x06   | u16      | flags             | bit 0 = possui bloco de clusters                     |
+| 0x04   | u16      | version           | `2` na escrita; leitura aceita `1` e `2`                                       |
+| 0x06   | u16      | flags             | bit 0 = clusters; bit 1 = tabela de materiais (v2)                     |
 | 0x08   | f32[3]   | boundsMin         | mínimo da bounding box (x, y, z)                     |
 | 0x14   | f32[3]   | boundsMax         | máximo da bounding box (x, y, z)                     |
 | 0x20   | u32      | vertexCount       | número de vértices                                   |
@@ -70,3 +70,14 @@ campos já reservados para SKINNING/ESQUELETO e para o futuro bloco de CLUSTERS
 
 Bytes opacos; o subformato (meshlets, cones de culling, LOD contínuo) será
 definido na Fase da KENA. O header aponta offset e tamanho.
+
+## Grupos e materiais (versão 2, se `flags & 2 != 0`)
+
+Após os ossos e os bytes opcionais de clusters vêm `u16 groupCount`, seguidos de `groupCount` triplas `(u32 indexOffset, u32 indexCount, u32 materialIndex)`. O offset conta índices, não bytes. Depois vêm `u16 materialCount` e os registros dos materiais, na ordem:
+
+1. Nome (comprimento `u8` em bytes + bytes UTF-8).
+2. `u8[4]` de cor base RGBA, `f32 metallic`, `f32 roughness`.
+3. `u8` de flags: bit 0 = textura base, 1 = normal map, 2 = dupla face.
+4. Caminho da textura base e caminho da normal, cada um com comprimento `u8` em bytes + bytes UTF-8 (comprimento zero é válido).
+
+Uma malha sem grupos nem materiais pode usar v2 sem o bit 1 e não tem essa tabela. Armazenar os fatores do material não significa que o renderer já implemente todo o pipeline PBR. O layout nesta documentação descreve `assets/mesh/KernWriter.kt`; regressões de leitura e escrita ficam em `assets/mesh` na suíte JVM.

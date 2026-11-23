@@ -1,11 +1,10 @@
 # KENKERN — LUA_API
 
-**RASCUNHO** — a API oficial nasce na Fase 3. Este arquivo documenta a API
-exposta aos scripts do jogo (runtime LuaJ atrás de `ScriptRuntime`). Nada aqui
-está implementado ainda; a seção abaixo é o contrato planejado, que será
-congelado na Fase 3 com testes JVM.
+**RASCUNHO** — a API oficial nasce na Fase 5. Este arquivo documenta a API
+exposta aos scripts do jogo (runtime LuaJ atrás de `ScriptRuntime`). O interpretador sandbox da F5.1 existe; a seção abaixo é um contrato de integração planejado, não uma lista de APIs já disponíveis. Será
+congelado na Fase 5 com testes JVM.
 
-## Contrato planejado (Fase 3)
+## Contrato planejado (Fase 5)
 
 ```lua
 -- Ciclo de vida

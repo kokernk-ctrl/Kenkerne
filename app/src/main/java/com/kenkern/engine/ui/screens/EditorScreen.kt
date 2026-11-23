@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Flight
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lightbulb
@@ -106,11 +107,15 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kenkern.engine.editor.EditorViewModel
+import com.kenkern.engine.editor.EditorWorkspace
+import com.kenkern.engine.ui.hub.EditorWorkspaceSelector
+import com.kenkern.engine.ui.hub.label
+import com.kenkern.engine.ui.hub.TextureWorkspacePanel
+import com.kenkern.engine.ui.panels.AnimationWorkspacePanel
 import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.engine.PlayState
-import com.kenkern.engine.core.Nick
 import com.kenkern.engine.render.CameraMode
 import com.kenkern.engine.render.GizmoHandle
 import com.kenkern.engine.render.GizmoMode
@@ -119,6 +124,7 @@ import com.kenkern.engine.render.KenkernSurfaceView
 import com.kenkern.engine.render.TransformGizmo
 import java.util.Locale
 import com.kenkern.engine.ui.panels.AddNickPanel
+import com.kenkern.engine.ui.panels.AssetBrowserDialog
 import com.kenkern.engine.ui.panels.DockedPanel
 import com.kenkern.engine.ui.panels.FloatingPanel
 import com.kenkern.engine.ui.panels.HierarchyPanel
@@ -164,19 +170,10 @@ object ViewportSession {
  */
 @Composable
 fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
-    // Marcador de progresso (diagnóstico de crash nativo): esta tela COMPOSTOU.
-    // remember = grava 1x por composição, não a cada recomposição.
-    remember { BootTrace.mark("EditorScreen composto") }
+    // Registra após uma composição bem-sucedida; LaunchedEffect executa uma vez
+    // por instância da tela, sem gravar no BootTrace durante a composição.
+    LaunchedEffect(Unit) { BootTrace.mark("EditorScreen composto") }
     var surfaceView by remember { mutableStateOf<KenkernSurfaceView?>(null) }
-    val sceneRevision = vm.revision.intValue
-    val hasActivePlayer = remember(vm.scene.value, sceneRevision) {
-        fun Nick.hasActivePlayerInSubtree(ancestorsActive: Boolean): Boolean {
-            val activePath = ancestorsActive && active
-            if (activePath && kind == "body.player") return true
-            return children.any { it.hasActivePlayerInSubtree(activePath) }
-        }
-        vm.scene.value?.roots?.any { it.hasActivePlayerInSubtree(true) } == true
-    }
     var resolutionScale by remember { mutableStateOf(1f) }
     var fpsTick by remember { mutableStateOf(0) }
     var hintVisible by remember { mutableStateOf(!ViewportSession.gestureHintDismissed) }
@@ -219,6 +216,12 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
         addNickVisivel = true
     }
 
+    val projectRoot = vm.project.value?.root
+    var assetBrowserOpen by rememberSaveable(projectRoot?.path) { mutableStateOf(false) }
+    if (assetBrowserOpen && projectRoot != null) {
+        AssetBrowserDialog(projectRoot, vm.scene.value, onClose = { assetBrowserOpen = false })
+    }
+
     // ---------- Importação de modelo (ETAPA A): SAF + opções ----------
     var uriImportacaoPendente by remember { mutableStateOf<android.net.Uri?>(null) }
     var pastaImportacaoPendente by rememberSaveable { mutableStateOf(false) }
@@ -255,18 +258,29 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
         }
     }
 
-    val hierarchy = remember(orientacao) {
-        vm.panelStore.get("hierarchy", orientacao, "Hierarquia", 200f, 140f, 320f, 280f, 340f)
+    val workspace by vm.workspace
+    val inspectorTitle = stringResource(if (workspace == EditorWorkspace.MODEL) R.string.hub_inspector else workspace.label)
+    val hierarchyTitle = stringResource(R.string.hub_hierarchy)
+    val hierarchy = remember(orientacao, workspace, hierarchyTitle) {
+        vm.panelStore.get(workspace.panelKey("hierarchy"), orientacao, hierarchyTitle, 200f, 140f, 320f, 280f, 340f,
+            defaultVisible = workspace.hierarchyByDefault)
     }
-    val inspector = remember(orientacao) {
-        vm.panelStore.get("inspector", orientacao, "Inspetor", 240f, 180f, 360f, 300f, 400f)
+    val inspector = remember(orientacao, workspace, inspectorTitle) {
+        vm.panelStore.get(workspace.panelKey("inspector"), orientacao, inspectorTitle, 240f, 180f, 360f, 300f, 400f)
     }
-    val persistHierarchy = remember { { vm.panelStore.persist(hierarchy) } }
-    val persistInspector = remember { { vm.panelStore.persist(inspector) } }
+    val persistHierarchy = remember(hierarchy) { { vm.panelStore.persist(hierarchy) } }
+    val persistInspector = remember(inspector) { { vm.panelStore.persist(inspector) } }
+    val workspaceInspector: @Composable () -> Unit = {
+        when (workspace) {
+            EditorWorkspace.MODEL -> InspectorPanel(vm)
+            EditorWorkspace.ANIMATE -> AnimationWorkspacePanel(vm)
+            EditorWorkspace.TEXTURE -> TextureWorkspacePanel(vm, onImportClick)
+        }
+    }
 
     // E4: quem está na frente — tocar em um painel flutuante o traz para o
     // primeiro plano (zIndex); Resetar layout devolve o padrão profissional.
-    var painelFoco by remember { mutableStateOf<String?>(null) }
+    var painelFoco by remember(workspace) { mutableStateOf<String?>(null) }
     val resetarLayout = {
         vm.panelStore.resetar(hierarchy)
         vm.panelStore.resetar(inspector)
@@ -303,6 +317,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 onFocusClick = { surfaceView?.focusSelected() },
                 debugOverlay = debugOverlay,
                 onDebugToggle = { debugOverlay = !debugOverlay },
+                onOpenAssets = if (projectRoot == null) null else ({ assetBrowserOpen = true }),
                 onImportClick = onImportClick
             )
 
@@ -423,7 +438,6 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 (iShown && inspector.docked.value))
                         val svForPlay = surfaceView
                         if (vm.playState.value == PlayState.PLAYING &&
-                            hasActivePlayer &&
                             !addNickVisivel &&
                             !floatingPanelCoversViewport &&
                             !narrowDockCoversViewport &&
@@ -431,9 +445,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                         ) {
                             PlayJoystick(
                                 sv = svForPlay,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(start = 12.dp, bottom = 12.dp)
+                                modifier = Modifier.matchParentSize()
                             )
                         }
 
@@ -478,7 +490,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     inspector.visible.value = false
                                     persistInspector()
                                 }
-                            ) { InspectorPanel(vm) }
+                            ) { workspaceInspector() }
                         }
 
                         // Modo flutuante (exceção): contido no viewport
@@ -516,7 +528,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     inspector.visible.value = false
                                     persistInspector()
                                 }
-                            ) { InspectorPanel(vm) }
+                            ) { workspaceInspector() }
                         }
                     }
 
@@ -542,7 +554,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 inspector.visible.value = false
                                 persistInspector()
                             }
-                        ) { InspectorPanel(vm) }
+                        ) { workspaceInspector() }
                     }
                 }
             }
@@ -850,6 +862,7 @@ private fun EditorTopBar(
     onFocusClick: () -> Unit,
     debugOverlay: Boolean,
     onDebugToggle: () -> Unit,
+    onOpenAssets: (() -> Unit)?,
     onImportClick: (Boolean) -> Unit
 ) {
     Surface(
@@ -860,9 +873,12 @@ private fun EditorTopBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp)
         ) {
-            // ---------- INÍCIO FIXO: Voltar (sempre visível) ----------
+            // ---------- INÍCIO FIXO: Voltar e navegador de assets ----------
             TopBarIcon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.editor_back_hub)) {
                 onExit()
+            }
+            TopBarIcon(Icons.Filled.Folder, stringResource(R.string.asset_browser_title), enabled = onOpenAssets != null) {
+                onOpenAssets?.invoke()
             }
             TopBarSeparator()
 
@@ -873,6 +889,8 @@ private fun EditorTopBar(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxHeight().horizontalScroll(rolagemTopBar)
                 ) {
+                    EditorWorkspaceSelector(vm.workspace.value) { vm.workspace.value = it }
+                    TopBarSeparator()
                     TopBarIcon(
                         Icons.AutoMirrored.Filled.Undo, stringResource(R.string.editor_undo),
                         enabled = vm.canUndo

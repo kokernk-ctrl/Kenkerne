@@ -19,8 +19,8 @@ android {
         applicationId = "com.kenkern.engine"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "0.1.19-fase2"
+        versionCode = 21
+        versionName = "0.1.20-estabilizacao"
 
         // B3: compila libkenkern.so só para arm64-v8a.
         ndk {
@@ -37,6 +37,9 @@ android {
     // Testes de unidade JVM: métodos do android.jar (ex.: Log.d feito a cada
     // reset de baseline no TouchController) retornam padrão em vez de lançar
     // "not mocked" — sem isso os testes da pinça quebrariam no Log.d.
+    // O mesmo projeto de exemplo do usuário é a fixture de integração, não uma cópia.
+    sourceSets["test"].resources.srcDir(rootProject.file("exemplos"))
+
     testOptions {
         unitTests.isReturnDefaultValues = true
         // Medições em modelos REAIS (auditoria V2): a pasta vem da linha de
@@ -57,7 +60,8 @@ android {
     }
 
     // Assinatura de release lida de variáveis de ambiente (mesma estratégia usada no CI).
-    // Se as variáveis não existirem, o release usa a chave debug para não travar builds locais.
+    // Builds locais podem usar a chave debug, mas tags v* definem
+    // KENKERN_REQUIRE_RELEASE_SIGNING=true e nunca podem cair nesse fallback.
     signingConfigs {
         val ksPath = System.getenv("KEYSTORE_PATH")
         val ksPass = System.getenv("KEYSTORE_PASSWORD")
@@ -88,6 +92,14 @@ android {
             isShrinkResources = true
             isDebuggable = false
             val releaseSigning = signingConfigs.findByName("release")
+            val requireReleaseSigning =
+                System.getenv("KENKERN_REQUIRE_RELEASE_SIGNING").equals("true", ignoreCase = true)
+            if (requireReleaseSigning && releaseSigning == null) {
+                throw GradleException(
+                    "Assinatura de release obrigatória, mas KEYSTORE_PATH, " +
+                        "KEYSTORE_PASSWORD, KEY_ALIAS e KEY_PASSWORD não estão configurados."
+                )
+            }
             signingConfig = releaseSigning ?: signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -110,9 +122,9 @@ android {
         buildConfig = true
     }
     lint {
-        // Lint roda separadamente no CI; evita OOM em máquinas com pouca RAM.
-        checkReleaseBuilds = false
-        abortOnError = false
+        // O lint de release é gate no CI; erros não podem ser ignorados.
+        checkReleaseBuilds = true
+        abortOnError = true
     }
     packaging {
         resources {

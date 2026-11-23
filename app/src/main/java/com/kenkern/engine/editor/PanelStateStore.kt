@@ -41,7 +41,8 @@ class PanelUiState(
     val floatX: MutableState<Float>,
     val floatY: MutableState<Float>,
     val floatW: MutableState<Float>,
-    val floatH: MutableState<Float>
+    val floatH: MutableState<Float>,
+    val defaultVisible: Boolean = true
 )
 
 /** Valores lidos da persistência (parse puro, testável sem Context). */
@@ -76,7 +77,8 @@ class PanelStateStore(context: Context) {
         minDockWidthDp: Float,
         maxDockWidthDp: Float,
         defaultFloatWidthDp: Float,
-        defaultFloatHeightDp: Float
+        defaultFloatHeightDp: Float,
+        defaultVisible: Boolean = true
     ): PanelUiState {
         val chave = chavePrefs(key, orientacao)
         states[chave]?.let { return it }
@@ -84,7 +86,7 @@ class PanelStateStore(context: Context) {
         val bruto = runCatching { prefs.getString(chave, null) }
             .onFailure { KenkernLog.w(TAG, "prefs do painel '$chave' ilegíveis — usando padrão", it) }
             .getOrNull()
-        val e = parseLinha(bruto, minDockWidthDp, maxDockWidthDp)
+        val e = parseLinha(bruto, minDockWidthDp, maxDockWidthDp, defaultVisible)
 
         val state = PanelUiState(
             key, title, minDockWidthDp, maxDockWidthDp, orientacao,
@@ -95,7 +97,8 @@ class PanelStateStore(context: Context) {
             mutableFloatStateOf(e.floatX),
             mutableFloatStateOf(e.floatY),
             mutableFloatStateOf(e.floatW),
-            mutableFloatStateOf(e.floatH)
+            mutableFloatStateOf(e.floatH),
+            defaultVisible
         )
         states[chave] = state
         return state
@@ -118,7 +121,7 @@ class PanelStateStore(context: Context) {
      * acoplado + largura/posição/tamanho padrão) e PERSISTE na hora.
      */
     fun resetar(state: PanelUiState) {
-        state.visible.value = true
+        state.visible.value = state.defaultVisible
         state.docked.value = true
         state.dockWidthDp.value = state.defaultDockWidthDp
         state.floatX.value = 16f
@@ -140,9 +143,9 @@ class PanelStateStore(context: Context) {
          * Parse PURO (testável sem Context) da linha "v,d,w,fx,fy,fw,fh" —
          * corrompido/faltante = padrão profissional (visível + acoplado).
          */
-        fun parseLinha(bruto: String?, minDockWidthDp: Float, maxDockWidthDp: Float): EstadoPainel {
+        fun parseLinha(bruto: String?, minDockWidthDp: Float, maxDockWidthDp: Float, defaultVisible: Boolean = true): EstadoPainel {
             var e = EstadoPainel(
-                visible = true, docked = true,
+                visible = defaultVisible, docked = true,
                 dockWidthDp = 220f.coerceIn(minDockWidthDp, maxDockWidthDp),
                 floatX = 16f, floatY = 16f, floatW = 280f, floatH = 340f
             )

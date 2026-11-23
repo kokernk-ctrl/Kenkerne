@@ -133,6 +133,88 @@ class KimgTest {
     }
 
     @Test
+    fun `reader rejeita overflow e offsets que apontam para o header ou tabela`() {
+        val original = KimgPipeline.converter(corSolida(4, 4, 30, 90, 140), 4, 4).first
+
+        // offset=INT_MAX e tamanho=8 fariam offset+tamanho transbordar Int.
+        val overflow = original.copyOf().also {
+            it[24] = 0x7F; it[25] = 0xFF.toByte(); it[26] = 0xFF.toByte(); it[27] = 0xFF.toByte()
+            it[28] = 0; it[29] = 0; it[30] = 0; it[31] = 8
+        }
+        try {
+            KimgReader.read(overflow)
+            fail("overflow de offset deveria dar KimgException")
+        } catch (e: KimgException) {
+            assertTrue(e.message!!.contains("fora da área de dados"))
+        }
+
+        val sobreHeader = original.copyOf().also {
+            it[24] = 0; it[25] = 0; it[26] = 0; it[27] = 0
+            it[28] = 0; it[29] = 0; it[30] = 0; it[31] = 8
+        }
+        try {
+            KimgReader.read(sobreHeader)
+            fail("mip não pode apontar para header/tabela")
+        } catch (e: KimgException) {
+            assertTrue(e.message!!.contains("fora da área de dados"))
+        }
+    }
+
+    @Test
+    fun `inflater rejeita range invalido dicionario e bytes excedentes sem travar`() {
+        try {
+            KimgReader.inflar(ByteArray(8), Int.MAX_VALUE, 8, 16)
+            fail("range Deflate inválido deveria dar KimgException")
+        } catch (e: KimgException) {
+            assertTrue(e.message!!.contains("região Deflate inválida"))
+        }
+
+        val dados = "conteudo protegido por dicionario".toByteArray()
+        val deflater = java.util.zip.Deflater()
+        val comprimidos = java.io.ByteArrayOutputStream()
+        try {
+            deflater.setDictionary("dicionario secreto".toByteArray())
+            deflater.setInput(dados)
+            deflater.finish()
+            val bloco = ByteArray(128)
+            while (!deflater.finished()) {
+                val n = deflater.deflate(bloco)
+                comprimidos.write(bloco, 0, n)
+            }
+        } finally {
+            deflater.end()
+        }
+        try {
+            KimgReader.inflar(comprimidos.toByteArray(), 0, comprimidos.size(), dados.size)
+            fail("stream com dicionário obrigatório deveria dar KimgException")
+        } catch (e: KimgException) {
+            assertTrue(e.message!!.contains("dicionário"))
+        }
+
+        val semDicionario = java.util.zip.Deflater().run {
+            try {
+                setInput(dados)
+                finish()
+                val out = java.io.ByteArrayOutputStream()
+                val bloco = ByteArray(128)
+                while (!finished()) {
+                    val n = deflate(bloco)
+                    out.write(bloco, 0, n)
+                }
+                out.toByteArray()
+            } finally {
+                end()
+            }
+        }
+        try {
+            KimgReader.inflar(semDicionario + byteArrayOf(0), 0, semDicionario.size + 1, dados.size)
+            fail("bytes após o stream Deflate deveriam ser rejeitados")
+        } catch (e: KimgException) {
+            assertTrue(e.message!!.contains("excedentes"))
+        }
+    }
+
+    @Test
     fun `ASTC no cabeçalho relê e dimensões nulas dao erro`() {
         // ASTC é formato RESERVADO válido no cabeçalho (o leitor lê; o upload recusa)
         val tamanho = KimgReader.tamanhoBloco(KimgFormato.ASTC_4x4, 8, 8)

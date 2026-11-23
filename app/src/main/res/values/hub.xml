@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_brand">Kenkern</string>
+    <string name="hub_version">v%1$s</string>
+    <string name="hub_inspector">Inspector</string>
+    <string name="hub_hierarchy">Hierarchy</string>
+    <string name="hub_workspaces">Workspaces</string>
+    <string name="hub_workspace_model">Model</string>
+    <string name="hub_workspace_animate">Animate</string>
+    <string name="hub_workspace_texture">Texture</string>
+    <string name="hub_sandbox_failed">Could not open or create the Sandbox project.</string>
+    <string name="hub_last_opened">Opened: %1$s</string>
+    <string name="hub_added">Added: %1$s</string>
+    <string name="hub_editor_workspaces_cd">Workspaces: %1$s</string>
+    <string name="hub_animation_tools">Select a Nick to edit its Spin motion and preview it with Play. Timeline and rigging are not available yet.</string>
+    <string name="hub_add_spin">Add Spin</string>
+    <string name="hub_texture_tools">Import a textured model to preview its materials. Material editing and painting are not available yet.</string>
+    <string name="hub_selected_mesh">Selected mesh: %1$s</string>
+    <string name="hub_material_name">Material %1$d: %2$s</string>
+    <string name="hub_material_unnamed">Unnamed</string>
+    <string name="hub_base_texture">Base color: %1$s</string>
+    <string name="hub_normal_texture">Normal: %1$s</string>
+</resources>

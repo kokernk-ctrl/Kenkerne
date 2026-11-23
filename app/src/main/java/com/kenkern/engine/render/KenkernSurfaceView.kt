@@ -14,7 +14,7 @@ import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.RotationFromMatrix
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.TransformSnapshot
-import com.kenkern.engine.core.serialization.CkFormat
+import com.kenkern.engine.engine.copyForPlay
 import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.core.math.Mat4
@@ -22,6 +22,9 @@ import com.kenkern.engine.core.math.Quaternion
 import com.kenkern.engine.core.math.Vec3
 import com.kenkern.engine.engine.FixedStepLoop
 import com.kenkern.engine.engine.NickPlayRuntime
+import com.kenkern.engine.core.input.GameplayInput
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import com.kenkern.engine.engine.PlayState
 import javax.microedition.khronos.egl.EGL10
 import javax.microedition.khronos.egl.EGLConfig
@@ -242,7 +245,7 @@ class KenkernSurfaceView(
 ) : GLSurfaceView(context) {
 
     val camera = OrbitCamera()
-    val loop = FixedStepLoop()
+    private val loop = FixedStepLoop()
     val gizmoState = GizmoSharedState()
 
     /**
@@ -302,18 +305,24 @@ class KenkernSurfaceView(
     )
 
     private val glRenderer = KenkernGLRenderer()
-    @Volatile private var playMovement: Long = 0L
+    private val playInputState = MutableStateFlow<GameplayInput?>(null)
+    internal val playInput = playInputState.asStateFlow()
     @Volatile private var requestedPlayState = PlayState.STOPPED
 
-    fun setPlayMovement(x: Float, z: Float) {
-        if (requestedPlayState != PlayState.PLAYING) return
-        playMovement = (x.toRawBits().toLong() shl 32) or (z.toRawBits().toLong() and 0xffffffffL)
+    override fun onPause() {
+        playInputState.value?.cancel()
+        super.onPause()
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow() // GLSurfaceView joins its GL thread.
+        glRenderer.abandonProjectAssets()
     }
 
     private val controls = object : EngineControls {
         override fun setPlayState(state: PlayState) {
             requestedPlayState = state
-            if (state != PlayState.PLAYING) playMovement = 0L
+            if (state != PlayState.PLAYING) playInputState.value?.cancel()
             queueEvent {
                 loop.requestPlayState(state)
                 if (state == PlayState.STOPPED) glRenderer.clearPlaySession()
@@ -383,6 +392,7 @@ class KenkernSurfaceView(
     private val dbgProj = Mat4()
     private val dbgView = Mat4()
     private val dbgVp = Mat4()
+    private val dbgEye = Vec3()
     private val dbgWorldPos = Vec3()
     private val dbgWorldRot = Quaternion()
     private val dbgExtractor = RotationFromMatrix()
@@ -548,7 +558,7 @@ class KenkernSurfaceView(
         val wm = nick.transform.worldMatrix
         dbgWorldPos.set(wm.m[12], wm.m[13], wm.m[14])
         extractWorldRotationTo(wm, dbgWorldRot)
-        val ss = gizmo.screenScaleFor(camera, dbgWorldPos)
+        val ss = gizmo.screenScaleFor(camera, dbgWorldPos, dbgEye)
         gizmo.projectHandlesToScreen(
             dbgVp, rw.toFloat(), rh.toFloat(),
             dbgWorldPos, dbgWorldRot, ss,
@@ -586,6 +596,7 @@ class KenkernSurfaceView(
         private val dragWorldRot = Quaternion()
         private val dragExtractor = RotationFromMatrix()
         private val hitNearest = FloatArray(1)
+        private var dragScene: Scene? = null
         private var dragNick: Nick? = null
 
         private fun refreshMatrices(w: Float, h: Float) {
@@ -618,6 +629,10 @@ class KenkernSurfaceView(
                 debugState.publishGizmoHit(GizmoHandle.NONE, -1f, "cena nula")
                 return false
             }
+            return scene.withEditorAccess { beginGizmoDrag(scene, x, y) }
+        }
+
+        private fun beginGizmoDrag(scene: Scene, x: Float, y: Float): Boolean {
             val sel = selectionProvider()
             if (sel == null) {
                 debugState.publishGizmoHit(GizmoHandle.NONE, -1f, "sem seleção — toque no cubo primeiro")
@@ -653,34 +668,41 @@ class KenkernSurfaceView(
                 return false
             }
             debugState.publishGizmoHit(handle, nearestDp, null)
-            dragNick = nick
             gizmo.beginDrag(nick, handle, x, y, camera, dragVp, w, h, w / h, gizmoState.space, ss)
+            dragNick = nick
+            dragScene = scene
             gizmoState.highlighted = handle
             return true
         }
 
         override fun onGizmoMove(x: Float, y: Float) {
             val nick = dragNick ?: return
+            val scene = dragScene ?: return
             val w = width.toFloat()
             val h = height.toFloat()
             if (w < 1f || h < 1f) return
-            refreshMatrices(w, h)
-            gizmo.updateDrag(x, y, camera, dragVp, w, h, w / h, gizmoState.space, gizmoState.snapEnabled)
+            scene.withEditorAccess {
+                if (sceneProvider() !== scene || scene.findNick(nick.id) !== nick) return
+                refreshMatrices(w, h)
+                gizmo.updateDrag(x, y, camera, dragVp, w, h, w / h, gizmoState.space, gizmoState.snapEnabled)
+            }
             onGizmoLiveUpdate() // Inspetor atualiza ao vivo durante o arrasto
         }
 
         override fun onGizmoUp(x: Float, y: Float) {
             val nick = dragNick
+            val scene = dragScene
             gizmoState.highlighted = GizmoHandle.NONE
             dragNick = null
-            if (nick != null) {
-                val start = gizmo.endDrag()
-                if (start != null) {
-                    val end = nick.transform.snapshot()
-                    if (start != end) {
-                        onGizmoDragEnd(nick.id, start, end) // UM Command por arrasto
-                    }
-                }
+            dragScene = null
+            val start = gizmo.endDrag() ?: return
+            if (nick == null || scene == null) return
+            val end = scene.withEditorAccess {
+                if (sceneProvider() !== scene || scene.findNick(nick.id) !== nick) return
+                nick.transform.snapshot()
+            }
+            if (start != end) {
+                onGizmoDragEnd(nick.id, start, end) // UM Command por arrasto
             }
         }
     }
@@ -949,12 +971,14 @@ class KenkernSurfaceView(
     }
 
     private inner class KenkernGLRenderer : Renderer {
-        private val backend = GlesBackend()
+        @Volatile private var backend = GlesBackend()
         private val engineRenderer = EngineRenderer()
         private var surfaceReady = false
 
         // Marcador de progresso: "primeiro frame" só é gravado 1x por sessão.
         private var firstFrameMarked = false
+
+        fun abandonProjectAssets() = engineRenderer.abandonProjectAssets()
 
         fun currentFps(): Int = engineRenderer.fps
 
@@ -982,12 +1006,8 @@ class KenkernSurfaceView(
             BootTrace.mark("surface criada")
             surfaceReady = false
             isEngineHealthy = false
-            runCatching {
-                // Contexto novo = handles de GPU antigos inválidos: as malhas
-                // importadas voltam a subir pela fila pendente (nada de handle órfão).
-                AssetMeshLibrary.limpar()
-                backend.destroy() // libera restos de contexto anterior
-            }.onFailure { KenkernLog.w(TAG, "destroy() do backend anterior falhou", it) }
+            // No contexto recém-criado, nomes GL antigos não são nossos.
+            backend = GlesBackend()
             runCatching {
                 engineRenderer.initialize(backend, gizmo)
                 surfaceReady = true
@@ -1008,99 +1028,49 @@ class KenkernSurfaceView(
         private var playScene: Scene? = null
         private var playRuntime: NickPlayRuntime? = null
         private var playCamera: NickPlayCamera? = null
+        private val playLook = FloatArray(2)
+        private val playView = Mat4()
+        private val playProjection = Mat4()
+        private val playViewProjection = Mat4()
 
         fun clearPlaySession() {
+            playInputState.value?.cancel()
+            playInputState.value = null
             editorScene = null
             playScene = null
             playRuntime = null
             playCamera = null
         }
 
-        private fun sceneForFrame(source: Scene?): Scene? {
-            if (loop.playState == PlayState.STOPPED || source == null) {
-                clearPlaySession()
-                return source
-            }
+        private fun sceneForPlay(source: Scene): Scene? {
             if (editorScene !== source) {
-                editorScene = source
-                // Uma cópia por sessão; Play nunca altera a cena editável ou o autosave.
-                val copy = CkFormat.parseToNewScene(CkFormat.writeToString(source), source.name)
+                // Uma cópia por sessão; Play nunca altera a cena editável.
+                val copy = source.copyForPlay()
                 playScene = copy
                 playRuntime = copy?.let { NickPlayRuntime(it) }
+                playInputState.value?.cancel()
+                playInputState.value = playRuntime?.input
                 copy?.updateWorldTransforms()
                 playCamera = playRuntime?.let { NickPlayCamera(it.player, it.followCamera, it.basicCamera) }
+                editorScene = source
             }
             return playScene
         }
 
         override fun onDrawFrame(gl: javax.microedition.khronos.opengles.GL10?) {
             try {
-                val scene = sceneForFrame(sceneProvider())
-                // Instrumentação: ms de update (timestep fixo + world transforms).
-                val updateStart = System.nanoTime()
-                loop.tick(System.nanoTime()) { dt ->
-                    scene?.updateFunctions(dt, loop.engineTime)
-                    val move = playMovement
-                    playRuntime?.step(dt, Float.fromBits((move ushr 32).toInt()), Float.fromBits(move.toInt()))
+                val source = sceneProvider()
+                if (source == null || loop.playState == PlayState.STOPPED) {
+                    clearPlaySession()
+                    if (source == null) drawSceneFrame(null)
+                    else source.withEditorAccess { drawSceneFrame(source) }
+                } else {
+                    drawSceneFrame(sceneForPlay(source), source)
                 }
-                // Matrizes de mundo sempre atualizadas (mesmo pausado, o Inspetor edita transform).
-                scene?.updateWorldTransforms()
-                val gameCamera = playCamera
-                gameCamera?.update()
-                engineRenderer.reportUpdateMs((System.nanoTime() - updateStart) * 1e-6f)
-                if (surfaceReady) {
-                    // E5: estado dos AUXILIARES DE EDITOR lido por frame (thread GL):
-                    // visíveis no editor (padrão) e SUMEM em Play (nunca no jogo exportado).
-                    engineRenderer.mostrarAuxiliares = mostrarAuxiliares
-                    engineRenderer.emJogo = loop.playState != com.kenkern.engine.engine.PlayState.STOPPED
-                    // Picking pendente: roda com as matrizes de mundo recém-atualizadas.
-                    if (pickPending) {
-                        pickPending = false
-                        val s = scene
-                        if (!engineRenderer.emJogo && s != null && s.roots.isNotEmpty()) {
-                            val rw = backend.viewportWidth
-                            val rh = backend.viewportHeight.coerceAtLeast(1)
-                            val aspect = rw.toFloat() / rh.toFloat()
-                            // Mesma projeção usada no render deste frame: o raio do
-                            // picking usa o MESMO aspect/FOV da matriz de projeção.
-                            camera.projection(pickProj, aspect)
-                            camera.view(pickView)
-                            pickVp.multiply(pickProj, pickView)
-                            val picked = runCatching {
-                                pickNickAt(s, aspect, pickVp, rw, rh)
-                            }.onFailure {
-                                // Tap "morrendo" sem rastro era o pior bug de UX possível
-                                // de diagnosticar (regra nova: registra sempre).
-                                KenkernLog.e(TAG, "picking falhou — tap não seleciona", it)
-                            }.getOrNull()
-                            mainHandler.post { onNickPicked(picked) }
-                        }
-                    }
-                    // FOCO pendente (botão F / duplo toque): AABB e ajuste da câmera.
-                    if (focusPending) {
-                        focusPending = false
-                        val s = scene
-                        if (!engineRenderer.emJogo && s != null) runCatching { applyFocus(s) }
-                            .onFailure { KenkernLog.w(TAG, "foco de câmera falhou", it) }
-                    }
-                    engineRenderer.renderFrame(
-                        backend, scene,
-                        if (gameCamera?.active == true) gameCamera.camera else camera,
-                        loop.engineTime, if (engineRenderer.emJogo) null else selectionProvider(), gizmoState
-                    )
-                    // Publicação de debug (overlay de toque): alças em px de
-                    // framebuffer + tamanho do render. Só quando o overlay está ON.
-                    if (debugState.enabled) {
-                        runCatching { publishDebugFrameGL(scene) }
-                            .onFailure { KenkernLog.w(TAG, "publicação do overlay de debug falhou", it) }
-                    }
-                    // Marcador de progresso: primeiro frame COMPLETO no thread GL.
-                    // Gravado DEPOIS do renderFrame: crash nativo dentro do draw
-                    // deixa a última etapa em "shader compilado".
-                    if (!firstFrameMarked) {
-                        firstFrameMarked = true
-                        BootTrace.mark("primeiro frame")
-                    }
+                // Depois do draw e fora do monitor da edição.
+                if (surfaceReady && !firstFrameMarked) {
+                    firstFrameMarked = true
+                    BootTrace.mark("primeiro frame")
                 }
             } catch (e: Throwable) {
                 Log.e(TAG, "Frame descartado", e)
@@ -1109,6 +1079,82 @@ class KenkernSurfaceView(
                     backend.beginFrame(0.075f, 0.075f, 0.105f, 1f)
                     backend.endFrame()
                 }.onFailure { KenkernLog.e(TAG, "clear emergencial do frame também falhou", it) }
+            }
+        }
+
+        /** Cena de edição: chamador mantém o monitor até o fim da travessia. */
+        private fun drawSceneFrame(scene: Scene?, assetSource: Scene? = scene) {
+            // Instrumentação: ms de update (timestep fixo + world transforms).
+            val updateStart = System.nanoTime()
+            loop.tick(System.nanoTime()) { dt ->
+                playScene?.updateFunctions(dt, loop.engineTime)
+                val gameCamera = playCamera
+                val activeCamera = gameCamera?.camera?.takeIf { gameCamera.active } ?: camera
+                val yaw = if (activeCamera.mode == CameraMode.FLIGHT) activeCamera.flightYawDegrees else activeCamera.yawDegrees
+                playRuntime?.stepTouch(dt, yaw)
+                if (gameCamera?.active == true) {
+                    playRuntime?.readLook(playLook)
+                    gameCamera.look(playLook[0] * dt, playLook[1] * dt)
+                }
+            }
+            // Matrizes de mundo sempre atualizadas (mesmo pausado, o Inspetor edita transform).
+            scene?.updateWorldTransforms()
+            val gameCamera = playCamera
+            gameCamera?.update()
+            val frameCamera = if (gameCamera?.active == true) gameCamera.camera else camera
+            engineRenderer.reportUpdateMs((System.nanoTime() - updateStart) * 1e-6f)
+            if (surfaceReady) {
+                // E5: estado dos AUXILIARES DE EDITOR lido por frame (thread GL):
+                // visíveis no editor (padrão) e SUMEM em Play (nunca no jogo exportado).
+                engineRenderer.mostrarAuxiliares = mostrarAuxiliares
+                engineRenderer.emJogo = loop.playState != PlayState.STOPPED
+                // Picking pendente: roda com as matrizes de mundo recém-atualizadas.
+                if (pickPending) {
+                    pickPending = false
+                    val s = scene
+                    if (!engineRenderer.emJogo && s != null && s.roots.isNotEmpty()) {
+                        val rw = backend.viewportWidth
+                        val rh = backend.viewportHeight.coerceAtLeast(1)
+                        val aspect = rw.toFloat() / rh.toFloat()
+                        // Mesma projeção usada no render deste frame: o raio do
+                        // picking usa o MESMO aspect/FOV da matriz de projeção.
+                        camera.projection(pickProj, aspect)
+                        camera.view(pickView)
+                        pickVp.multiply(pickProj, pickView)
+                        val picked = runCatching {
+                            pickNickAt(s, aspect, pickVp, rw, rh)
+                        }.onFailure {
+                            // Tap "morrendo" sem rastro era o pior bug de UX possível
+                            // de diagnosticar (regra nova: registra sempre).
+                            KenkernLog.e(TAG, "picking falhou — tap não seleciona", it)
+                        }.getOrNull()
+                        mainHandler.post { onNickPicked(picked) }
+                    }
+                }
+                // FOCO pendente (botão F / duplo toque): AABB e ajuste da câmera.
+                if (focusPending) {
+                    focusPending = false
+                    val s = scene
+                    if (!engineRenderer.emJogo && s != null) runCatching { applyFocus(s) }
+                        .onFailure { KenkernLog.w(TAG, "foco de câmera falhou", it) }
+                }
+                val input = playRuntime?.input
+                if (input?.hasProjection == true && backend.viewportWidth > 0 && backend.viewportHeight > 0) {
+                    frameCamera.projection(playProjection, backend.viewportWidth.toFloat() / backend.viewportHeight)
+                    frameCamera.view(playView)
+                    input.project(playViewProjection.multiply(playProjection, playView).m)
+                }
+                engineRenderer.renderFrame(
+                    backend, scene,
+                    frameCamera,
+                    loop.engineTime, if (engineRenderer.emJogo) null else selectionProvider(), gizmoState, assetSource
+                )
+                // Publicação de debug (overlay de toque): alças em px de
+                // framebuffer + tamanho do render. Só quando o overlay está ON.
+                if (debugState.enabled) {
+                    runCatching { publishDebugFrameGL(if (engineRenderer.emJogo) null else scene) }
+                        .onFailure { KenkernLog.w(TAG, "publicação do overlay de debug falhou", it) }
+                }
             }
         }
     }

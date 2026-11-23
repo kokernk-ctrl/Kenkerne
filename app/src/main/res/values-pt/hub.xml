@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hub_brand">Kenkern</string>
+    <string name="hub_version">v%1$s</string>
+    <string name="hub_inspector">Inspetor</string>
+    <string name="hub_hierarchy">Hierarquia</string>
+    <string name="hub_workspaces">Áreas de trabalho</string>
+    <string name="hub_workspace_model">Modelar</string>
+    <string name="hub_workspace_animate">Animar</string>
+    <string name="hub_workspace_texture">Texturizar</string>
+    <string name="hub_sandbox_failed">Não foi possível abrir ou criar o projeto Sandbox.</string>
+    <string name="hub_last_opened">Aberto: %1$s</string>
+    <string name="hub_added">Adicionado: %1$s</string>
+    <string name="hub_editor_workspaces_cd">Áreas de trabalho: %1$s</string>
+    <string name="hub_animation_tools">Selecione um Nick para editar o movimento Spin e ver o resultado com Jogar. A linha do tempo e a edição de esqueletos ainda não estão disponíveis.</string>
+    <string name="hub_add_spin">Adicionar Spin</string>
+    <string name="hub_texture_tools">Importe um modelo com texturas para visualizar seus materiais. A edição de materiais e a pintura ainda não estão disponíveis.</string>
+    <string name="hub_selected_mesh">Malha selecionada: %1$s</string>
+    <string name="hub_material_name">Material %1$d: %2$s</string>
+    <string name="hub_material_unnamed">Sem nome</string>
+    <string name="hub_base_texture">Cor base: %1$s</string>
+    <string name="hub_normal_texture">Normal: %1$s</string>
+</resources>

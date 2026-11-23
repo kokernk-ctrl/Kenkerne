@@ -1,0 +1,183 @@
+Caminho	Linhas na base	Declarações nomeadas (amostra)
+.github/workflows/build.yml	79	—
+.gitignore	16	—
+ARCHITECTURE.md	58	—
+BACKLOG.md	148	—
+CHANGELOG.md	717	—
+DECISIONS.md	177	—
+LICENSES.md	84	—
+LUA_API.md	37	—
+NICKS.md	241	—
+PROGRESS.md	151	—
+REGRESSION.md	49	—
+ROADMAP.md	85	—
+TESTES_PENDENTES.md	369	—
+app/build.gradle.kts	195	—
+app/proguard-rules.pro	64	—
+app/src/main/AndroidManifest.xml	31	—
+app/src/main/cpp/CMakeLists.txt	46	—
+app/src/main/cpp/kenkern_etc2.cpp	172	—
+app/src/main/cpp/kenkern_malha.cpp	168	—
+app/src/main/cpp/kenkern_native.cpp	267	—
+app/src/main/java/com/kenkern/engine/KenkernApplication.kt	98	KenkernApplication, instalarHandlerNativo, installCrashLogger, appVersion
+app/src/main/java/com/kenkern/engine/MainActivity.kt	36	MainActivity
+app/src/main/java/com/kenkern/engine/assets/image/Etc2.kt	1275	Etc2, Qualidade, paralelo, buildAlphaTable, c1, c2
+app/src/main/java/com/kenkern/engine/assets/image/KimgConversor.kt	149	KimgConversor, Resultado, converter, Decodificada, decodificar
+app/src/main/java/com/kenkern/engine/assets/image/KimgFormat.kt	351	KimgFormat, KimgFormato, de, KimgMip, KimgImagem, KimgException
+app/src/main/java/com/kenkern/engine/assets/image/KimgPipeline.kt	296	KimgPipeline, RelatorioTextura, resumo, converter, converterRgba8Raw, niveisPadrao
+app/src/main/java/com/kenkern/engine/assets/image/PerfilTexturaImportacao.kt	36	PerfilTexturaImportacao, caminho, criar, amostraDecodificacao
+app/src/main/java/com/kenkern/engine/assets/import/AssetLayout.kt	149	AssetLayout, nomeUnico, sanearNome, caminhoRelativoSeguro, copiarStreaming, sha1Hex
+app/src/main/java/com/kenkern/engine/assets/import/CronometroImport.kt	81	CronometroImport, Etapa, linha, registrar, somaEtapasMs, paredeMs
+app/src/main/java/com/kenkern/engine/assets/import/FbxAmostras.kt	570	FbxAmostras, quadFbx, ngonQuadFbx, normaisPorVerticeFbx, semNormaisFbx, zlibFbx
+app/src/main/java/com/kenkern/engine/assets/import/FbxImporter.kt	1166	FbxImportException, FbxImporter, importar, importarAscii, AsciiCursor, fim
+app/src/main/java/com/kenkern/engine/assets/import/GltfAmostras.kt	441	GltfAmostras, quadGlb, quadGltfDataUri, quadGltfExterno, quadBinExterno, quadComMaterialGlb
+app/src/main/java/com/kenkern/engine/assets/import/GltfImporter.kt	1036	GltfImportException, ImportReport, resumo, ImportResult, TexturaImportada, GltfImporter
+app/src/main/java/com/kenkern/engine/assets/import/KernIntegrity.kt	159	KernIntegrity, verificar, medirErroMaximo
+app/src/main/java/com/kenkern/engine/assets/import/ModelImporter.kt	447	ImportException, TipoFormato, ResolvedorExterno, bytes, ResolvedorZip, ler
+app/src/main/java/com/kenkern/engine/assets/import/PosProcessamento.kt	409	PosProcessamento, aplicar, aplicarViaMeshoptimizer, escreverFloat, multiploDeTres, boundsDosIndicesPos
+app/src/main/java/com/kenkern/engine/assets/mesh/KernFormat.kt	73	KernFormat, quantizeU16, dequantizeU16, signOf, encodeOctahedral16, decodeOctahedral16
+app/src/main/java/com/kenkern/engine/assets/mesh/KernMaterial.kt	62	KernMaterial, KernGrupoMaterial
+app/src/main/java/com/kenkern/engine/assets/mesh/KernReader.kt	206	KernReader, read, readHeader, halfToFloat
+app/src/main/java/com/kenkern/engine/assets/mesh/KernWriter.kt	287	KernWriter, Builder, vertex, index, triangle, materialGroup
+app/src/main/java/com/kenkern/engine/assets/mesh/MeshData.kt	78	KernLod, KernBone, KernMesh, MeshData, fromKern
+app/src/main/java/com/kenkern/engine/autosave/AutoSaveManager.kt	60	AutoSaveManager, markDirty, start, stop, saveNow
+app/src/main/java/com/kenkern/engine/commands/Command.kt	47	Command, execute, undo, CommandHistory, top, push
+app/src/main/java/com/kenkern/engine/commands/ImportModelCommand.kt	207	ImportModelCommand, recolherParaLixeira, restaurarDaLixeira, moverArquivo, diagnosticoCaminhos, limparPastasVazias
+app/src/main/java/com/kenkern/engine/commands/SceneCommands.kt	341	CreateNickCommand, createdNickId, DeleteNickCommand, RenameCommand, SetFlagCommand, FlagField
+app/src/main/java/com/kenkern/engine/core/MalhaNick.kt	140	MalhaNick, path, temMalha, meiaExtensaoLocal, centroLocal, escalaFit
+app/src/main/java/com/kenkern/engine/core/Nick.kt	83	Nick, displayName, indexInParent, isAncestorOf, findChildById, findChildByName
+app/src/main/java/com/kenkern/engine/core/NickClass.kt	144	NickValue, IntValue, FloatValue, BoolValue, StringValue, Vec3Value
+app/src/main/java/com/kenkern/engine/core/NickFunction.kt	136	NickFunction, onSetup, onUpdate, onDestroy, NickFunctionRegistry, register
+app/src/main/java/com/kenkern/engine/core/NickKind.kt	244	NickKindGroup, NickKind, label, description, NickKindRegistry, register
+app/src/main/java/com/kenkern/engine/core/ReferenceId.kt	21	isValid, generate, of
+app/src/main/java/com/kenkern/engine/core/Scene.kt	159	Scene, createRootNick, createNick, findNickByNameAnywhere, findNick, removeNick
+app/src/main/java/com/kenkern/engine/core/Transform.kt	132	TransformSnapshot, Transform, setLocalPosition, setLocalScale, snapshot, apply
+app/src/main/java/com/kenkern/engine/core/linkerf/LinkerfModel.kt	125	LinkerfPortKind, LinkerfPortType, LinkerfPort, LinkerfLink, LinkerfPortProvider, ports
+app/src/main/java/com/kenkern/engine/core/math/Mat4.kt	85	Mat4, setIdentity, copyFrom, setPerspective, setLookAt, setTRS
+app/src/main/java/com/kenkern/engine/core/math/Quaternion.kt	103	Quaternion, set, set, setIdentity, setFromAxisAngle, setFromEulerDegrees
+app/src/main/java/com/kenkern/engine/core/math/Vec3.kt	69	Vec3, set, set, add, sub, addScaled
+app/src/main/java/com/kenkern/engine/core/references/ReferenceSystem.kt	53	ReferenceSystem, registerNick, unregisterNick, resolve, registerAsset, resolveAsset
+app/src/main/java/com/kenkern/engine/core/script/LuaJScriptRuntime.kt	157	LuaJScriptRuntime, criarAmbiente, instalarTabela, ambiente, falhou
+app/src/main/java/com/kenkern/engine/core/script/ScriptRuntime.kt	53	ScriptRuntime, Estado, carregar, iniciar, atualizar, estado
+app/src/main/java/com/kenkern/engine/core/serialization/CkFormat.kt	393	CkFormat, writeToString, write, writeNick, writeLinkerf, quote
+app/src/main/java/com/kenkern/engine/diag/BootTrace.kt	86	BootTrace, init, file, reset, mark, lastStep
+app/src/main/java/com/kenkern/engine/diag/ChecagemRelease.kt	206	ChecagemRelease, Resultado, executar, resumo, checarClassesPorNome, checarGltf
+app/src/main/java/com/kenkern/engine/diag/Diagnostico.kt	1991	Diagnostico, Status, Checagem, aprovado, falhou, rodando
+app/src/main/java/com/kenkern/engine/diag/EglDiag.kt	129	EglDiag, liberar, criar, escolherConfig
+app/src/main/java/com/kenkern/engine/diag/KenkernLog.kt	101	KenkernLog, Nivel, Registro, linha, e, w
+app/src/main/java/com/kenkern/engine/editor/AddNickLayout.kt	63	AddNickLayout, paddingInferiorDp, alturaCabecalhoNoLimite, alturaMinimaListaDp, listaMinimaVisivel, ultimoTipoAlcancavel
+app/src/main/java/com/kenkern/engine/editor/AddNickStore.kt	45	AddNickStore, recentes, favoritos, registrarCriacao, alternarFavorito
+app/src/main/java/com/kenkern/engine/editor/EditorViewModel.kt	836	EditorViewModel, PendenteGrande, refreshProjects, createAndEnterProject, openProject, loadIntoEditor
+app/src/main/java/com/kenkern/engine/editor/PanelStateStore.kt	187	PanelUiState, EstadoPainel, PanelStateStore, get, persist, resetar
+app/src/main/java/com/kenkern/engine/editor/TopBarLayout.kt	57	TopBarLayout, larguraInicioFixoDp, larguraFimFixoDp, larguraTotalFixaDp, larguraRolavelDp, cabemSecoesFixas
+app/src/main/java/com/kenkern/engine/engine/FixedStepLoop.kt	63	PlayState, FixedStepLoop, requestPlayState, reset
+app/src/main/java/com/kenkern/engine/engine/NickPlayRuntime.kt	359	NickPlayRuntime, step, isPlayerInside, setPlayerWorldPosition, translatePlayerWorld, refreshPlayerWorldTransform
+app/src/main/java/com/kenkern/engine/nativecore/Etc2Nativo.kt	91	Etc2Nativo, disponivel, codificar
+app/src/main/java/com/kenkern/engine/nativecore/MalhaNativa.kt	148	MalhaNativa, ResultadoDedup, ResultadoLod, disponivel, dedupEOtimizar, simplificar
+app/src/main/java/com/kenkern/engine/nativecore/NativeCore.kt	195	NativeCore, carregar, eco, instalarHandlerSinais, handlerInstalado, ResultadoExterna
+app/src/main/java/com/kenkern/engine/projects/Kernpack.kt	109	Kernpack, empacotar, desempacotar, nomeDoProjeto
+app/src/main/java/com/kenkern/engine/projects/ProjectManager.kt	342	ProjectHandle, ProjectManager, reportError, clearError, projectsRoot, createProject
+app/src/main/java/com/kenkern/engine/projects/SafFolderResolver.kt	134	SafFolderResolver, listarRecursivo, nomeETamanho, lerComLimite
+app/src/main/java/com/kenkern/engine/render/AssetMeshLibrary.kt	132	AssetMeshLibrary, limpar, handleDe, malhaDe, motivoFalha, marcarNecessario
+app/src/main/java/com/kenkern/engine/render/EditorHelpers.kt	203	EditorHelpers, formaDo, corDoGrupo, linha, circulo, buildSeta
+app/src/main/java/com/kenkern/engine/render/EngineRenderer.kt	937	EngineRenderer, reportUpdateMs, initialize, buildTransformGizmoBuffers, buildEditorHelpers, corDe
+app/src/main/java/com/kenkern/engine/render/GeometryPipeline.kt	113	GeometrySubmission, GeometryPipeline, reset, submit, submitGroup, submitOutline
+app/src/main/java/com/kenkern/engine/render/GlesBackend.kt	1149	GlesBackend, GpuMesh, GpuLines, GpuGizmo, GpuTexture, buildSkyTriangle
+app/src/main/java/com/kenkern/engine/render/KenkernSurfaceView.kt	1122	EngineControls, setPlayState, currentPlayState, ViewportDebugState, clearHandles, bumpHandles
+app/src/main/java/com/kenkern/engine/render/LightingPipeline.kt	49	LightingPipeline, fillDirectional, fillAmbient, fillLightColor, DefaultLightingPipeline
+app/src/main/java/com/kenkern/engine/render/NickPlayCamera.kt	60	NickPlayCamera, update
+app/src/main/java/com/kenkern/engine/render/OrbitCamera.kt	281	CameraMode, OrbitCamera, toggleMode, effectiveNear, safeFov, safeTanHalfFov
+app/src/main/java/com/kenkern/engine/render/PickingMath.kt	168	PickingMath, interseccaoChao, worldAabb, rayAabb, projectedAabbDistance
+app/src/main/java/com/kenkern/engine/render/RenderBackend.kt	126	RenderBackend, initialize, resize, beginFrame, setLighting, createMesh
+app/src/main/java/com/kenkern/engine/render/TextureLibrary.kt	100	TextureLibrary, limpar, handleDe, marcarNecessario, esquecer, processarPendentes
+app/src/main/java/com/kenkern/engine/render/TouchController.kt	381	GizmoDragHandler, onGizmoDown, onGizmoMove, onGizmoUp, TouchClass, TouchController
+app/src/main/java/com/kenkern/engine/render/TransformGizmo.kt	1037	GizmoMode, GizmoSpace, GizmoHandle, GizmoSharedState, GizmoSnap, GizmoModeData
+app/src/main/java/com/kenkern/engine/ui/AppLanguage.kt	78	AppLanguage, chosen, currentTag, deviceDefault, apply, wrap
+app/src/main/java/com/kenkern/engine/ui/KenkernAppRoot.kt	80	KenkernAppRoot
+app/src/main/java/com/kenkern/engine/ui/NickUi.kt	59	nickDisplayName, nickKindLabel, nickKindDescription, nickKindIcon, renameHint
+app/src/main/java/com/kenkern/engine/ui/common/Fields.kt	225	formatFloat, AxisNumberField, Vec3AxisField, FloatField, SectionTitle, CollapsibleSection
+app/src/main/java/com/kenkern/engine/ui/panels/AddNickPanel.kt	446	AddNickPanel, KindCard, nickKindLabelLocalizado
+app/src/main/java/com/kenkern/engine/ui/panels/DockablePanel.kt	382	DockedPanel, PanelResizeDivider, FloatingPanel, clampPosicao
+app/src/main/java/com/kenkern/engine/ui/panels/HierarchyPanel.kt	371	RowEntry, nickIcon, HierarchyPanel, walk, collect, HierarchyRow
+app/src/main/java/com/kenkern/engine/ui/panels/InspectorPanel.kt	414	InspectorPanel, formaLocalizada, categoriaLocalizada, ClassCard
+app/src/main/java/com/kenkern/engine/ui/screens/CrashReportDialog.kt	220	CrashReportStore, crashFile, nativeCrashFile, hasPendingReport, clearReports, buildReport
+app/src/main/java/com/kenkern/engine/ui/screens/DiagnosticoScreen.kt	318	nomeChecagem, DiagnosticoScreen, rodar, cancelar
+app/src/main/java/com/kenkern/engine/ui/screens/EditorScreen.kt	1762	ViewportSession, EditorScreen, Nick, EditorTopBar, TopBarEdgeFade, TopBarIcon
+app/src/main/java/com/kenkern/engine/ui/screens/HomeScreen.kt	695	HomeScreen, LanguageSelector, marcar, relativeDate, EmptyProjectsState, ProjectCard
+app/src/main/java/com/kenkern/engine/ui/screens/PlayJoystick.kt	134	PlayJoystick, updateMovement
+app/src/main/java/com/kenkern/engine/ui/theme/Theme.kt	179	KenkernTheme
+app/src/main/res/drawable/ic_launcher_foreground.xml	15	—
+app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml	5	—
+app/src/main/res/values-pt/strings.xml	238	—
+app/src/main/res/values/colors.xml	5	—
+app/src/main/res/values/strings.xml	238	—
+app/src/main/res/values/themes.xml	9	—
+app/src/test/java/com/kenkern/engine/assets/image/Etc2NativoComparacaoTest.kt	190	Etc2NativoComparacaoTest, padraoRealista, kotlinRgb, nativoDisponivelNoHostOuSkipExplicito, psnrDoNativoNaoFicaUmDBAbaixoDoKotlinEmTexturaRealista, textura4x4NoNativoTemUmBlocoExato
+app/src/test/java/com/kenkern/engine/assets/image/Etc2QualidadeParaleloTest.kt	194	Etc2QualidadeParaleloTest, padraoRealista, modoRapidoGeraMesmoTamanhoEArtistasDePSNERazoaveis, modoRapidoESilenciosoSobreTHMaisRapidoOuIgual, paraleloProduzBytesIdenticosAoSequencial, cancelamentoRespondeEmMenosDe1Segundo
+app/src/test/java/com/kenkern/engine/assets/image/KimgTest.kt	486	KimgTest, gradiente, corSolida, psnrDe, abs
+app/src/test/java/com/kenkern/engine/assets/image/PerfilTexturaImportacaoTest.kt	37	PerfilTexturaImportacaoTest, perfil
+app/src/test/java/com/kenkern/engine/assets/import/CronometroImportTest.kt	172	CronometroImportTest, nomes, medirRegistraEtapaComTempoEDetalhe, tabelaMostraMsEPorcentagemDoTotal, porcentagensSomamCemPorCento, gargaloEhAEtapaMaisCara
+app/src/test/java/com/kenkern/engine/assets/import/FbxImporterTest.kt	275	FbxImporterTest, quad_fbx_completo_importa_com_normais_uv_e_integridade, poligono_ngon_quad_triangula_em_leque, normais_by_vertice_compartilham_por_control_point, normais_ausentes_sao_acumuladas_por_face, uv_index_to_direct_e_flip_da_convencao_gltf
+app/src/test/java/com/kenkern/engine/assets/import/GltfImporterTest.kt	230	GltfImporterTest, quad_glb_completo_importa_com_normais_uv_e_integridade, gltf_com_data_uri_importa_e_calcula_normais_por_face, cubo_com_transform_de_nodes_faz_merge_e_aplica_matriz, meta_de_compressao_denso_gera_relatorio_e_kern_menor_que_origem, resumo_do_relatorio_monta_texto_legivel
+app/src/test/java/com/kenkern/engine/assets/import/ModelImporterTest.kt	339	ModelImporterTest, pastaTemp, KernBytesAmostra
+app/src/test/java/com/kenkern/engine/assets/import/ModeloRealMedicaoTest.kt	269	ModeloRealMedicaoTest, medir_modelos_reais, medirModelo, Decodificada, decodificar, verticesFonte
+app/src/test/java/com/kenkern/engine/assets/import/PosProcessamentoTest.kt	248	PosProcessamentoTest, meshQuadDuplicada, dedup_funde_vertices_iguais_e_remapa_indices, dedup_nao_funde_vertices_com_normal_diferente, lods_geram_3_niveis_com_tabela_coerente, dedup_com_materiais_mantem_grupos_e_versao_v2
+app/src/test/java/com/kenkern/engine/assets/mesh/KernRoundtripTest.kt	204	KernRoundtripTest, cubo, assertPosDentro, assertLanca
+app/src/test/java/com/kenkern/engine/commands/ImportModelCommandTest.kt	166	ImportModelCommandTest, raizTemporaria, classeMalha, comandoComArquivos
+app/src/test/java/com/kenkern/engine/core/AddNickEColliderTest.kt	141	AddNickEColliderTest, registrar
+app/src/test/java/com/kenkern/engine/core/MalhaNickDesenhavelTest.kt	203	MalhaNickDesenhavelTest, nickComMalha, folhaMeshEDesenhavelComoCuboPadrao, luzEhAuxiliarNaoDesenhaCubo, tiposSemMalhaSaoAuxiliaresEOutrosNao, malhaImportadaVenceOTipoVazio
+app/src/test/java/com/kenkern/engine/core/NickKindTest.kt	173	NickKindTest, registrar
+app/src/test/java/com/kenkern/engine/core/math/GizmoSpinBobRegressionTest.kt	179	GizmoSpinBobRegressionTest, vetorOriginal, rotacionar, quaternion_preserva_comprimento_nos_angulos_chave, setTRS_preserva_comprimento_com_escala_unitaria, composicao_pai_x_filho_correta
+app/src/test/java/com/kenkern/engine/core/math/QuaternionMatrixRegressionTest.kt	81	QuaternionMatrixRegressionTest, quatEulerYaw, yaw_de_90_mapeia_z_para_x_com_comprimento_1, yaw_de_90_no_settrs_preserva_comprimento_unitario, toMatrix_igual_a_setTRS_para_a_mesma_rotacao, pitch_de_90_mapeia_y_para_z_com_comprimento_1
+app/src/test/java/com/kenkern/engine/core/script/LuaRuntimeTest.kt	158	LuaRuntimeTest, runtime
+app/src/test/java/com/kenkern/engine/core/serialization/CkFormatRoundtripTest.kt	271	CkFormatRoundtripTest, cenaCheia, roundtrip
+app/src/test/java/com/kenkern/engine/diag/ChecagemReleaseTest.kt	62	ChecagemReleaseTest, todos_os_passos_da_fumaca_passam, classes_criticas_estao_resolvidas_por_nome, resumo_consolida_ok_e_primeiro_erro
+app/src/test/java/com/kenkern/engine/diag/DiagnosticoChecagemTest.kt	72	DiagnosticoChecagemTest, nova, checagemNascePendenteSemTempo, cicloRodandoAprovadoRegistraTempo, falhaTemDetalheProprioETempo, canceladaEEstadoDistintoDeFalha
+app/src/test/java/com/kenkern/engine/diag/KenkernLogTest.kt	73	KenkernLogTest, preparar, registro_e_e_w_entra_no_anel_com_nivel_tag_e_detalhe, total_erros_conta_so_erros, anel_respeita_a_capacidade_de_200_mais_recente_no_fim, limpar_zera_o_console
+app/src/test/java/com/kenkern/engine/editor/AddNickLayoutTest.kt	61	AddNickLayoutTest, cabecalhoUmaLinhaDe48dp, alturaMinimaDaLista, ultimoTipoAlcancavelCom240dp, paddingInferiorSomaInset, chipsCompactosDe36dp
+app/src/test/java/com/kenkern/engine/editor/PanelLayoutTest.kt	102	PanelLayoutTest, clampMantemPainelInteiroDentroDoViewport, clampComPainelMaiorQueOViewportEncostaEmZero, parseLinhaValidaDevolveOs7Campos, parseLinhaCorrompidaCaiNoPadraoProfissional, parseLimitaLarguraAcopladaEFaixaFlutuanteMinima
+app/src/test/java/com/kenkern/engine/editor/TopBarLayoutTest.kt	58	TopBarLayoutTest, fimFixoSaoTresBotoesDeQuarenta, inicioFixoEhUmBotaoMaisSeparador, secoesFixasCabemEm800dp, rolavelEm800dpEhSuficiente, rolavelNuncaNegativa
+app/src/test/java/com/kenkern/engine/engine/NickPlayRuntimeTest.kt	161	NickPlayRuntimeTest, boxCollider
+app/src/test/java/com/kenkern/engine/i18n/StringsParidadeTest.kt	83	StringsParidadeTest, res, chaves, placeholders
+app/src/test/java/com/kenkern/engine/nativecore/MalhaNativaComparacaoTest.kt	196	MalhaNativaComparacaoTest, gradeDuplicada, gradeConectada, registrosDe, escrever, mesmaContagemDeVerticesUnicosDoDedupKotlin
+app/src/test/java/com/kenkern/engine/nativecore/NativeCoreSimbolosTest.kt	88	NativeCoreSimbolosTest, hostDisponivel, todasAsExternasDeNativeCoreResolvemEFuncionam, handlerDeSinaisInstalaConsultaRestauraNoHost
+app/src/test/java/com/kenkern/engine/nativecore/NativeCoreTest.kt	63	NativeCoreTest, semBibliotecaOCoreNaoDerrubaEFicaIndisponivel, ecoUsaFallbackKotlinComAMesmaFormula, handlerSemBibliotecaDevolveFalseSemLancar, versaoEsperadaEFixaEAbiNuncaVazia
+app/src/test/java/com/kenkern/engine/projects/KernpackTest.kt	130	KernpackTest, projetoBase
+app/src/test/java/com/kenkern/engine/projects/ProjectManagerDuplicateTest.kt	91	ProjectManagerDuplicateTest, projetoBase
+app/src/test/java/com/kenkern/engine/render/EditorHelpersTest.kt	95	EditorHelpersTest, formaDeCadaTipoEAuxiliar, corPorGrupo, geometriasSaoParesDeLinhasValidos, piramideTemOFovReal, caixaDeAreaTemArestasDoVolumeEmArame
+app/src/test/java/com/kenkern/engine/render/FlightLookRegressionTest.kt	203	FlightLookRegressionTest, ev, projectToNdc, assertViewCentraOOlhar, headingGraus
+app/src/test/java/com/kenkern/engine/render/NickPlayCameraTest.kt	49	NickPlayCameraTest
+app/src/test/java/com/kenkern/engine/render/OrbitCameraRayTest.kt	182	OrbitCameraRayTest, makeCamera, projectToNdc, pxToNdc, distancePointRay
+app/src/test/java/com/kenkern/engine/render/PinchZoomRegressionTest.kt	228	PinchZoomRegressionTest, ev, spanPts, pinchMoves, makeController, assertDist
+app/src/test/java/com/kenkern/engine/render/ToqueCuboPickingTest.kt	190	ToqueCuboPickingTest, pxToNdc, Cabecalho, centroParaPx, cenaCubo, aabbCubo
+build.gradle.kts	6	—
+docs/FASE1.md	63	—
+docs/KERN_SPEC.md	72	—
+docs/RUNCATCHING_AUDIT.md	90	—
+gradle.properties	8	—
+gradle/libs.versions.toml	39	—
+gradle/wrapper/gradle-wrapper.jar	binário	—
+gradle/wrapper/gradle-wrapper.properties	7	—
+gradlew	252	—
+gradlew.bat	94	—
+scripts/check_i18n.sh	70	—
+scripts/check_jni_symbols.sh	62	—
+settings.gradle.kts	23	—
+third_party/etcpak/AUTHORS.txt	5	—
+third_party/etcpak/Dither.hpp	21	—
+third_party/etcpak/ForceInline.hpp	20	—
+third_party/etcpak/LICENSE.txt	26	—
+third_party/etcpak/Math.hpp	92	—
+third_party/etcpak/ProcessCommon.hpp	50	—
+third_party/etcpak/ProcessRGB.cpp	4215	—
+third_party/etcpak/ProcessRGB.hpp	14	—
+third_party/etcpak/README.kenkern.md	23	—
+third_party/etcpak/Tables.cpp	223	—
+third_party/etcpak/Tables.hpp	54	—
+third_party/etcpak/Vector.hpp	222	—
+third_party/meshoptimizer/LICENSE.md	21	—
+third_party/meshoptimizer/README.kenkern.md	24	—
+third_party/meshoptimizer/indexgenerator.cpp	825	—
+third_party/meshoptimizer/meshoptimizer.h	1735	meshopt_Allocator
+third_party/meshoptimizer/simplifier.cpp	2947	—
+third_party/meshoptimizer/vcacheoptimizer.cpp	467	—

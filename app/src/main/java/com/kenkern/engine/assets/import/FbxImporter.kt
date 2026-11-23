@@ -114,7 +114,7 @@ object FbxImporter {
     private fun importarAscii(bytes: ByteArray): ImportResult {
         val texto = String(bytes, Charsets.UTF_8)
         val p = AsciiCursor(texto, bytes.size)
-        val raizes = p.lerListaTopo()
+        val raizes = p.lerListaTopo(PROFUNDIDADE_MAXIMA)
         if (raizes.isEmpty()) {
             throw FbxImportException("FBX ASCII vazio ou sem nodes — nada para importar")
         }
@@ -232,12 +232,12 @@ object FbxImporter {
          * Lê a lista de nodes de um nível (topo ou dentro de '{'). Para em '}'
          * (sem consumir) ou no fim do arquivo.
          */
-        fun lerListaTopo(): MutableList<FbxNode> {
+        fun lerListaTopo(profundidade: Int): MutableList<FbxNode> {
             val lista = ArrayList<FbxNode>(16)
             while (true) {
                 pularEspacoEComentarios()
                 if (i >= s.length || s[i] == '}') return lista
-                lista.add(lerNode(64))
+                lista.add(lerNode(profundidade))
             }
         }
 
@@ -347,7 +347,7 @@ object FbxImporter {
             pularEspacoEComentarios()
             if (i < s.length && s[i] == '{') {
                 i++
-                for (f in lerListaTopo()) node.filhos.add(f)
+                for (f in lerListaTopo(profundidade - 1)) node.filhos.add(f)
                 pularEspacoEComentarios()
                 if (i >= s.length || s[i] != '}') {
                     throw FbxImportException("FBX ASCII: node '$nome' sem '}' de fechamento")

@@ -170,7 +170,6 @@ object CkFormat {
         var inLinkerf = false
         var sawMagic = false
         var formatoLegado = false
-        var sawEnd = false
 
         text.lineSequence().forEach { rawLine ->
             val line = rawLine.trim()
@@ -273,7 +272,6 @@ object CkFormat {
                     )
                 }
                 "ENDLINKERF" -> inLinkerf = false
-                "ENDCK" -> sawEnd = true
             }
         }
 
@@ -301,17 +299,32 @@ object CkFormat {
             }
         }
 
-        // Segunda passada: liga pais por id (pais ausentes viram raízes — nunca crasha).
-        for ((id, parentId) in parents) {
-            val nick = nicks[id] ?: continue
-            val parent = nicks[parentId] ?: continue
-            if (nick === parent) continue
-            parent.children.add(nick)
-            nick.parent = parent
+        // Valida as cadeias de pais antes de criar qualquer aresta. O mapa já pode
+        // conter referências para frente; cada id é visitado no máximo duas vezes.
+        val checked = HashSet<String>()
+        val chain = LinkedHashSet<String>()
+        for (id in nicks.keys) {
+            if (id in checked) continue
+            chain.clear()
+            var next: String? = id
+            while (next != null && next !in checked && next in nicks) {
+                if (!chain.add(next)) {
+                    KenkernLog.w(TAG, "ciclo de hierarquia no .ck — cena recusada")
+                    return@runCatching false
+                }
+                next = parents[next]
+            }
+            checked.addAll(chain)
         }
-        for (nick in nicks.values) {
-            if (nick.parent == null) scene.roots.add(nick)
-            scene.references.registerNick(nick)
+        // Registrar ANTES de ligar: registerNick visita os filhos recursivamente.
+        for (nick in nicks.values) scene.references.registerNick(nick)
+        // A ordem do arquivo (não a de um HashMap de IDs) é a ordem dos irmãos.
+        for ((id, nick) in nicks) {
+            val parent = parents[id]?.let { nicks[it] }
+            if (parent == null) scene.roots.add(nick) else {
+                parent.children.add(nick)
+                nick.parent = parent
+            }
         }
         true
     }.onFailure {

@@ -1,9 +1,12 @@
 package com.kenkern.engine.autosave
 
+import com.kenkern.engine.core.serialization.CkFormat
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -18,6 +21,9 @@ class AutoSaveManager(private val scope: CoroutineScope, private val debounceMs:
 
     private val dirty = AtomicBoolean(false)
     private var job: Job? = null
+    // Uma captura já enviada à fila de I/O nunca pode ganhar de um save/stop posterior.
+    private val writer = Any()
+    private var generation = 0L
 
     fun markDirty() {
         dirty.set(true)
@@ -40,7 +46,15 @@ class AutoSaveManager(private val scope: CoroutineScope, private val debounceMs:
                 }
                 val project = projectProvider() ?: continue
                 val scene = sceneProvider() ?: continue
-                ProjectManager.saveAutosaveAtomic(project, scene)
+                val ticket = synchronized(writer) { generation }
+                val text = scene.withEditorAccess { CkFormat.writeToString(scene) }
+                withContext(Dispatchers.IO) {
+                    synchronized(writer) {
+                        if (ticket == generation && !ProjectManager.writeFileAtomic(project.autosaveFile, text)) {
+                            dirty.set(true)
+                        }
+                    }
+                }
             }
         }
     }
@@ -48,13 +62,29 @@ class AutoSaveManager(private val scope: CoroutineScope, private val debounceMs:
     fun stop() {
         job?.cancel()
         job = null
+        synchronized(writer) { generation++; dirty.set(false) }
     }
 
-    /** Salva imediatamente o auto-save e a cena principal (saída da tela / pausa do app). */
+    /** Salva imediatamente a cena principal (saída da tela / pausa do app). */
     fun saveNow(scene: Scene?, project: ProjectHandle?) {
         if (scene == null || project == null) return
-        ProjectManager.saveAutosaveAtomic(project, scene)
-        ProjectManager.saveSceneAtomic(project, scene)
-        dirty.set(false)
+        saveImmediately(scene, project)
+    }
+
+    fun saveImmediately(scene: Scene, project: ProjectHandle): Boolean {
+        val text = scene.withEditorAccess { CkFormat.writeToString(scene) }
+        return synchronized(writer) {
+            generation++
+            val salvou = ProjectManager.writeFileAtomic(project.mainSceneFile, text)
+            if (!salvou || ProjectManager.hasAutosave(project)) {
+                // Falha na principal ou autosave antigo com relógio futuro: guardar o estado correto.
+                val reserva = ProjectManager.writeFileAtomic(project.autosaveFile, text)
+                dirty.set(!salvou || !reserva)
+                salvou && reserva
+            } else {
+                dirty.set(false)
+                true
+            }
+        }
     }
 }

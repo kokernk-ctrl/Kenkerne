@@ -2,6 +2,7 @@ package com.kenkern.engine.assets.import
 
 import com.kenkern.engine.assets.image.KimgPipeline
 import com.kenkern.engine.assets.image.KimgReader
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
@@ -43,7 +44,7 @@ class ModeloRealMedicaoTest {
 
         for (modelo in listOf("DamagedHelmet", "FlightHelmet", "Sponza", "BrainStem")) {
             val pasta = File(dir, modelo)
-            if (!pasta.isDirectory) { saida.appendLine("$modelo: PASTA AUSENTE"); continue }
+            assertTrue("Modelo obrigatório ausente: $modelo", pasta.isDirectory)
             saida.appendLine("--- $modelo ---")
             saida.appendLine(medirModelo(modelo, pasta))
             saida.appendLine()
@@ -78,15 +79,18 @@ class ModeloRealMedicaoTest {
                 }
             }
         } else {
-            return "sem .glb nem .gltf em $pasta"
+            error("sem .glb nem .gltf em $pasta")
         }
 
         val t0 = System.nanoTime()
         val summary = ModelImporter.importarModelo(
-            nome + (glb?.extension ?: gltf!!.extension), bytesOrigem,
+            (glb ?: gltf!!).name, bytesOrigem,
             resolutorExterno = resolutor
         )
         val tempoImportMs = (System.nanoTime() - t0) / 1_000_000L
+
+        assertTrue("$nome: ${summary.problemasIntegridade}", summary.integridadeOk)
+        assertTrue("$nome sem geometria", summary.vertices > 0 && summary.triangulos > 0 && summary.bytesKern > 0)
 
         // ---- texturas: pipeline COMPLETA como o botão faz (decode → ETC2 → .KIMG)
         var kimgCru = 0L          // .KIMG sem camada Deflate (formato v1)
@@ -101,11 +105,7 @@ class ModeloRealMedicaoTest {
         val detalhes = ArrayList<String>(summary.texturasExtraidas.size)
 
         for ((idx, tex) in summary.texturasExtraidas.withIndex()) {
-            val dec = decodificar(tex.bytes)
-            if (dec == null) {
-                detalhes.add("textura ${tex.nomeOrigem}: NÃO decodificável (${tex.mimeType})")
-                continue
-            }
+            val dec = decodificar(tex.bytes) ?: error("$nome: textura ilegível ${tex.nomeOrigem}")
             val t1 = System.nanoTime()
             val (cru, relCru) = KimgPipeline.converter(
                 dec.rgba, dec.w, dec.h, limiteTextura = 0

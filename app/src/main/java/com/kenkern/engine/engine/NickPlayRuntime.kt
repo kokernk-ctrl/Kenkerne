@@ -5,7 +5,15 @@ import com.kenkern.engine.core.Nick
 import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.Scene
+import com.kenkern.engine.core.input.GameplayInput
+import com.kenkern.engine.core.input.StickSample
+import com.kenkern.engine.core.input.TouchControlSchema
+import com.kenkern.engine.core.script.LuaJScriptRuntime
+import com.kenkern.engine.core.script.installGameplayInput
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
@@ -25,6 +33,18 @@ class NickPlayRuntime(private val scene: Scene) {
     /** Primeira câmera ativa de cada tipo; escolhidas uma vez na inicialização. */
     val followCamera: Nick?
     val basicCamera: Nick?
+    internal val input: GameplayInput
+    private val stick = StickSample()
+    private class Motion(val nick: Nick) {
+        var vy = 0f
+        var x = 0f
+        var z = 0f
+        var strength = 0f
+        var turn = false
+    }
+    private val motions: List<Motion>
+    private val motionByControl: Array<Motion?>
+    private var body: Nick? = null
 
     private val traversal = ArrayList<Nick>()
     private val playerLocalCenter = FloatArray(3)
@@ -32,7 +52,7 @@ class NickPlayRuntime(private val scene: Scene) {
     private val playerBounds = FloatArray(6)
     private val obstacleBounds = FloatArray(6)
     private val localDeltaScratch = FloatArray(3)
-    private var verticalVelocity = 0f
+
 
     init {
         scene.updateWorldTransforms()
@@ -54,9 +74,19 @@ class NickPlayRuntime(private val scene: Scene) {
         player = foundPlayer
         followCamera = foundFollow
         basicCamera = foundBasic
+        input = GameplayInput(scene, player)
+        val targets = LinkedHashMap<Nick, Motion>()
+        player?.let { targets[it] = Motion(it) }
+        motionByControl = Array(input.controls.size) { i ->
+            val control = input.controls[i]
+            if (control.config.button || control.config.action != TouchControlSchema.MOVE) null
+            else control.target?.let { targets.getOrPut(it) { Motion(it) } }
+        }
+        motions = targets.values.toList()
 
         val activePlayer = player
         if (activePlayer != null) {
+            body = activePlayer
             val spawn = foundSpawn
             if (spawn != null) setPlayerWorldPosition(
                 spawn.transform.worldMatrix.m[12],
@@ -64,7 +94,51 @@ class NickPlayRuntime(private val scene: Scene) {
                 spawn.transform.worldMatrix.m[14]
             )
             scene.updateWorldTransforms()
-            readPlayerBounds()
+            body = null
+        }
+    }
+
+    /** Touch sources feed the real fixed step, with dominant-stick arbitration per target. */
+    internal fun stepTouch(dt: Float, cameraYawDegrees: Float) {
+        if (dt <= 0f || !dt.isFinite()) return
+        val yaw = Math.toRadians(cameraYawDegrees.toDouble())
+        val sinYaw = sin(yaw).toFloat()
+        val cosYaw = cos(yaw).toFloat()
+        for (i in motions.indices) motions[i].strength = 0f
+        for (i in motionByControl.indices) {
+            val motion = motionByControl[i] ?: continue
+            val control = input.controls[i]
+            input.read(control, stick)
+            if (stick.strength <= motion.strength) continue
+            motion.strength = stick.strength
+            motion.turn = control.config.turn
+            val factor = control.config.speed / PLAYER_SPEED
+            val x = stick.x * factor; val z = stick.y * factor
+            motion.x = if (control.config.cameraRelative) x * cosYaw + z * sinYaw else x
+            motion.z = if (control.config.cameraRelative) z * cosYaw - x * sinYaw else z
+        }
+        for (i in motions.indices) {
+            val motion = motions[i]
+            val moving = motion.strength > 0f
+            stepMotion(dt, motion, if (moving) motion.x else 0f, if (moving) motion.z else 0f, moving && motion.turn)
+        }
+    }
+
+    /** Bind a loaded LuaJ script to this Play session before calling iniciar(). */
+    fun bindInput(script: LuaJScriptRuntime) = script.installGameplayInput(input)
+
+    /** Degrees per second, from the strongest authored stick mapped to 'olhar'. */
+    internal fun readLook(out: FloatArray) {
+        out[0] = 0f; out[1] = 0f
+        var best = 0f
+        for (i in input.controls.indices) {
+            val c = input.controls[i]
+            if (c.config.button || c.config.action != TouchControlSchema.LOOK) continue
+            input.read(c, stick)
+            if (stick.strength <= best) continue
+            best = stick.strength
+            out[0] = stick.x * c.config.speed * 22.5f
+            out[1] = stick.y * c.config.speed * 22.5f
         }
     }
 
@@ -75,10 +149,7 @@ class NickPlayRuntime(private val scene: Scene) {
      * para não atravessar paredes/floors em um único passo.
      */
     fun step(dt: Float, moveX: Float, moveZ: Float) {
-        val activePlayer = player ?: return
-        if (dt <= 0f || !dt.isFinite() || !isEffectivelyActive(activePlayer)) return
-        scene.updateWorldTransforms()
-
+        if (player == null) return
         var x = if (moveX.isFinite()) moveX else 0f
         var z = if (moveZ.isFinite()) moveZ else 0f
         val inputLength = sqrt(x * x + z * z)
@@ -86,20 +157,41 @@ class NickPlayRuntime(private val scene: Scene) {
             x /= inputLength
             z /= inputLength
         }
+        stepMotion(dt, motions[0], x, z, false)
+    }
 
+    private fun stepMotion(dt: Float, motion: Motion, x: Float, z: Float, turn: Boolean) {
+        if (dt <= 0f || !dt.isFinite() || !isEffectivelyActive(motion.nick)) return
+        body = motion.nick
+        scene.updateWorldTransforms()
+        if (turn && (x != 0f || z != 0f)) turnBody(motion.nick, x, z)
         val deltaTime = dt.coerceAtMost(MAX_STEP_SECONDS)
         val dx = x * PLAYER_SPEED * deltaTime
         val dz = z * PLAYER_SPEED * deltaTime
-        verticalVelocity = (verticalVelocity - GRAVITY * deltaTime).coerceAtLeast(-TERMINAL_VELOCITY)
-        val dy = verticalVelocity * deltaTime
+        motion.vy = (motion.vy - GRAVITY * deltaTime).coerceAtLeast(-TERMINAL_VELOCITY)
+        val dy = motion.vy * deltaTime
 
         moveAxis(AXIS_X, dx)
         moveAxis(AXIS_Z, dz)
         val movedY = moveAxis(AXIS_Y, dy)
         if ((dy < 0f && movedY > dy + COLLISION_EPSILON) ||
             (dy > 0f && movedY < dy - COLLISION_EPSILON)
-        ) verticalVelocity = 0f
+        ) motion.vy = 0f
         scene.updateWorldTransforms()
+        body = null
+    }
+
+    private fun turnBody(nick: Nick, worldX: Float, worldZ: Float) {
+        var localX = worldX
+        var localZ = worldZ
+        val parent = nick.parent
+        if (parent != null) {
+            if (!inverseParentDelta(parent.transform.worldMatrix.m, worldX, 0f, worldZ, localDeltaScratch)) return
+            localX = localDeltaScratch[0]
+            localZ = localDeltaScratch[2]
+        }
+        nick.transform.rotation.setFromEulerDegrees(0f, Math.toDegrees(atan2(-localX, -localZ).toDouble()).toFloat(), 0f)
+        refreshPlayerWorldTransform()
     }
 
     /**
@@ -112,14 +204,16 @@ class NickPlayRuntime(private val scene: Scene) {
             !isEffectivelyActive(activePlayer)
         ) return false
         scene.updateWorldTransforms()
+        body = activePlayer
         readPlayerBounds()
+        body = null
         unitCubeWorldBounds(area, obstacleBounds)
         return overlaps(playerBounds, obstacleBounds)
     }
 
     /** Move no espaço de mundo e converte a translação para o pai do player. */
     private fun setPlayerWorldPosition(worldX: Float, worldY: Float, worldZ: Float) {
-        val activePlayer = player ?: return
+        val activePlayer = body ?: return
         val parent = activePlayer.parent
         if (parent == null) {
             activePlayer.transform.position.set(worldX, worldY, worldZ)
@@ -132,7 +226,7 @@ class NickPlayRuntime(private val scene: Scene) {
 
     /** Converte um deslocamento de mundo em translação local, sem alocar. */
     private fun translatePlayerWorld(dx: Float, dy: Float, dz: Float): Boolean {
-        val activePlayer = player ?: return false
+        val activePlayer = body ?: return false
         val parent = activePlayer.parent
         if (parent == null) {
             activePlayer.transform.position.x += dx
@@ -150,7 +244,7 @@ class NickPlayRuntime(private val scene: Scene) {
     }
 
     private fun refreshPlayerWorldTransform() {
-        val activePlayer = player ?: return
+        val activePlayer = body ?: return
         val transform = activePlayer.transform
         transform.localMatrix.setTRS(transform.position, transform.rotation, transform.scale)
         val parent = activePlayer.parent
@@ -180,7 +274,7 @@ class NickPlayRuntime(private val scene: Scene) {
         while (traversal.isNotEmpty()) {
             val nick = traversal.removeAt(traversal.lastIndex)
             if (!nick.active) continue
-            if (nick === player) continue // ignora o player e sua subárvore
+            if (nick === body) continue // ignora o corpo e sua subárvore
             if (isBlockingStatic(nick)) {
                 getBlockingBounds(nick, obstacleBounds)
                 if (otherAxesOverlap(axis)) {
@@ -237,7 +331,7 @@ class NickPlayRuntime(private val scene: Scene) {
     }
 
     private fun readPlayerBounds() {
-        val activePlayer = player ?: return
+        val activePlayer = body ?: return
         val collider = findClass(activePlayer, MalhaNick.CLASSE_COLISOR)
         val boxCenter = collider?.fields?.get("centro") as? NickValue.Vec3Value
         val boxSize = collider?.fields?.get("tamanho") as? NickValue.Vec3Value

@@ -93,7 +93,7 @@ class KimgException(motivo: String) : Exception(motivo)
  */
 object KimgReader {
 
-    fun read(bytes: ByteArray): KimgImagem {
+    fun read(bytes: ByteArray, maxDecodedBytes: Int = Int.MAX_VALUE): KimgImagem {
         if (bytes.size < KimgFormat.HEADER_SIZE) {
             throw KimgException(".KIMG truncado: ${bytes.size} bytes (mínimo ${KimgFormat.HEADER_SIZE})")
         }
@@ -125,22 +125,38 @@ object KimgReader {
             throw KimgException(".KIMG versão $versao não pode carregar a flag DEFLATE (só versão ${KimgFormat.VERSAO_DEFLATE})")
         }
         buf.int // reservado
+        val inicioDados = KimgFormat.HEADER_SIZE.toLong() +
+            mipCount.toLong() * KimgFormat.MIP_ENTRY_SIZE
+        if (inicioDados > bytes.size) {
+            throw KimgException(
+                ".KIMG truncado: tabela de mipmaps precisa de $inicioDados bytes, arquivo tem ${bytes.size}"
+            )
+        }
 
         val mips = ArrayList<KimgMip>(mipCount)
+        var fimMipAnterior = inicioDados
+        var totalDecoded = 0L
         for (i in 0 until mipCount) {
+            if (Thread.currentThread().isInterrupted) throw InterruptedException()
             if (buf.remaining() < KimgFormat.MIP_ENTRY_SIZE) {
                 throw KimgException(".KIMG truncado: tabela de mipmaps incompleta (mip $i)")
             }
             val offset = buf.int
             val tamanho = buf.int
-            if (offset < 0 || tamanho < 0 || offset + tamanho > bytes.size) {
+            val fim = offset.toLong() + tamanho.toLong()
+            if (offset.toLong() < fimMipAnterior || tamanho < 0 || fim > bytes.size) {
                 throw KimgException(
-                    "mip $i fora do arquivo (offset $offset + $tamanho > ${bytes.size}) — arquivo truncado ou corrompido"
+                    "mip $i fora da área de dados .KIMG (fora do arquivo ou sobreposto) (offset $offset + $tamanho; próximo offset mínimo $fimMipAnterior, arquivo tem ${bytes.size})"
                 )
             }
+            fimMipAnterior = fim
             val mw = maxOf(1, largura shr i)
             val mh = maxOf(1, altura shr i)
             val esperado = tamanhoBloco(formato, mw, mh)
+            totalDecoded += esperado
+            if (totalDecoded > maxDecodedBytes) {
+                throw KimgException("mips .KIMG excedem o limite de carga ($maxDecodedBytes bytes decodificados)")
+            }
             val dadosMip: ByteArray = if (emDiscoDeflate) {
                 // V2: "tamanho" da tabela é o tamanho COMPRIMIDO — infla e
                 // valida contra o esperado do formato (erro claro em qualquer
@@ -158,7 +174,7 @@ object KimgReader {
                         "mip $i tem $tamanho bytes, esperado $esperado para $formato ${mw}×$mh"
                     )
                 }
-                bytes.copyOfRange(offset, offset + tamanho)
+                bytes.copyOfRange(offset, fim.toInt())
             }
             mips.add(KimgMip(mw, mh, offset, dadosMip))
         }
@@ -201,6 +217,15 @@ object KimgReader {
      * disco) e pelo ESCRITOR (validação do que vai para o disco).
      */
     fun inflar(bytes: ByteArray, offset: Int, tamanho: Int, limiteBytes: Int): ByteArray {
+        val fim = offset.toLong() + tamanho.toLong()
+        if (offset < 0 || tamanho < 0 || fim > bytes.size) {
+            throw KimgException(
+                "região Deflate inválida (offset $offset + $tamanho; arquivo tem ${bytes.size} bytes)"
+            )
+        }
+        if (limiteBytes < 0 || limiteBytes == Int.MAX_VALUE) {
+            throw KimgException("limite Deflate inválido: $limiteBytes")
+        }
         val inflater = java.util.zip.Inflater()
         try {
             inflater.setInput(bytes, offset, tamanho)
@@ -209,12 +234,23 @@ object KimgReader {
             while (!inflater.finished()) {
                 val n = inflater.inflate(saida, total, saida.size - total)
                 total += n
-                if (n == 0 && inflater.needsInput()) {
-                    throw KimgException("dados Deflate truncados (precisa de mais bytes na entrada)")
-                }
                 if (total > limiteBytes) {
                     throw KimgException("dados Deflate estouram o limite do formato ($limiteBytes bytes)")
                 }
+                if (inflater.finished()) break
+                if (n == 0) {
+                    when {
+                        inflater.needsDictionary() ->
+                            throw KimgException("dados Deflate exigem um dicionário não suportado")
+                        inflater.needsInput() ->
+                            throw KimgException("dados Deflate truncados (precisa de mais bytes na entrada)")
+                        else ->
+                            throw KimgException("dados Deflate inválidos (descompressão sem progresso)")
+                    }
+                }
+            }
+            if (inflater.remaining != 0) {
+                throw KimgException("dados Deflate têm ${inflater.remaining} bytes excedentes")
             }
             return saida.copyOf(total)
         } catch (e: java.util.zip.DataFormatException) {

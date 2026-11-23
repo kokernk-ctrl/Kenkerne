@@ -1,0 +1,6 @@
+KENKERN_PROJECT
+format=1
+engine=0.1.19-fase2
+name="Teste M1"
+folder="teste-m1"
+scene=scenes/cena.ck

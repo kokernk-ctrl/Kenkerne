@@ -364,6 +364,13 @@ Connections:  {
         return arquivo(7400, geometry)
     }
 
+    /** Árvore binária sintética além do limite de profundidade compartilhado com ASCII. */
+    fun aninhamentoExcessivoFbx(): ByteArray {
+        var node = NoFBX("Leaf", emptyList())
+        for (i in 0 until 72) node = NoFBX("Deep$i", emptyList(), listOf(node))
+        return arquivo(7400, node)
+    }
+
     // ---------------------------------------------------------------- mini-escritor FBX binário
 
     /** Propriedade P do Properties70: nome + 3 valores 'D'. */

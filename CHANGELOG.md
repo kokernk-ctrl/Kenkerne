@@ -1,5 +1,13 @@
 # KENKERN — CHANGELOG
 
+## 0.1.20-estabilizacao — homologação; não é a release 1.0
+
+- Projetos: persistência atômica sem apagar previamente a cena; recuperação pela cópia válida; undo/redo preserva filhos, ordem, IDs, links e histórico em falhas de I/O. KERNPACK preserva pastas e cronologia das cópias.
+- Editor/runtime: edição e frame compartilham uma regra de acesso à cena; Play roda numa cópia. Novos controles configuráveis de toque, diagnóstico e ações por nome. Exemplo de jogo versionado em `exemplos/teste-m1/`.
+- Hub e assets: atalhos Modelar/Animar/Texturizar no Sandbox, projetos recentes, navegador com busca/filtro, miniaturas de texturas e detalhes de malhas. A aba de animação não é uma timeline e miniatura de textura não é preview de malha 3D.
+- Import/render: normais sob escala não uniforme e accessors normalizados em glTF; leitura defensiva de KIMG; seleção dos mipmaps e invalidação de recursos por contexto. Validações dos formatos, GLES no host e modelos reais documentadas na auditoria.
+- Distribuição: gate de PR sem credenciais, tags exigem assinatura, lint bloqueante, checagem das bibliotecas nativas no APK. Este build local **não substitui** a versão pros usuários da chave de distribuição.
+
 ## v0.1.19 — 3 BUGS DE LAYOUT (G1–G3): PAISAGEM 800×360, NENHUMA FUNCIONALIDADE NOVA
 
 > Tarefa: 3 bugs de layout da v0.1.18, edições pontuais, CI verde por etapa

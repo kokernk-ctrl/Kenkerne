@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="asset_browser_title">Project assets</string>
+    <string name="asset_browser_back">Back to files</string>
+    <string name="asset_browser_refresh">Refresh files and references</string>
+    <string name="asset_browser_close">Close asset browser</string>
+    <string name="asset_browser_search">Search files</string>
+    <string name="asset_browser_filter">Filter files</string>
+    <string name="asset_browser_all">All files</string>
+    <string name="asset_browser_mesh">Meshes</string>
+    <string name="asset_browser_texture">Textures</string>
+    <string name="asset_browser_scene">Scenes and Nicks</string>
+    <string name="asset_browser_script">Scripts and shaders</string>
+    <string name="asset_browser_audio">Audio</string>
+    <string name="asset_browser_other">Other files</string>
+    <string name="asset_browser_broken">Broken references</string>
+    <string name="asset_browser_scanning">Reading project files…</string>
+    <string name="asset_browser_scan_failed">Could not read the project. Try refreshing.</string>
+    <string name="asset_browser_partial">Some project files or references could not be checked.</string>
+    <string name="asset_browser_empty">This project has no files to display.</string>
+    <string name="asset_browser_no_match">No files or references match this filter.</string>
+    <string name="asset_browser_select">Select a file to see its details.</string>
+    <string name="asset_browser_file_info">%1$s · %2$d bytes</string>
+    <string name="asset_browser_broken_row">Broken reference · missing or invalid file path</string>
+    <string name="asset_browser_referenced_by">Referenced by these Nicks in the current scene:</string>
+    <string name="asset_browser_image_dimensions">%1$d × %2$d px</string>
+    <string name="asset_browser_mesh_metadata">KERN version %1$d\nVertices: %2$d\nTriangles (base level): %3$d\nLOD entries: %4$d</string>
+    <string name="asset_browser_preview_loading">Reading preview…</string>
+    <string name="asset_browser_preview_unavailable">No preview for this format.</string>
+    <string name="asset_browser_preview_too_large">This image is too large for a local preview.</string>
+    <string name="asset_browser_preview_error">Could not read the preview. The file may be damaged or unreadable.</string>
+    <string name="asset_browser_preview_gone">This file is no longer available. Refresh to update the list.</string>
+</resources>

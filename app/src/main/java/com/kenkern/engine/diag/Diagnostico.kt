@@ -148,6 +148,7 @@ class Diagnostico(private val appContext: Context) {
         Checagem("buffers", "Alocação de buffers (VBO/VAO)"),
         Checagem("glcaps", "Capacidades GL (versão/extensões/compute)"),
         Checagem("memoria", "Limites de memória do aparelho"),
+        Checagem("joystick", "Joystick — eixos, movimento e posse de dedos sintéticos"),
         Checagem("release", "Release minificado — classes críticas + operações mínimas"),
         Checagem("layout", "Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável")
     )
@@ -175,7 +176,7 @@ class Diagnostico(private val appContext: Context) {
      */
     suspend fun executar(onAtualiza: (Checagem) -> Unit) {
         cancelado = false
-        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout")
+        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "joystick", "release", "layout")
         val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "astc")
         // E2: ids já FINALIZADAS nesta rodada — no cancel, só o que NÃO rodou vira
         // CANCELADA (aprovadas/falhas anteriores permanecem com o resultado delas).
@@ -284,6 +285,7 @@ class Diagnostico(private val appContext: Context) {
                             "cena" -> checarCenaTela(c, egl)
                             "astc" -> checarAstc(c)
                             "memoria" -> checarMemoria(c)
+                            "joystick" -> c.aprovado(ChecagemJoystick.executar())
                             "release" -> checarRelease(c)
                             "layout" -> checarLayout(c)
                         }

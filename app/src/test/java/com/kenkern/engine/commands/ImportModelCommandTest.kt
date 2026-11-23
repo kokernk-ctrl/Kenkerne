@@ -6,6 +6,8 @@ import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.Scene
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -143,13 +145,14 @@ class ImportModelCommandTest {
         val raiz = raizTemporaria()
         try {
             val (scene, cmd, _) = comandoComArquivos(raiz)
+            val history = CommandHistory()
+            history.push(cmd)
             // Bloqueia a lixeira: o caminho dela existe como ARQUIVO (mkdirs falha).
             File(raiz, "assets/.lixeira-import").parentFile.mkdirs()
             File(raiz, "assets/.lixeira-import").writeBytes(ByteArray(1))
-            cmd.execute()
             var lancou: ImportException? = null
             try {
-                cmd.undo()
+                history.undo()
             } catch (e: ImportException) {
                 lancou = e
             }
@@ -158,6 +161,105 @@ class ImportModelCommandTest {
             assertTrue("mensagem tem a origem real: $msg", msg.contains("assets/models/probe.KERN") || msg.contains("lixeira"))
             assertTrue("mensagem tem existe=/canRead=/canWrite= (diagnóstico de caminhos): $msg", msg.contains("existe="))
             assertTrue("mensagem tem mesmoVolume: $msg", msg.contains("mesmoVolume"))
+            assertTrue("comando continua na pilha undo", history.canUndo)
+            assertFalse("comando não foi movido para redo", history.canRedo)
+            assertSame("Nick continua na cena", scene.findNickByNameAnywhere("probe"), scene.roots[0].children.single())
+        } finally {
+            raiz.deleteRecursively()
+            ImportModelCommand.testeFalhaNoMove = null
+        }
+    }
+
+    @Test
+    fun `falha no segundo movimento reverte o primeiro e mantem cena e historico`() {
+        val raiz = raizTemporaria()
+        try {
+            val scene = Scene("transaction-test")
+            val parent = scene.createRootNick("Mundo")
+            val kernRel = "assets/models/probe.KERN"
+            val sourceRel = "bloqueado/probe.glb"
+            val kernBytes = ByteArray(64) { it.toByte() }
+            val sourceBytes = ByteArray(128) { (it * 7).toByte() }
+            File(raiz, kernRel).apply { parentFile.mkdirs(); writeBytes(kernBytes) }
+            File(raiz, sourceRel).apply { parentFile.mkdirs(); writeBytes(sourceBytes) }
+            val cmd = ImportModelCommand(
+                scene,
+                parent.id,
+                "probe",
+                raiz,
+                listOf(kernRel, sourceRel),
+                classeMalha(kernRel)
+            )
+            val history = CommandHistory()
+            history.push(cmd)
+
+            // O primeiro asset cabe na lixeira; o segundo falha porque seu
+            // diretório de destino é um arquivo. O primeiro movimento deve voltar.
+            assertTrue(cmd.pastaLixeira.mkdirs())
+            File(cmd.pastaLixeira, "bloqueado").writeBytes(byteArrayOf(1))
+            var lancou: ImportException? = null
+            try {
+                history.undo()
+            } catch (e: ImportException) {
+                lancou = e
+            }
+
+            assertNotNull("undo propaga a falha do segundo arquivo", lancou)
+            assertTrue("o comando continua disponível para nova tentativa", history.canUndo)
+            assertFalse("não há comando em redo", history.canRedo)
+            assertTrue("Nick não foi retirado da cena", scene.findNickByNameAnywhere("probe") != null)
+            assertTrue("primeiro asset continua no caminho original", File(raiz, kernRel).exists())
+            assertTrue("segundo asset continua no caminho original", File(raiz, sourceRel).exists())
+            assertEquals(kernBytes.toList(), File(raiz, kernRel).readBytes().toList())
+            assertEquals(sourceBytes.toList(), File(raiz, sourceRel).readBytes().toList())
+            assertFalse("primeiro asset foi retirado da lixeira pelo rollback", File(cmd.pastaLixeira, kernRel).exists())
+        } finally {
+            raiz.deleteRecursively()
+            ImportModelCommand.testeFalhaNoMove = null
+        }
+    }
+
+    @Test
+    fun `falha parcial no redo reverte arquivos e mantem comando retryable`() {
+        val raiz = raizTemporaria()
+        try {
+            val (scene, cmd, arquivos) = comandoComArquivos(raiz)
+            val history = CommandHistory()
+            history.push(cmd)
+            history.undo()
+            assertFalse("Nick retirado antes do redo", scene.findNickByNameAnywhere("probe") != null)
+
+            // O primeiro arquivo restaura; o segundo falha porque o diretório
+            // de destino foi substituído por um arquivo.
+            val bloqueio = File(raiz, "assets/models/origem")
+            if (bloqueio.isDirectory) {
+                // `origem` é uma raiz de assets preservada pelo comando no undo.
+                assertTrue("remover a raiz vazia para criar o bloqueio", bloqueio.delete())
+            }
+            assertFalse("caminho do bloqueio não pode continuar sendo diretório", bloqueio.exists())
+            bloqueio.writeBytes(byteArrayOf(1))
+            var lancou: ImportException? = null
+            try {
+                history.redo()
+            } catch (e: ImportException) {
+                lancou = e
+            }
+
+            assertNotNull("redo propaga a falha do segundo arquivo", lancou)
+            assertTrue("comando continua disponível para redo", history.canRedo)
+            assertFalse("comando não foi movido para undo", history.canUndo)
+            assertFalse("Nick não foi parcialmente reanexado", scene.findNickByNameAnywhere("probe") != null)
+            for ((rel, _) in arquivos) {
+                assertFalse("asset não ficou parcialmente no projeto: $rel", File(raiz, rel).exists())
+                assertTrue("asset segue na lixeira para retry: $rel", File(cmd.pastaLixeira, rel).exists())
+            }
+
+            assertTrue("remover o bloqueio permite nova tentativa", bloqueio.delete())
+            history.redo()
+            assertTrue("Nick publicado após retry", scene.findNickByNameAnywhere("probe") != null)
+            for ((rel, _) in arquivos) {
+                assertTrue("asset restaurado após retry: $rel", File(raiz, rel).exists())
+            }
         } finally {
             raiz.deleteRecursively()
             ImportModelCommand.testeFalhaNoMove = null

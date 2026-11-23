@@ -367,3 +367,30 @@ _Abrir no Hub → Diagnóstico → rodar → mandar print._
 **importador FBX → .KERN**, picking, shaders, caps GL, buffers, memória — cada
 linha APROVADO/FALHOU com motivo; erros desta sessão também aparecem na seção
 CONSOLE.)
+
+## M1.3 — Joystick Nick e ações de toque (pendente em aparelho)
+
+1. No Diagnóstico, rode **joystick**. Resultado: `x=.5 / y=0`, deslocamento do
+   jogador `+.2 m`, segundo dedo independente e cancelamento OK. É uma injeção
+   sintética no roteador real; não substitui os passos com dedos abaixo.
+2. Em um projeto com chão e Player ativo, sem controles autorados, entre em
+   Play: o joystick padrão inferior esquerdo ainda anda em X/Z. Solte na
+   borda da tela e verifique que o personagem para. Stop deve restaurar a
+   posição/câmera da edição. Confirme que os gestos de edição voltam a funcionar.
+3. Adicione **Joystick de UI** e **Botão de Ação de UI** pela Hierarquia;
+   configure âncoras diferentes. Alterne Fixo, Flutuante (tocar no quadrante)
+   e Dinâmico (arrastar além do raio); verifique tamanho em dp, opacidade,
+   zona morta, expoente e oito direções. Salve/reabra e confira os valores.
+4. Com dois players, ligue **Controla** ao segundo e ajuste velocidade e giro.
+   Confira que o joystick autorado move o alvo e o padrão ainda move o primeiro.
+   Compare Mundo/Câmera com uma câmera que não olha ao longo de −Z.
+5. Configure outro joystick na ação `olhar`, distante do primeiro. Mova e
+   olhe com dois dedos; soltar um não interrompe o outro. Teste também o botão
+   de ação (realce enquanto pressionado) e o início fora do quadrante: arrastar
+   para dentro sem novo toque não deve capturá-lo.
+6. Use **Seguir Nick** (com controle fixo), inicie Play e faça o alvo/câmera se
+   mover. O controle deve seguir a projeção e desaparecer fora do enquadramento.
+   Repita em escala de render diferente, se disponível, e nas duas paisagens.
+7. Com dedo pressionado, pause, abra um painel flutuante, vá ao background ou
+   toque Stop. Ao voltar, não deve sobrar movimento; é necessário novo toque.
+   Registre aparelho, APK/build, densidade/resolução, idiomas e passos que falharam.

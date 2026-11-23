@@ -2,6 +2,7 @@ package com.kenkern.engine.editor
 
 import android.app.Application
 import android.net.Uri
+import android.os.Looper
 import android.util.Log
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,8 +41,9 @@ import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.engine.PlayState
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
-import com.kenkern.engine.render.AssetMeshLibrary
-import com.kenkern.engine.render.TextureLibrary
+import com.kenkern.engine.projects.ProjectRecents
+import com.kenkern.engine.projects.RecentProject
+import com.kenkern.engine.render.ProjectAssetBindings
 import com.kenkern.engine.render.EngineControls
 import com.kenkern.engine.assets.image.Etc2
 import com.kenkern.engine.assets.image.PerfilTexturaImportacao
@@ -71,7 +73,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     val recoveryNotice = mutableStateOf(false)
     val statusMessage = mutableStateOf<String?>(null)
     val isLoading = mutableStateOf(false)
-    val projects = mutableStateOf<List<ProjectHandle>>(emptyList())
+    val projects = mutableStateOf<List<RecentProject>>(emptyList())
+    val projectsLoaded = mutableStateOf(false)
+    val workspace = mutableStateOf(EditorWorkspace.MODEL)
+    private val recents = ProjectRecents(application)
+    private var refreshProjectsJob: Job? = null
 
     // ---------- Importação de modelo (ETAPA A) ----------
     /** Etapa corrente da importação ("lendo", "triangulando"…) ou null = ociosa. */
@@ -115,7 +121,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     var engineControls: EngineControls? = null
 
-    val history = CommandHistory()
+    private val history = CommandHistory()
     val panelStore = PanelStateStore(application)
 
     private val autosave = AutoSaveManager(viewModelScope)
@@ -128,9 +134,29 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     val canRedo: Boolean get() = history.canRedo
 
     fun refreshProjects() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val list = ProjectManager.listProjects(getApplication())
-            withContext(Dispatchers.Main) { projects.value = list }
+        refreshProjectsJob?.cancel()
+        refreshProjectsJob = viewModelScope.launch {
+            projects.value = withContext(Dispatchers.IO) {
+                recents.list(ProjectManager.listProjects(getApplication()))
+            }
+            projectsLoaded.value = true
+        }
+    }
+
+    fun openSandbox(target: EditorWorkspace) {
+        if (isLoading.value) return
+        BootTrace.reset()
+        BootTrace.mark("openProject início")
+        isLoading.value = true
+        viewModelScope.launch {
+            val handle = withContext(Dispatchers.IO) { ProjectManager.openOrCreateSandbox(getApplication()) }
+            if (handle == null) {
+                isLoading.value = false
+                statusMessage.value = getApplication<Application>().getString(R.string.hub_sandbox_failed)
+                refreshProjects()
+                return@launch
+            }
+            loadIntoEditor(handle, target)
         }
     }
 
@@ -179,26 +205,28 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun loadIntoEditor(handle: ProjectHandle) {
+    private fun loadIntoEditor(handle: ProjectHandle, target: EditorWorkspace = EditorWorkspace.MODEL) {
         isLoading.value = true
         viewModelScope.launch {
             runCatching {
-                val recovered = withContext(Dispatchers.IO) { ProjectManager.hasAutosave(handle) }
-                val loaded = withContext(Dispatchers.IO) { ProjectManager.loadScene(handle) }
+                val result = withContext(Dispatchers.IO) {
+                    val result = ProjectManager.loadSceneForEditing(handle)
+                        ?: error(ProjectManager.lastError ?: "Cena inválida")
+                    runCatching { recents.recordOpen(handle) }
+                        .onFailure { KenkernLog.w(TAG, "Não foi possível registrar abertura recente", it) }
+                    result
+                }
+                val loaded = result.scene
                 BootTrace.mark("cena carregada") // loadScene retornou sem exceção
                 // Encerra o estado anterior DEPOIS que a cena nova carregou com sucesso.
                 detachEngineState()
+                workspace.value = target
                 project.value = handle
                 activeHandleAtEnter = handle
+                ProjectAssetBindings.attach(loaded, handle.root)
                 sceneRef = loaded
                 scene.value = loaded
-                // Malhas importadas apontam para a raiz DESTE projeto (a cache de GPU
-                // é limpa junto — caminhos relativos resolvem só contra a raiz certa).
-                AssetMeshLibrary.limpar()
-                AssetMeshLibrary.baseDir = handle.root
-                TextureLibrary.limpar()
-                TextureLibrary.baseDir = handle.root
-                recoveryNotice.value = recovered
+                recoveryNotice.value = result.fromAutosave
                 history.clear()
                 selection.value = null
                 selectionRef = null
@@ -211,6 +239,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 KenkernLog.e(TAG, "Falha ao abrir projeto", it)
                 statusMessage.value = getApplication<Application>()
                     .getString(R.string.vm_open_fail, it.message ?: "erro desconhecido")
+                refreshProjects()
             }
             isLoading.value = false
         }
@@ -220,7 +249,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val handle = project.value
         val currentScene = sceneRef
         if (handle != null && currentScene != null) {
-            autosave.saveNow(currentScene, handle)
+            if (!persistScene(currentScene, handle)) return
         }
         detachEngineState()
         autosave.stop()
@@ -348,7 +377,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 autosave.stop()
                 detachEngineState()
             }
-            val ok = withContext(Dispatchers.IO) { ProjectManager.deleteProject(handle) }
+            val ok = withContext(Dispatchers.IO) {
+                ProjectManager.deleteProject(handle).also { deleted ->
+                    if (deleted) runCatching { recents.forget(handle) }
+                        .onFailure { KenkernLog.w(TAG, "Não foi possível atualizar histórico", it) }
+                }
+            }
             if (!ok) {
                 statusMessage.value =
                     ProjectManager.lastError ?: getApplication<Application>().getString(R.string.vm_delete_fail)
@@ -361,49 +395,55 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         engineControls?.setPlayState(PlayState.STOPPED)
         engineControls = null
         activeHandleAtEnter = null
+        sceneRef?.let(ProjectAssetBindings::detach)
         sceneRef = null
         selectionRef = null
         scene.value = null
         project.value = null
         selection.value = null
         history.clear()
-        AssetMeshLibrary.limpar()
-        AssetMeshLibrary.baseDir = null
-        TextureLibrary.limpar()
-        TextureLibrary.baseDir = null
     }
 
     fun saveNow() {
         val handle = project.value ?: activeHandleAtEnter ?: return
         val currentScene = sceneRef ?: return
-        runCatching { autosave.saveNow(currentScene, handle) }.onFailure {
+        persistScene(currentScene, handle)
+    }
+
+    private fun persistScene(scene: Scene, handle: ProjectHandle): Boolean =
+        runCatching { check(autosave.saveImmediately(scene, handle)) { ProjectManager.lastError ?: "I/O" } }.onFailure {
             // SAVE silencioso era a pior perda possível (regra nova: registrar sempre).
             Log.e(TAG, "saveNow falhou — cena pode não ter sido salva", it)
             KenkernLog.e(TAG, "Falha ao salvar o projeto (saveNow)", it)
             statusMessage.value = getApplication<Application>()
                 .getString(R.string.vm_save_fail, it.message ?: it.javaClass.simpleName)
-        }
-    }
+        }.isSuccess
 
     fun select(id: ReferenceId?) {
         selection.value = id
         selectionRef = id
     }
 
-    fun run(command: Command) {
-        history.push(command)
+    private inline fun editScene(action: (Scene) -> Unit) {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "Edição da cena fora da thread principal" }
+        val current = sceneRef ?: return
+        current.withEditorAccess { action(current) }
+    }
+
+    private fun run(command: Command) {
+        editScene { history.push(command) }
         autosave.markDirty()
         bump()
     }
 
     fun undo() {
-        history.undo()
+        editScene { history.undo() }
         autosave.markDirty()
         bump()
     }
 
     fun redo() {
-        history.redo()
+        editScene { history.redo() }
         autosave.markDirty()
         bump()
     }
@@ -437,8 +477,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
      * aplicadas, nasce SELECIONADO na posição do centro da tela projetada no
      * chão. [spawnXz] traz x/z do ponto projetado (null = origem).
      */
-    fun addNickOfKind(kind: String, comoFilhoDoSelecionado: Boolean, spawnXz: FloatArray?) {
-        val s = sceneRef ?: return
+    fun addNickOfKind(kind: String, comoFilhoDoSelecionado: Boolean, spawnXz: FloatArray?) = editScene { s ->
         val def = NickKindRegistry.find(kind)
         val parent = if (comoFilhoDoSelecionado) {
             selection.value?.let { s.findNick(it) } ?: s.roots.firstOrNull()
@@ -698,6 +737,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 // B1: cada textura é medida com rótulo próprio ("textura i/n") — decode,
                 // redimensionamento, mipmaps, ETC2 e gravação .KIMG separados.
                 // Progresso por textura + estimativa de tempo restante; relatórios em ordem.
+                val texturePaths = arrayOfNulls<String>(summary.texturasExtraidas.size)
                 if (summary.texturasExtraidas.isNotEmpty()) {
                     importEtapa.value = "convertendo texturas"
 
@@ -728,6 +768,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                                         cronometro = cronometro,
                                         rotuloTextura = rotulo
                                     )
+                                    texturePaths[idx] = resultado.caminhoRelativo
                                     relatorios[idx] = "$rotulo (${textura.nomeOrigem}): ${resultado.relatorio}"
                                 } catch (e: Exception) {
                                     if (importCancelado.get()) throw e
@@ -746,27 +787,34 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 if (importCancelado.get()) throw ImportException("importação cancelada pelo usuário")
 
                 // ---------------- UM Command: Nick + assets (undo remove os dois)
+                // A importação suspendeu por I/O; o editor pode ter mudado de cena.
+                if (sceneRef !== scene) return@launch
                 val classe = ModelImporter.criarClasseMalha(
                     kernRel!!, summary.aabbMin, summary.aabbMax,
                     if (ajustar) summary.escalaSugerida else 1f
                 )
-                val parent = selection.value?.let { scene.findNick(it) } ?: scene.roots.firstOrNull()
                 val nomeNick = nomeFonte.substringBeforeLast('.')
-                cronometro.medir("criação do Nick (Command)", nomeNick) {
-                    run(ImportModelCommand(scene, parent?.id, nomeNick, raiz, listOf(kernRel!!, origemRel!!), classe))
-                }
-
-                // Seleciona o novo Nick e aplica a escala de enquadramento (opção).
-                val criado = scene.findNickByNameAnywhere(nomeNick)
-                if (criado != null) {
-                    if (ajustar && summary.escalaSugerida != 1f) {
-                        criado.transform.scale.set(
-                            summary.escalaSugerida, summary.escalaSugerida, summary.escalaSugerida
-                        )
+                editScene { current ->
+                    val parent = selection.value?.let { current.findNick(it) } ?: current.roots.firstOrNull()
+                    // Texturas são compartilhadas e não saem no undo. Se a importação
+                    // recuperou uma textura antes ausente, descarte a falha daquela chave.
+                    ProjectAssetBindings.invalidate(current, texturePaths.filterNotNull())
+                    cronometro.medir("criação do Nick (Command)", nomeNick) {
+                        run(ImportModelCommand(current, parent?.id, nomeNick, raiz, listOf(kernRel!!, origemRel!!), classe))
                     }
-                    select(criado.id)
+
+                    // Seleciona o novo Nick e aplica a escala de enquadramento (opção).
+                    val criado = current.findNickByNameAnywhere(nomeNick)
+                    if (criado != null) {
+                        if (ajustar && summary.escalaSugerida != 1f) {
+                            criado.transform.scale.set(
+                                summary.escalaSugerida, summary.escalaSugerida, summary.escalaSugerida
+                            )
+                        }
+                        select(criado.id)
+                    }
+                    bump()
                 }
-                bump()
                 // B1: tabela de tempo por etapa (ms + % do total) no ImportReport E no
                 // Console — sem medição, nenhuma afirmação sobre o gargalo.
                 val tabela = cronometro.tabela()

@@ -42,8 +42,8 @@ a partir do deslocamento inicial. Sem câmera criada, há uma vista seguidora
 padrão para o jogador. **Stop** volta à cena e à câmera do editor.
 
 Este recorte não inclui pulo, rampas, física de corpos rígidos, formas de
-colisão além de caixas, ligação de eventos, múltiplos jogadores nem Joystick
-Nick configurável. Iluminação por Nick continua reservada ao LUME.
+colisão além de caixas nem execução de links do LINKERF. O M1.3 acrescenta
+controles de toque configuráveis abaixo. Iluminação por Nick continua reservada ao LUME.
 
 AUXILIARES DE EDITOR (E5, v0.1.18): todo Nick SEM malha própria (luz, câmera,
 área, sinal, surgimento e o Nick Vazio) é visível no viewport como um
@@ -208,8 +208,9 @@ visíveis e selecionáveis no editor, sem efeito de render.
 | ui.text | UI Text Nick | Nick de Texto de UI | Exibe texto formatado na interface. | UI | PLANEJADO | TELAR |
 | ui.image | UI Image Nick | Nick de Imagem de UI | Exibe imagem/textura na interface. | UI | PLANEJADO | TELAR |
 | ui.button | UI Button Nick | Nick de Botão de UI | Elemento acionável que produz eventos de interação. | UI | PLANEJADO | TELAR |
+| ui.action_button | UI Action Button Nick | Nick de Botão de Ação de UI | Botão de toque ligado a uma ação nomeada. | UI | IMPLEMENTADO (aguarda aparelho) | M1.3 |
 | ui.video | UI Video Nick | Nick de Vídeo de UI | Reproduz vídeo dentro da interface. | UI | PLANEJADO | TELAR |
-| ui.joystick | UI Joystick Nick | Nick de Joystick de UI | Controle de toque que produz eixos/ações de movimento e pode comandar um Nick. | UI | PLANEJADO | M1.3 |
+| ui.joystick | UI Joystick Nick | Nick de Joystick de UI | Controle de toque que produz eixos/ações de movimento e pode comandar um Nick. | UI | IMPLEMENTADO (aguarda aparelho) | M1.3 |
 | ui.slider | UI Slider Nick | Nick de Controle Deslizante de UI | Controle deslizante para selecionar/editar um valor. | UI | PLANEJADO | TELAR |
 | ui.progress | UI Progress Nick | Nick de Barra de Progresso de UI | Exibe progresso ou quantidade como barra/indicador. | UI | PLANEJADO | TELAR |
 | ui.list | UI List Nick | Nick de Lista de UI | Apresenta uma lista de itens navegáveis/selecionáveis. | UI | PLANEJADO | TELAR |
@@ -239,3 +240,21 @@ visíveis e selecionáveis no editor, sem efeito de render.
 - Testes de JVM exigidos: normalização, zona morta, curva de resposta, travar
   em 8 direções, multitoque com dois dedos, projeção do Nick para a tela.
   Checagem "joystick" no Diagnóstico (injeta toques sintéticos e confere x/y).
+
+### Contrato entregue no M1.3 (aguarda aparelho)
+
+- `mover` é a ação nativa que aciona o Player em Play; `olhar` gira a câmera
+  do jogo (quando há câmera ativa ou seguidora padrão). Os botões publicam
+  ações digitais (ex. `pular`, `atacar`); não executam pulo ou ataque por si.
+- A âncora por canto escolhe o quadrante de ativação dos modos flutuante e
+  dinâmico; o modo Seguir Nick usa a projeção do alvo em Play, com zona
+  circular nesses modos. Use âncoras/zonas distintas para evitar sobreposição.
+  Um alvo explícito inválido não assume o primeiro Player. O controle padrão
+  permanece para o primeiro Player se ele não tem joystick `mover` autorado válido.
+- As portas de dados/eventos são gravadas no CK2. O runtime LuaJ pode ser
+  ligado à sessão por `NickPlayRuntime.bindInput` antes de `iniciar()`. A API
+  lê `input.joystick(nome)` (x, y, força), `input.action(ação)` (x, y, força,
+  pressionado), `input.event_count(nome, evento [, porAção])` (contador por
+  sessão); o nome é o fornecido pelo usuário e, quando vazio, o ID do Nick.
+- Ainda pendentes: mapeamentos de teclado/controle Bluetooth, execução dos
+  links, instalação automática da API em scripts de cena e template Lua.

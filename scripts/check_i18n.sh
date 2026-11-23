@@ -4,7 +4,7 @@
 #
 # Regra: NENHUMA tela (código em ui/) pode ter texto literal em Text("...")
 # ou contentDescription = "..." — toda string de interface vem de recursos
-# (res/values/strings.xml = inglês + res/values-pt/strings.xml = português).
+# distribuídos por quaisquer XMLs em res/values/ e res/values-pt/.
 #
 # LISTA DE EXCEÇÕES (arquivo:motivo — manter CURTA e justificada):
 #   (nenhuma hoje — dados técnicos do overlay de debug usam lines.add(...)
@@ -14,7 +14,7 @@
 # =============================================================================
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="${KENKERN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 UI_DIR="$ROOT/app/src/main/java/com/kenkern/engine/ui"
 
 # Padrões proibidos: Text(" ... e contentDescription = " ...
@@ -37,27 +37,70 @@ while IFS= read -r arquivo; do
     done < <(grep -Fn "$PADRAO_CD" "$arquivo" || true)
 done < <(find "$UI_DIR" -name '*.kt' -type f | sort)
 
-# Paridade en/pt: toda chave de values/strings.xml existe em values-pt/strings.xml
-EN="$ROOT/app/src/main/res/values/strings.xml"
-PT="$ROOT/app/src/main/res/values-pt/strings.xml"
-if [ -f "$EN" ] && [ -f "$PT" ]; then
-    chaves() { grep -o 'name="[^"]*"' "$1" | sort; }
-    chaves "$EN" > /tmp/kenkern_i18n_en.txt
-    chaves "$PT" > /tmp/kenkern_i18n_pt.txt
-    FALTANDO=$(comm -23 /tmp/kenkern_i18n_en.txt /tmp/kenkern_i18n_pt.txt || true)
-    SOBRANDO=$(comm -13 /tmp/kenkern_i18n_en.txt /tmp/kenkern_i18n_pt.txt || true)
-    if [ -n "$FALTANDO" ]; then
-        echo "ERRO i18n: chaves sem tradução em values-pt/strings.xml:"
-        echo "$FALTANDO" | sed 's/^/    /'
-        FALHAS=$((FALHAS + 1))
-    fi
-    if [ -n "$SOBRANDO" ]; then
-        echo "ERRO i18n: chaves em values-pt/ SEM correspondente em values/strings.xml:"
-        echo "$SOBRANDO" | sed 's/^/    /'
-        FALHAS=$((FALHAS + 1))
-    fi
-else
-    echo "ERRO i18n: strings.xml ou values-pt/strings.xml não encontrado"
+# Paridade de recursos localizados em TODOS os XMLs dos diretórios values.
+# Extrair apenas recursos de texto evita comparar styles/colors/themes e elimina
+# arquivos temporários globais: chamadas paralelas não compartilham estado.
+EN_DIR="$ROOT/app/src/main/res/values"
+PT_DIR="$ROOT/app/src/main/res/values-pt"
+if ! python3 - "$EN_DIR" "$PT_DIR" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+STRING_TYPES = {"string", "string-array", "plurals"}
+
+def collect(directory):
+    path = Path(directory)
+    if not path.is_dir():
+        raise ValueError(f"diretório não encontrado: {path}")
+    files = sorted(path.glob("*.xml"))
+    if not files:
+        raise ValueError(f"nenhum XML em {path}")
+    resources = {}
+    for xml_file in files:
+        try:
+            root = ET.parse(xml_file).getroot()
+        except ET.ParseError as error:
+            raise ValueError(f"XML inválido em {xml_file}: {error}") from error
+        for element in root.iter():
+            tag = element.tag.rsplit("}", 1)[-1]
+            resource_type = (
+                element.get("type") if tag == "item" else tag
+            )
+            if resource_type in STRING_TYPES and element.get("name"):
+                key = f"{resource_type}/{element.get('name')}"
+                resources.setdefault(key, []).append(xml_file.name)
+    return resources
+
+try:
+    english = collect(sys.argv[1])
+    portuguese = collect(sys.argv[2])
+except ValueError as error:
+    print(f"ERRO i18n: {error}")
+    sys.exit(1)
+
+if not english:
+    print("ERRO i18n: nenhum recurso string localizado encontrado em values/.")
+    sys.exit(1)
+
+missing = sorted(english.keys() - portuguese.keys())
+extra = sorted(portuguese.keys() - english.keys())
+if missing:
+    print("ERRO i18n: recursos sem tradução em values-pt/:")
+    for key in missing:
+        print(f"    {key} (values/{', '.join(english[key])})")
+if extra:
+    print("ERRO i18n: recursos em values-pt/ sem chave em values/:")
+    for key in extra:
+        print(f"    {key} (values-pt/{', '.join(portuguese[key])})")
+if missing or extra:
+    sys.exit(1)
+print(
+    "Paridade en/pt: OK "
+    f"({len(english)} recursos string/string-array/plurals; styles e themes ignorados)."
+)
+PY
+then
     FALHAS=$((FALHAS + 1))
 fi
 

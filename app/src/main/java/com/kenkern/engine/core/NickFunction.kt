@@ -72,6 +72,8 @@ object BobFunction : NickFunction {
 /** Registro das classes nativas da Fase 1 (+ Colisor da T0.2). */
 object KenkernBuiltInClasses {
     fun registerAll() {
+        NickClassRegistry.register(com.kenkern.engine.core.input.TouchControlSchema.joystick)
+        NickClassRegistry.register(com.kenkern.engine.core.input.TouchControlSchema.button)
         NickClassRegistry.register(
             NickClassDefinition(
                 "Spin",

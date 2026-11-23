@@ -196,6 +196,24 @@ class FbxImporterTest {
     }
 
     @Test
+    fun ascii_e_binario_rejeitam_a_mesma_profundidade_excessiva() {
+        val asciiProfundo = buildString {
+            append("FBXHeaderExtension: {\n")
+            repeat(72) { append("Deep$it: {\n") }
+            repeat(73) { append("}\n") }
+        }.toByteArray(Charsets.UTF_8)
+        for (fixture in listOf(asciiProfundo, FbxAmostras.aninhamentoExcessivoFbx())) {
+            try {
+                FbxImporter.importar(fixture)
+                fail("FBX com árvore além do limite deveria ser rejeitado")
+            } catch (e: FbxImportException) {
+                assertTrue("mensagem deve indicar limite de profundidade: ${e.message}",
+                    e.message!!.contains("aninhamento") || e.message!!.contains("profundidade"))
+            }
+        }
+    }
+
+    @Test
     fun fbx_ascii_com_material_cria_tabela_e_grupo() {
         val r = FbxImporter.importar(FbxAmostras.quadAsciiComMaterialFbx())
         assertEquals(1, r.mesh.materiais.size)

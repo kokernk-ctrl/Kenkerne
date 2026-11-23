@@ -1,0 +1,31 @@
+<resources>
+    <string name="touch_control_choice">%1$s: %2$s</string>
+    <string name="touch_input_restore_input_settings">Restaurar ajustes de input</string>
+    <string name="touch_input_gameplay_input">Input de jogo</string>
+    <string name="touch_input_type">Tipo</string>
+    <string name="touch_input_fixed">Fixo</string>
+    <string name="touch_input_floating">Flutuante</string>
+    <string name="touch_input_dynamic">Dinâmico</string>
+    <string name="touch_input_size_dp">Tamanho (dp)</string>
+    <string name="touch_input_opacity_0_1">Opacidade (0–1)</string>
+    <string name="touch_input_anchor">Âncora</string>
+    <string name="touch_input_bottom_left">Inferior esquerda</string>
+    <string name="touch_input_bottom_right">Inferior direita</string>
+    <string name="touch_input_top_left">Superior esquerda</string>
+    <string name="touch_input_top_right">Superior direita</string>
+    <string name="touch_input_follow_nick">Seguir Nick</string>
+    <string name="touch_input_none">Nenhum</string>
+    <string name="touch_input_named_action">Ação nomeada</string>
+    <string name="touch_input_apply_action">Aplicar ação</string>
+    <string name="touch_input_mover_moves_a_player_olhar_controls_the_game_camera">mover move um Player; olhar controla a câmera do jogo.</string>
+    <string name="touch_input_dead_zone_0_0_95">Zona morta (0–0,95)</string>
+    <string name="touch_input_response_exponent">Expoente da curva</string>
+    <string name="touch_input_snap_to_8_directions">Travar em 8 direções</string>
+    <string name="touch_input_controls">Controla</string>
+    <string name="touch_input_first_active_player">Primeiro Player ativo</string>
+    <string name="touch_input_movement_space">Movimento relativo</string>
+    <string name="touch_input_world">Mundo</string>
+    <string name="touch_input_camera">Câmera</string>
+    <string name="touch_input_speed_movement_m_s">Velocidade (movimento m/s)</string>
+    <string name="touch_input_turn_toward_movement">Girar para o movimento</string>
+</resources>

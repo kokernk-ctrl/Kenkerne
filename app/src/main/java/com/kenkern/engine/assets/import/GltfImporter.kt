@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Base64
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 /**
@@ -89,7 +90,8 @@ class TexturaImportada(
  *    TEXCOORD_0 (opcionais) e índices (opcional — gerados em sequência);
  *  - componentType: i8/u8/i16/u16/u32/f32;
  *  - transform dos nodes (matriz column-major ou TRS/quaternion) aplicado aos
- *    vértices; NORMAL transformada pela matriz 3×3 e renormalizada; NORMAL
+ *    vértices; atributos integer normalizados são convertidos ao intervalo
+ *    glTF e NORMAL é transformada pela inversa-transposta e renormalizada; NORMAL
  *    ausente = acumulação suave das faces (flat→smooth no espaço de mundo);
  *  - todas as primitivas de todos os nodes da cena padrão são FUNDIDAS em 1
  *    KernMesh (offset de índices por base de vértice);
@@ -303,6 +305,14 @@ object GltfImporter {
         val comps = componentesDoTipo(tipo)
         val componentType = acc.getInt("componentType")
         val tamComp = tamanhoComponente(componentType)
+        val normalizado = acc.optBoolean("normalized", false)
+        if (normalizado && componentType != CT_I8 && componentType != CT_U8 &&
+            componentType != CT_I16 && componentType != CT_U16
+        ) {
+            throw GltfImportException(
+                "acessor $indice usa normalized=true com componentType $componentType (só BYTE/UNSIGNED_BYTE/SHORT/UNSIGNED_SHORT)"
+            )
+        }
 
         val saida = FloatArray(count * comps)
         val viewIndex = acc.optInt("bufferView", -1)
@@ -315,7 +325,7 @@ object GltfImporter {
             if (bufferIndex < 0 || bufferIndex >= buffers.size) {
                 throw GltfImportException("acessor $indice aponta para buffer $bufferIndex inexistente")
             }
-            lerFloats(buffers[bufferIndex], 0, saida, 0, comps, componentType, tamComp)
+            lerFloats(buffers[bufferIndex], 0, saida, 0, comps, componentType, tamComp, normalizado)
             return saida
         }
 
@@ -348,7 +358,7 @@ object GltfImporter {
         }
         var base = viewOffset + accOffset
         for (i in 0 until count) {
-            lerFloats(dados, base, saida, i * comps, comps, componentType, tamComp)
+            lerFloats(dados, base, saida, i * comps, comps, componentType, tamComp, normalizado)
             base += passo
         }
         return saida
@@ -361,11 +371,12 @@ object GltfImporter {
         saidaBase: Int,
         comps: Int,
         componentType: Int,
-        tamComp: Int
+        tamComp: Int,
+        normalizado: Boolean
     ) {
         val buf = ByteBuffer.wrap(dados, offset, comps * tamComp).order(ByteOrder.LITTLE_ENDIAN)
         for (c in 0 until comps) {
-            saida[saidaBase + c] = when (componentType) {
+            val bruto = when (componentType) {
                 CT_F32 -> buf.float
                 CT_I8 -> buf.get().toInt().toFloat()
                 CT_U8 -> (buf.get().toInt() and 0xFF).toFloat()
@@ -373,6 +384,13 @@ object GltfImporter {
                 CT_U16 -> (buf.short.toInt() and 0xFFFF).toFloat()
                 CT_U32 -> buf.int.toFloat()
                 else -> throw GltfImportException("componentType $componentType não suportado")
+            }
+            saida[saidaBase + c] = if (!normalizado) bruto else when (componentType) {
+                CT_I8 -> maxOf(-1f, bruto / 127f)
+                CT_U8 -> bruto / 255f
+                CT_I16 -> maxOf(-1f, bruto / 32767f)
+                CT_U16 -> bruto / 65535f
+                else -> throw GltfImportException("componentType $componentType inválido com normalized=true")
             }
         }
     }
@@ -709,6 +727,7 @@ object GltfImporter {
 
         val base = builder.positions.size / 3
         val grupoOffset = builder.indices.size // início do grupo de material (B.3)
+        val matrizNormal = if (normais != null) calcularMatrizNormal(mundo) else null
 
         // Vértices com o transform de mundo aplicado.
         for (v in 0 until verts) {
@@ -717,9 +736,13 @@ object GltfImporter {
             val wz = aplicarLinha(mundo, 2, pos, v)
             var nx = 0f; var ny = 1f; var nz = 0f
             if (normais != null) {
-                nx = aplicarLinha(mundo, 0, normais, v)
-                ny = aplicarLinha(mundo, 1, normais, v)
-                nz = aplicarLinha(mundo, 2, normais, v)
+                val m = matrizNormal!!
+                val x = normais[v * 3]
+                val y = normais[v * 3 + 1]
+                val z = normais[v * 3 + 2]
+                nx = m[0] * x + m[1] * y + m[2] * z
+                ny = m[3] * x + m[4] * y + m[5] * z
+                nz = m[6] * x + m[7] * y + m[8] * z
             }
             var tx = 0f; var ty = 0f; var tz = 0f
             if (tangentes != null) {
@@ -927,6 +950,44 @@ object GltfImporter {
                 builder.normals[i + 2] = 0f
             }
         }
+    }
+
+    /**
+     * Retorna uma matriz proporcional à inversa-transposta da parte linear de
+     * mundo em ordem por linhas. Como as normais são renormalizadas depois,
+     * escala-la por |det| evita divisões instáveis sem alterar a direção.
+     */
+    private fun calcularMatrizNormal(mundo: Mat4): FloatArray {
+        val m = mundo.m
+        val escala = maxOf(
+            abs(m[0]), abs(m[1]), abs(m[2]), abs(m[4]), abs(m[5]),
+            abs(m[6]), abs(m[8]), abs(m[9]), abs(m[10])
+        )
+        if (!escala.isFinite() || escala == 0f) {
+            throw GltfImportException("transform de node singular: não é possível transformar as normais")
+        }
+        val a00 = m[0] / escala; val a01 = m[4] / escala; val a02 = m[8] / escala
+        val a10 = m[1] / escala; val a11 = m[5] / escala; val a12 = m[9] / escala
+        val a20 = m[2] / escala; val a21 = m[6] / escala; val a22 = m[10] / escala
+        val c00 = a11 * a22 - a12 * a21
+        val c01 = a12 * a20 - a10 * a22
+        val c02 = a10 * a21 - a11 * a20
+        val c10 = a02 * a21 - a01 * a22
+        val c11 = a00 * a22 - a02 * a20
+        val c12 = a01 * a20 - a00 * a21
+        val c20 = a01 * a12 - a02 * a11
+        val c21 = a02 * a10 - a00 * a12
+        val c22 = a00 * a11 - a01 * a10
+        val det = a00 * c00 + a01 * c01 + a02 * c02
+        if (!det.isFinite() || abs(det) < 1e-8f) {
+            throw GltfImportException("transform de node singular: não é possível transformar as normais")
+        }
+        val sinal = if (det < 0f) -1f else 1f
+        return floatArrayOf(
+            c00 * sinal, c01 * sinal, c02 * sinal,
+            c10 * sinal, c11 * sinal, c12 * sinal,
+            c20 * sinal, c21 * sinal, c22 * sinal
+        )
     }
 
     /** Normal de face em ESPAÇO DE MUNDO (posições transformadas), acumulada nos 3 vértices. */

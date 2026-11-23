@@ -9,6 +9,7 @@ import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.TransformSnapshot
+import com.kenkern.engine.core.input.TouchControlSchema
 
 /** Cria um Nick do TIPO (kind) informado (filho do pai informado ou raiz),
  *  aplicando as CLASSES PADRÃO do tipo (T0.3 — ex.: body.collider → Colisor). */
@@ -22,8 +23,7 @@ class CreateNickCommand(
 ) : Command {
     override val label: String get() = "Criar ${NickKindRegistry.labelOf(kind, "pt")}"
     private var created: Nick? = null
-    private var storedParent: Nick? = null
-    private var storedIndex: Int = 0
+    private var detached: Scene.DetachedSubtree? = null
 
     /** Id do nick criado (para selecionar após o execute); null se ainda não rodou. */
     fun createdNickId(): ReferenceId? = created?.id
@@ -31,8 +31,10 @@ class CreateNickCommand(
     override fun execute() {
         val existing = created
         if (existing != null) {
-            // Redo: reinsere a mesma subárvore (mesmo id) no lugar original.
-            scene.attachSubtree(existing, storedParent, storedIndex)
+            // Redo: reinsere a mesma subárvore e os seus dados LINKERF.
+            val state = detached ?: return
+            scene.attachSubtree(state)
+            detached = null
             return
         }
         val parent = parentId?.let { scene.findNick(it) }
@@ -41,13 +43,12 @@ class CreateNickCommand(
         for (classe in classesPadrao) {
             NickClassRegistry.createInstance(classe)?.let { nick.addClassInstance(it) }
         }
+        for (port in TouchControlSchema.ports(nick)) scene.linkerf.addPort(port)
         created = nick
-        storedParent = nick.parent
-        storedIndex = nick.indexInParent().coerceAtLeast(0)
     }
 
     override fun undo() {
-        created?.let { scene.removeNick(it) }
+        created?.let { nick -> scene.detachSubtree(nick)?.let { detached = it } }
     }
 }
 
@@ -57,23 +58,17 @@ class DeleteNickCommand(
     val nickId: ReferenceId
 ) : Command {
     override val label: String get() = "Apagar nick"
-    private var removed: Nick? = null
-    private var oldParent: Nick? = null
-    private var oldIndex: Int = -1
+    private var detached: Scene.DetachedSubtree? = null
 
     override fun execute() {
-        val nick = scene.findNick(nickId) ?: return
-        if (removed == null) {
-            removed = nick
-            oldParent = nick.parent
-            oldIndex = nick.indexInParent().coerceAtLeast(0)
-        }
-        scene.removeNick(nick)
+        val nick = detached?.nick ?: scene.findNick(nickId) ?: return
+        scene.detachSubtree(nick)?.let { detached = it }
     }
 
     override fun undo() {
-        val nick = removed ?: return
-        scene.attachSubtree(nick, oldParent, oldIndex)
+        val state = detached ?: return
+        scene.attachSubtree(state)
+        detached = null
     }
 }
 

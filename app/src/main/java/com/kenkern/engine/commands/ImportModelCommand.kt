@@ -6,6 +6,7 @@ import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.diag.KenkernLog
+import com.kenkern.engine.render.ProjectAssetBindings
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -45,8 +46,7 @@ class ImportModelCommand(
     override val label: String get() = "Importar $nickName"
 
     private var created: Nick? = null
-    private var storedParent: Nick? = null
-    private var storedIndex: Int = 0
+    private var detached: Scene.DetachedSubtree? = null
 
     private val importId: String = "imp-" + System.nanoTime().toString(36)
 
@@ -60,9 +60,18 @@ class ImportModelCommand(
     override fun execute() {
         val existing = created
         if (existing != null) {
-            // REDO: devolve os arquivos da lixeira e reinsere a MESMA subárvore.
-            restaurarDaLixeira()
-            scene.attachSubtree(existing, storedParent, storedIndex)
+            // REDO: primeiro restaura os arquivos; só então publica a subárvore.
+            val state = detached ?: return
+            val movidos = restaurarDaLixeira()
+            try {
+                scene.attachSubtree(state)
+            } catch (e: Exception) {
+                transferirArquivos(raizProjeto, pastaLixeira, "rollback redo", movidos)
+                throw e
+            }
+            detached = null
+            pastaLixeira.deleteRecursively()
+            ProjectAssetBindings.invalidate(scene, arquivosCriados)
             return
         }
         val parent = parentId?.let { scene.findNick(it) }
@@ -74,48 +83,96 @@ class ImportModelCommand(
         )
         nick.addClassInstance(classeMalha)
         created = nick
-        storedParent = nick.parent
-        storedIndex = nick.indexInParent().coerceAtLeast(0)
+        ProjectAssetBindings.invalidate(scene, arquivosCriados)
     }
 
     override fun undo() {
         val nick = created ?: return
-        scene.removeNick(nick)
-        recolherParaLixeira()
+        if (scene.findNick(nick.id) !== nick) return
+
+        // Arquivos são movidos como uma transação antes de retirar o Nick. Se
+        // qualquer movimento falhar, a cena continua publicada e o undo pode
+        // ser tentado de novo.
+        val movidos = recolherParaLixeira()
+        val state = scene.detachSubtree(nick)
+        if (state == null) {
+            transferirArquivos(pastaLixeira, raizProjeto, "rollback undo", movidos)
+            throw ImportException("undo da importação não destacou o Nick '${nick.id.value}'")
+        }
+        detached = state
+        ProjectAssetBindings.invalidate(scene, arquivosCriados)
     }
 
-    /** Move os arquivos criados para a lixeira (preserva caminho relativo). */
-    private fun recolherParaLixeira() {
-        if (!pastaLixeira.exists() && !pastaLixeira.mkdirs()) {
-            val causa = "mkdirs devolveu false (papel do caminho? permissão? volume cheio?)"
-            KenkernLog.e(TAG, "undo da importação: ${diagnosticoCaminhos(raizProjeto, pastaLixeira, causa)}", null)
-            throw ImportException("undo não criou a lixeira de importação — $causa · ${diagnosticoCaminhos(raizProjeto, pastaLixeira, "")}")
-        }
-        for (rel in arquivosCriados) {
+    /** Move os arquivos criados para a lixeira; falha reverte os movimentos feitos. */
+    private fun recolherParaLixeira(): List<String> {
+        val movidos = transferirArquivos(raizProjeto, pastaLixeira, "undo")
+        for (rel in movidos) {
             val origem = File(raizProjeto, rel)
-            if (!origem.exists()) {
-                // Arquivo já foi embora (apagado à mão): registrar e seguir —
-                // desfazer não pode falhar por causa de um arquivo que não existe.
-                KenkernLog.w(TAG, "undo da importação: '$rel' já não existia")
-                continue
-            }
-            moverArquivo(origem, File(pastaLixeira, rel), "undo")
             limparPastasVazias(origem.parentFile)
         }
+        return movidos
     }
 
-    /** Traz os arquivos de volta da lixeira (redo). */
-    private fun restaurarDaLixeira() {
-        for (rel in arquivosCriados) {
-            val origem = File(pastaLixeira, rel)
-            if (!origem.exists()) {
-                KenkernLog.w(TAG, "redo da importação: '$rel' não estava na lixeira (arquivo mantido se existir)")
-                continue
-            }
-            moverArquivo(origem, File(raizProjeto, rel), "redo")
+    /** Traz os arquivos da lixeira de volta; falha reverte os movimentos feitos. */
+    private fun restaurarDaLixeira(): List<String> =
+        transferirArquivos(pastaLixeira, raizProjeto, "redo")
+
+    /**
+     * Transfere todos os arquivos existentes. Se qualquer arquivo falhar,
+     * desfaz em ordem inversa os movimentos já concluídos antes de propagar o
+     * erro; arquivos ausentes continuam sendo avisados e ignorados.
+     */
+    private fun transferirArquivos(
+        origemBase: File,
+        destinoBase: File,
+        fase: String,
+        relativos: List<String> = arquivosCriados
+    ): List<String> {
+        if (!destinoBase.exists() && !destinoBase.mkdirs()) {
+            val causa = "mkdirs do destino devolveu false"
+            KenkernLog.e(TAG, "$fase da importação: ${diagnosticoCaminhos(origemBase, destinoBase, causa)}", null)
+            throw ImportException("$fase não criou o destino — ${diagnosticoCaminhos(origemBase, destinoBase, causa)}")
         }
-        pastaLixeira.deleteRecursively()
+        val movidos = ArrayList<String>()
+        try {
+            for (rel in relativos) {
+                val origem = File(origemBase, rel)
+                if (!origem.exists()) {
+                    KenkernLog.w(TAG, "$fase da importação: '$rel' não existia em ${origemBase.path}")
+                    continue
+                }
+                moverArquivo(origem, File(destinoBase, rel), fase)
+                movidos.add(rel)
+            }
+        } catch (falha: Exception) {
+            val falhasRollback = ArrayList<String>()
+            for (rel in movidos.asReversed()) {
+                try {
+                    moverArquivo(
+                        File(destinoBase, rel),
+                        File(origemBase, rel),
+                        "rollback $fase"
+                    )
+                } catch (rollback: Exception) {
+                    falha.addSuppressed(rollback)
+                    falhasRollback.add("$rel: ${rollback.message ?: rollback.javaClass.simpleName}")
+                }
+            }
+            if (falhasRollback.isNotEmpty()) {
+                KenkernLog.e(
+                    TAG,
+                    "$fase da importação falhou e o rollback ficou parcial: ${falhasRollback.joinToString()}",
+                    falha
+                )
+                throw ImportException(
+                    "${falha.message ?: "falha na transferência"}; rollback parcial: ${falhasRollback.joinToString()}"
+                )
+            }
+            throw falha
+        }
+        return movidos
     }
+
 
     /**
      * Move origem → destino: primeiro [Files.move] (REPLACE_EXISTING — nomes

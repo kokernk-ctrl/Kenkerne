@@ -246,6 +246,54 @@ object GltfAmostras {
     }
 
     /**
+     * Triângulo com NORMAL signed BYTE e TEXCOORD_0 unsigned BYTE normalizados.
+     * A escala não uniforme testa a inversa-transposta da matriz de mundo.
+     */
+    fun acessoresNormalizadosComEscalaGlb(): ByteArray {
+        val pos = floatArrayOf(0f, 0f, 0f, 0f, 0f, 1f, 1f, -1f, 0f)
+        val normais = byteArrayOf(127, 127, 0, 127, 127, 0, 127, 127, 0)
+        val uv = byteArrayOf(0, 0, 0xFF.toByte(), 0, 0, 0xFF.toByte())
+        val indices = shortArrayOf(0, 1, 2)
+        val bin = ByteArrayOutputStream()
+        val posOff = 0
+        val normalOff = pos.size * 4
+        val uvOff = normalOff + normais.size
+        val indexOff = uvOff + uv.size + 1 // alinhamento de 2 bytes para UNSIGNED_SHORT
+        bin.write(vetorF32(pos))
+        bin.write(normais)
+        bin.write(uv)
+        bin.write(0)
+        bin.write(vetorU16(indices))
+        val dados = bin.toByteArray()
+        val json = """
+        {
+          "asset": {"version": "2.0"},
+          "buffers": [{"byteLength": ${dados.size}}],
+          "bufferViews": [
+            {"buffer": 0, "byteOffset": $posOff, "byteLength": ${pos.size * 4}},
+            {"buffer": 0, "byteOffset": $normalOff, "byteLength": ${normais.size}},
+            {"buffer": 0, "byteOffset": $uvOff, "byteLength": ${uv.size}},
+            {"buffer": 0, "byteOffset": $indexOff, "byteLength": ${indices.size * 2}}
+          ],
+          "accessors": [
+            {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3"},
+            {"bufferView": 1, "componentType": 5120, "count": 3, "type": "VEC3", "normalized": true},
+            {"bufferView": 2, "componentType": 5121, "count": 3, "type": "VEC2", "normalized": true},
+            {"bufferView": 3, "componentType": 5123, "count": 3, "type": "SCALAR"}
+          ],
+          "meshes": [{"primitives": [{
+            "attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2},
+            "indices": 3, "mode": 4
+          }]}],
+          "nodes": [{"mesh": 0, "scale": [2, 1, 1]}],
+          "scenes": [{"nodes": [0]}],
+          "scene": 0
+        }
+        """.trimIndent()
+        return GltfImporter.empacotarGlb(json, dados)
+    }
+
+    /**
      * MALHA DENSA para a meta de compressão: N vértices numa espiral 3D
      * (POSITION f32 + NORMAL f32 + TEXCOORD_0 f32, índices u32 quando > 65535
      * vértices) — o .KERN quantizado precisa ficar menor que o glTF de origem.

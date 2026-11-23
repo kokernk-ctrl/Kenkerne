@@ -44,3 +44,7 @@ target_include_directories(kenkern PRIVATE
 # android: JNI helpers (libandroid) · log: __android_log_print (liblog).
 # O unwinder (_Unwind_Backtrace) mora na libc — sem link extra.
 target_link_libraries(kenkern android log)
+
+# O NDK r27 fixado ainda usa segmentos ELF de 4 KiB por padrão. Suportar
+# usuários Android com páginas de 16 KiB sem exigir atualizar a toolchain.
+target_link_options(kenkern PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")
