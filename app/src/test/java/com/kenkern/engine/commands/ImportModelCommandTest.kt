@@ -232,7 +232,11 @@ class ImportModelCommandTest {
             // O primeiro arquivo restaura; o segundo falha porque o diretório
             // de destino foi substituído por um arquivo.
             val bloqueio = File(raiz, "assets/models/origem")
-            bloqueio.parentFile.mkdirs()
+            if (bloqueio.isDirectory) {
+                // `origem` é uma raiz de assets preservada pelo comando no undo.
+                assertTrue("remover a raiz vazia para criar o bloqueio", bloqueio.delete())
+            }
+            assertFalse("caminho do bloqueio não pode continuar sendo diretório", bloqueio.exists())
             bloqueio.writeBytes(byteArrayOf(1))
             var lancou: ImportException? = null
             try {
