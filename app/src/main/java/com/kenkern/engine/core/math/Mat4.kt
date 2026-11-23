@@ -36,6 +36,8 @@ class Mat4 {
 
     /** Matriz de câmera look-at (column-major). Não aloca. */
     fun setLookAt(eye: Vec3, center: Vec3, up: Vec3): Mat4 {
+        val basis = lookScratch.get()!!
+        val sF = basis[0]; val sS = basis[1]; val sU = basis[2]
         sF.set(center).sub(eye).normalize()
         sS.cross(sF, up).normalize()
         sU.cross(sS, sF)
@@ -63,8 +65,9 @@ class Mat4 {
         return this
     }
 
-    /** this = a * b (column-major). Seguro para aliasing (usa scratch interno estático). */
+    /** this = a * b (column-major). Seguro para aliasing (usa scratch local à thread). */
     fun multiply(a: Mat4, b: Mat4): Mat4 {
+        val sTmp = productScratch.get()!!
         for (c in 0 until 4) {
             val b0 = b.m[c * 4]; val b1 = b.m[c * 4 + 1]; val b2 = b.m[c * 4 + 2]; val b3 = b.m[c * 4 + 3]
             sTmp[c * 4] = a.m[0] * b0 + a.m[4] * b1 + a.m[8] * b2 + a.m[12] * b3
@@ -77,9 +80,7 @@ class Mat4 {
     }
 
     companion object {
-        private val sTmp = FloatArray(16)
-        private val sF = Vec3()
-        private val sS = Vec3()
-        private val sU = Vec3()
+        private val productScratch = ThreadLocal.withInitial { FloatArray(16) }
+        private val lookScratch = ThreadLocal.withInitial { Array(3) { Vec3() } }
     }
 }

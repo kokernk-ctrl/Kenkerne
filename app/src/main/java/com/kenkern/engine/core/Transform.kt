@@ -58,6 +58,7 @@ class Transform {
         worldPosition.set(m[12], m[13], m[14])
         if (sx > 1e-9f && sy > 1e-9f && sz > 1e-9f) {
             // Column-major: R[row][col] = m[col*4+row]; cada coluna é dividida pela sua escala.
+            val sRot = rotationScratch.get()!!
             sRot.set(
                 m[0] / sx, m[4] / sy, m[8] / sz,
                 m[1] / sx, m[5] / sy, m[9] / sz,
@@ -70,7 +71,7 @@ class Transform {
     }
 
     companion object {
-        private val sRot = RotationFromMatrix()
+        private val rotationScratch = ThreadLocal.withInitial { RotationFromMatrix() }
     }
 }
 
