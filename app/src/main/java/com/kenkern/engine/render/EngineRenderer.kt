@@ -435,6 +435,7 @@ class EngineRenderer {
             }
             while (top > 0) {
                 val nick = nickStack[--top] ?: continue
+                if (emJogo && !nick.active) continue // pai inativo desativa a subárvore em Play
                 // REGRA "CENA = TELA": container sem malha (ex.: "Mundo") não
                 // desenha — tudo que aparece no viewport é Nick selecionável.
                 if (nick.active && nick.visible && MalhaNick.desenhavel(nick)) {
@@ -656,7 +657,7 @@ class EngineRenderer {
         }
 
         // Gizmo de eixos (1 draw call): rotação da view × escala, canto superior direito.
-        if (gizmoHandle != 0) {
+        if (!emJogo && gizmoHandle != 0) {
             gizmoRot.copyFrom(view)
             gizmoRot.m[12] = 0f; gizmoRot.m[13] = 0f; gizmoRot.m[14] = 0f
             gizmoMvp.multiply(gizmoScale, gizmoRot)

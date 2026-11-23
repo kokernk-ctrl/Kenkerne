@@ -84,7 +84,8 @@ object MalhaNick {
      * continua desenhando — a malha vence o tipo).
      */
     fun desenhavel(nick: Nick): Boolean =
-        !ehAuxiliar(nick) && (temMalha(nick) || nick.children.isEmpty())
+        temMalha(nick) || (!ehKindAuxiliar(nick.kind) && nick.kind != NickKindRegistry.NICK_GROUP &&
+            (nick.children.isEmpty() || nick.kind == "body.player" || nick.kind == "body.static"))
 
     /**
      * E5: o tipo representa algo INTANGÍVEL (sem geometria própria) e sem

@@ -14,12 +14,14 @@ import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.RotationFromMatrix
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.TransformSnapshot
+import com.kenkern.engine.core.serialization.CkFormat
 import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.core.math.Mat4
 import com.kenkern.engine.core.math.Quaternion
 import com.kenkern.engine.core.math.Vec3
 import com.kenkern.engine.engine.FixedStepLoop
+import com.kenkern.engine.engine.NickPlayRuntime
 import com.kenkern.engine.engine.PlayState
 import javax.microedition.khronos.egl.EGL10
 import javax.microedition.khronos.egl.EGLConfig
@@ -300,12 +302,25 @@ class KenkernSurfaceView(
     )
 
     private val glRenderer = KenkernGLRenderer()
+    @Volatile private var playMovement: Long = 0L
+    @Volatile private var requestedPlayState = PlayState.STOPPED
+
+    fun setPlayMovement(x: Float, z: Float) {
+        if (requestedPlayState != PlayState.PLAYING) return
+        playMovement = (x.toRawBits().toLong() shl 32) or (z.toRawBits().toLong() and 0xffffffffL)
+    }
+
     private val controls = object : EngineControls {
         override fun setPlayState(state: PlayState) {
-            queueEvent { loop.requestPlayState(state) }
+            requestedPlayState = state
+            if (state != PlayState.PLAYING) playMovement = 0L
+            queueEvent {
+                loop.requestPlayState(state)
+                if (state == PlayState.STOPPED) glRenderer.clearPlaySession()
+            }
         }
 
-        override fun currentPlayState(): PlayState = loop.playState
+        override fun currentPlayState(): PlayState = requestedPlayState
 
         override val maxTextureSize: Int
             get() = glRenderer.currentMaxTextureSize()
@@ -478,6 +493,7 @@ class KenkernSurfaceView(
 
     override fun onTouchEvent(event: MotionEvent?): Boolean {
         if (event == null) return false
+        if (requestedPlayState != PlayState.STOPPED) return true
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             onFirstTouch()
         }
@@ -988,16 +1004,49 @@ class KenkernSurfaceView(
                 .onFailure { KenkernLog.e(TAG, "resize($width, $height) falhou — viewport pode ficar com tamanho errado", it) }
         }
 
+        private var editorScene: Scene? = null
+        private var playScene: Scene? = null
+        private var playRuntime: NickPlayRuntime? = null
+        private var playCamera: NickPlayCamera? = null
+
+        fun clearPlaySession() {
+            editorScene = null
+            playScene = null
+            playRuntime = null
+            playCamera = null
+        }
+
+        private fun sceneForFrame(source: Scene?): Scene? {
+            if (loop.playState == PlayState.STOPPED || source == null) {
+                clearPlaySession()
+                return source
+            }
+            if (editorScene !== source) {
+                editorScene = source
+                // Uma cópia por sessão; Play nunca altera a cena editável ou o autosave.
+                val copy = CkFormat.parseToNewScene(CkFormat.writeToString(source), source.name)
+                playScene = copy
+                playRuntime = copy?.let { NickPlayRuntime(it) }
+                copy?.updateWorldTransforms()
+                playCamera = playRuntime?.let { NickPlayCamera(it.player, it.followCamera, it.basicCamera) }
+            }
+            return playScene
+        }
+
         override fun onDrawFrame(gl: javax.microedition.khronos.opengles.GL10?) {
             try {
-                val scene = sceneProvider()
+                val scene = sceneForFrame(sceneProvider())
                 // Instrumentação: ms de update (timestep fixo + world transforms).
                 val updateStart = System.nanoTime()
                 loop.tick(System.nanoTime()) { dt ->
                     scene?.updateFunctions(dt, loop.engineTime)
+                    val move = playMovement
+                    playRuntime?.step(dt, Float.fromBits((move ushr 32).toInt()), Float.fromBits(move.toInt()))
                 }
                 // Matrizes de mundo sempre atualizadas (mesmo pausado, o Inspetor edita transform).
                 scene?.updateWorldTransforms()
+                val gameCamera = playCamera
+                gameCamera?.update()
                 engineRenderer.reportUpdateMs((System.nanoTime() - updateStart) * 1e-6f)
                 if (surfaceReady) {
                     // E5: estado dos AUXILIARES DE EDITOR lido por frame (thread GL):
@@ -1008,7 +1057,7 @@ class KenkernSurfaceView(
                     if (pickPending) {
                         pickPending = false
                         val s = scene
-                        if (s != null && s.roots.isNotEmpty()) {
+                        if (!engineRenderer.emJogo && s != null && s.roots.isNotEmpty()) {
                             val rw = backend.viewportWidth
                             val rh = backend.viewportHeight.coerceAtLeast(1)
                             val aspect = rw.toFloat() / rh.toFloat()
@@ -1031,11 +1080,13 @@ class KenkernSurfaceView(
                     if (focusPending) {
                         focusPending = false
                         val s = scene
-                        if (s != null) runCatching { applyFocus(s) }
+                        if (!engineRenderer.emJogo && s != null) runCatching { applyFocus(s) }
                             .onFailure { KenkernLog.w(TAG, "foco de câmera falhou", it) }
                     }
                     engineRenderer.renderFrame(
-                        backend, scene, camera, loop.engineTime, selectionProvider(), gizmoState
+                        backend, scene,
+                        if (gameCamera?.active == true) gameCamera.camera else camera,
+                        loop.engineTime, if (engineRenderer.emJogo) null else selectionProvider(), gizmoState
                     )
                     // Publicação de debug (overlay de toque): alças em px de
                     // framebuffer + tamanho do render. Só quando o overlay está ON.

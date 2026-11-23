@@ -155,11 +155,5 @@ class Scene(var name: String = "Cena") {
         }
     }
 
-    fun resetFunctionState() {
-        sScratch.clear()
-    }
-
-    companion object {
-        private val sScratch = ArrayList<Nick>()
-    }
+    private val sScratch = ArrayList<Nick>()
 }

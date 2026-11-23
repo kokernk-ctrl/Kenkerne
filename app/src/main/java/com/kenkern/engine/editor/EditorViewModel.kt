@@ -530,7 +530,6 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         playState.value = state
         engineControls?.setPlayState(state)
         if (state == PlayState.STOPPED) {
-            sceneRef?.resetFunctionState()
             bump()
         }
     }

@@ -148,6 +148,15 @@ object NickKindCatalog {
                 group = NickKindGroup.CAMERA, iconKey = "camera.basic"
             )
         )
+        NickKindRegistry.register(
+            NickKind(
+                key = "camera.follow", labelEn = "Follow Camera Nick", labelPt = "Nick de Câmera Seguidora",
+                descEn = "Follows the active player in Play using its starting offset",
+                descPt = "Segue o jogador ativo em Play usando a distância e posição iniciais",
+                group = NickKindGroup.CAMERA, iconKey = "camera.follow"
+            )
+        )
+
         // ---------------- CORPOS ----------------
         NickKindRegistry.register(
             NickKind(

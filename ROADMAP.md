@@ -46,6 +46,10 @@ Status: `FEITA` (TODOS os itens de aceite implementados + tag `fase-N-ok` public
 
 ## Ordem de execução (adendo v4 — atualizada 2026-11-22)
 
+**Prioridade acordada depois do teste da resolução de texturas:** antecipar o
+primeiro recorte jogável do M1 (jogador, surgimento, colisão e câmera). O PBR
+completo de T0.4 e o Hub de T0.5 continuam no backlog.
+
 0. **v0.1.17** — FEITA (Release `v0.1.17-fase2-teste`: bugs A/B do aparelho +
    núcleo nativo C++ com etcpak e meshoptimizer; aguardando aceite no aparelho).
 1. **BLOCO 0 (produto)** — uma tarefa por commit, CI verde, paradas para o

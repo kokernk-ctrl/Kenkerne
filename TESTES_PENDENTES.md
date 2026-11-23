@@ -1,5 +1,30 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## Marco Jogável (M1) — Jogador, surgimento, colisão e câmera
+
+Num projeto novo, cria estes Nicks **na raiz**, ajustando posição e escala
+no Inspetor. Remove ou afasta o cubo inicial para não confundir com o jogador.
+
+| Nick | Posição (X, Y, Z) | Escala (X, Y, Z) |
+|---|---|---|
+| Corpo Estático (chão) | `0, -0.5, 0` | `14, 1, 14` |
+| Corpo Estático (parede) | `2, 1, 0` | `1, 2, 8` |
+| Corpo de Jogador | `-3, 0.5, 0` | `1, 1, 1` |
+| Ponto de Surgimento | `0, 2, 0` | `1, 1, 1` |
+| Câmera Seguidora | `0, 5, 6` | `1, 1, 1` |
+
+1. Em **Play**, o jogador nasce no marcador e cai até ao chão, sem atravessá-lo.
+   A câmera segue o jogador e o joystick de jogo aparece, em vez do de voo.
+   Em tela estreita, recolhe Hierarquia e Inspetor se cobrirem o viewport.
+2. Move para a direita: o jogador para junto à parede; ao soltar o joystick,
+   não continua a andar. Pausar congela a simulação e retomar não retoma um
+   toque antigo.
+3. Em **Stop**, confirma a posição original do jogador e a câmera do editor.
+   Ao carregar em **Play** novamente, o jogador volta ao ponto de surgimento.
+4. Para testar a câmera fixa, desativa a seguidora. Cria um **Nick de Câmera**
+   com posição `0, 2, 7` e rotação zero; o enquadramento deve ficar parado
+   enquanto o jogador anda.
+
 ## T0.4 — Resolução de texturas na importação (parcial; teste principal validado no aparelho)
 
 > O usuário aprovou o teste com o mesmo GLB em 512 e em Original e a

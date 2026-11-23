@@ -110,6 +110,7 @@ import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.engine.PlayState
+import com.kenkern.engine.core.Nick
 import com.kenkern.engine.render.CameraMode
 import com.kenkern.engine.render.GizmoHandle
 import com.kenkern.engine.render.GizmoMode
@@ -167,6 +168,15 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     // remember = grava 1x por composição, não a cada recomposição.
     remember { BootTrace.mark("EditorScreen composto") }
     var surfaceView by remember { mutableStateOf<KenkernSurfaceView?>(null) }
+    val sceneRevision = vm.revision.intValue
+    val hasActivePlayer = remember(vm.scene.value, sceneRevision) {
+        fun Nick.hasActivePlayerInSubtree(ancestorsActive: Boolean): Boolean {
+            val activePath = ancestorsActive && active
+            if (activePath && kind == "body.player") return true
+            return children.any { it.hasActivePlayerInSubtree(activePath) }
+        }
+        vm.scene.value?.roots?.any { it.hasActivePlayerInSubtree(true) } == true
+    }
     var resolutionScale by remember { mutableStateOf(1f) }
     var fpsTick by remember { mutableStateOf(0) }
     var hintVisible by remember { mutableStateOf(!ViewportSession.gestureHintDismissed) }
@@ -370,7 +380,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                         }
 
                         // Dica de controle do viewport: some no 1º toque e não volta na sessão.
-                        if (hintVisible) {
+                        if (hintVisible && vm.playState.value == PlayState.STOPPED) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
@@ -395,8 +405,36 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                         // botões ficam por baixo do painel e não podem reagir a toques
                         // que eram para a janela.
                         val svForFlight = surfaceView
-                        if (cameraMode == CameraMode.FLIGHT && svForFlight != null && !addNickVisivel) {
+                        if (cameraMode == CameraMode.FLIGHT &&
+                            vm.playState.value == PlayState.STOPPED &&
+                            svForFlight != null && !addNickVisivel
+                        ) {
                             FlightControls(svForFlight)
+                        }
+
+                        // The viewport already sits inside the root safe-drawing
+                        // area. Keep this control out of panel overlays; on narrow
+                        // layouts the docked panels cover the viewport itself.
+                        val floatingPanelCoversViewport =
+                            (hShown && !hierarchy.docked.value) ||
+                                (iShown && !inspector.docked.value)
+                        val narrowDockCoversViewport = !wide &&
+                            ((hShown && hierarchy.docked.value) ||
+                                (iShown && inspector.docked.value))
+                        val svForPlay = surfaceView
+                        if (vm.playState.value == PlayState.PLAYING &&
+                            hasActivePlayer &&
+                            !addNickVisivel &&
+                            !floatingPanelCoversViewport &&
+                            !narrowDockCoversViewport &&
+                            svForPlay != null
+                        ) {
+                            PlayJoystick(
+                                sv = svForPlay,
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(start = 12.dp, bottom = 12.dp)
+                            )
                         }
 
                         // Telas estreitas: painel "acoplado" vira overlay de lateral

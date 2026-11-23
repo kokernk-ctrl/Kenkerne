@@ -83,6 +83,7 @@
     <string name="editor_up">Subir</string>
     <string name="editor_down">Descer</string>
     <string name="editor_speed">%1$.1f m/s</string>
+    <string name="play_joystick_move">JOGADOR · MOVER</string>
 
     <!-- ===================== Import dialogs ===================== -->
     <string name="import_title">Importar modelo</string>

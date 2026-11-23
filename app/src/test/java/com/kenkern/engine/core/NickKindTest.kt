@@ -30,11 +30,11 @@ class NickKindTest {
     }
 
     @Test
-    fun `catalogo inicial tem os 17 tipos com rotulos nos dois idiomas`() {
+    fun `catalogo tem os 18 tipos com rotulos nos dois idiomas`() {
         val esperados = setOf(
             "nick.empty", "nick.group", "nick.mesh",
             "light.directional", "light.point", "light.spot",
-            "camera.basic",
+            "camera.basic", "camera.follow",
             "body.static", "body.rigid", "body.collider", "body.character",
             "body.player", "body.enemy", "body.npc",
             "area.volume", "area.signal", "area.spawn"

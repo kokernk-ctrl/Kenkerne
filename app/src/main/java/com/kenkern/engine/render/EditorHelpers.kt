@@ -40,7 +40,7 @@ object EditorHelpers {
         "light.directional" -> FORMA_SETA
         "light.point" -> FORMA_ESFERA
         "light.spot" -> FORMA_CONE
-        "camera.basic" -> FORMA_PIRAMIDE
+        "camera.basic", "camera.follow" -> FORMA_PIRAMIDE
         "area.volume" -> FORMA_CAIXA
         else -> FORMA_DIAMANTE // area.spawn, area.signal, nick.empty, …
     }

@@ -6,6 +6,9 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
+- **Prioridade atual — M1**: primeiro teste jogável com jogador, surgimento,
+  chão/parede, joystick de teste e câmera. Ver o catálogo `NICKS.md` e o roteiro
+  em `TESTES_PENDENTES.md`. PBR completo e Hub novo ficam pendentes.
 - **T0.4 parcial — resolução de texturas**: opção Original, redução proporcional
   e cache por resolução efetiva e qualidade ETC2. O usuário aprovou no aparelho
   a comparação 512 × Original e a reabertura do projeto. O PBR completo segue pendente.
