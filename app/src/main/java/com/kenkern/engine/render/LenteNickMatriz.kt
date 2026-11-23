@@ -145,6 +145,8 @@ object LenteNickMatriz {
         return true
     }
 
+
+
     private val sEye = com.kenkern.engine.core.math.Vec3()
     private val sFwd = com.kenkern.engine.core.math.Vec3()
     private val sCenter = com.kenkern.engine.core.math.Vec3()

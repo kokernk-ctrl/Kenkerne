@@ -155,7 +155,8 @@ class Diagnostico(private val appContext: Context) {
         Checagem("glcaps", "Capacidades GL (versão/extensões/compute)"),
         Checagem("memoria", "Limites de memória do aparelho"),
         Checagem("release", "Release minificado — classes críticas + operações mínimas"),
-        Checagem("layout", "Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável")
+        Checagem("layout", "Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável"),
+        Checagem("joystick", "Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)")
     )
 
     /**
@@ -181,7 +182,7 @@ class Diagnostico(private val appContext: Context) {
      */
     suspend fun executar(onAtualiza: (Checagem) -> Unit) {
         cancelado = false
-        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "materiais", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout")
+        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "materiais", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout", "joystick")
         val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "luz", "astc")
         // E2: ids já FINALIZADAS nesta rodada — no cancel, só o que NÃO rodou vira
         // CANCELADA (aprovadas/falhas anteriores permanecem com o resultado delas).
@@ -294,6 +295,7 @@ class Diagnostico(private val appContext: Context) {
                             "memoria" -> checarMemoria(c)
                             "release" -> checarRelease(c)
                             "layout" -> checarLayout(c)
+                            "joystick" -> checarJoystick(c)
                         }
                     }.onFailure {
                         c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
@@ -2183,6 +2185,44 @@ class Diagnostico(private val appContext: Context) {
             val nomes = quebrados.joinToString(", ") { it.passo }
             c.falhou("$ok/${resultados.size} passos OK — falha em [$nomes]: $primeiroErro")
             KenkernLog.e(TAG, "fumaça do release falhou nos passos: $nomes", null)
+        }
+    }
+
+    /**
+     * Checagem "joystick" (M1.3, v0.1.22) — matemática do INPUT DE TELA
+     * (InputJogo, pura): normalização no círculo unitário, zona morta ZERO
+     * dentro e CONTÍNUA na borda (re-normalização), curva de resposta
+     * crescente, TRAVAR EM 8 DIREÇÕES (45°) e borda de 1 tick dos botões.
+     * Os toques sintéticos são entradas da matemática (a mesma que a UI usa).
+     */
+    private fun checarJoystick(c: Checagem) {
+        val saida = FloatArray(2)
+        val problemas = ArrayList<String>(4)
+        com.kenkern.engine.engine.InputJogo.aplicar(10f, 0f, 1f, 0f, false, saida)
+        if (kotlin.math.abs(saida[0] - 1f) > 1e-3 || kotlin.math.abs(saida[1]) > 1e-3) {
+            problemas.add("normalização: (${saida[0]}, ${saida[1]}) ≠ (1, 0)")
+        }
+        com.kenkern.engine.engine.InputJogo.aplicar(0.05f, 0f, 1f, 0.2f, false, saida)
+        if (saida[0] != 0f || saida[1] != 0f) {
+            problemas.add("zona morta não zerou: (${saida[0]}, ${saida[1]})")
+        }
+        com.kenkern.engine.engine.InputJogo.aplicar(1f, 0.577f, 1f, 0f, true, saida)
+        if (kotlin.math.abs(kotlin.math.abs(saida[0]) - kotlin.math.abs(saida[1])) > 0.02f) {
+            problemas.add("8 direções: 30° não travou em 45° (${saida[0]}, ${saida[1]})")
+        }
+        if (!(com.kenkern.engine.engine.InputJogo.curva(0.1f) < com.kenkern.engine.engine.InputJogo.curva(0.5f))) {
+            problemas.add("curva de resposta não é crescente")
+        }
+        if (com.kenkern.engine.engine.InputJogo.bordaDePressao(true, true)) {
+            problemas.add("borda de pressão disparou segurando o botão")
+        }
+        if (problemas.isEmpty()) {
+            c.aprovado(
+                "normalização no círculo unitário · zona morta contínua (re-normalizada) · " +
+                    "8 direções (45°) · curva v^1,5 · borda de 1 tick nos botões (InputJogo, mesma matemática da tela)"
+            )
+        } else {
+            c.falhou(problemas.joinToString("; "))
         }
     }
 }

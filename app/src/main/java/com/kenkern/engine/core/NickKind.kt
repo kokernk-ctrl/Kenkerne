@@ -162,6 +162,17 @@ object NickKindCatalog {
             )
         )
 
+        // ---------------- UI (TELAR) ----------------
+        NickKindRegistry.register(
+            NickKind(
+                key = "ui.joystick", labelEn = "Joystick Nick", labelPt = "Nick de Joystick",
+                descEn = "On-screen joystick: fixed/floating/dynamic, size, deadzone",
+                descPt = "Joystick de tela: fixo/flutuante/dinâmico, tamanho, zona morta",
+                group = NickKindGroup.UI, iconKey = "nick.empty",
+                defaultClasses = listOf("Joystick")
+            )
+        )
+
         // ---------------- CORPOS ----------------
         NickKindRegistry.register(
             NickKind(

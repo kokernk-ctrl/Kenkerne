@@ -184,6 +184,25 @@ object KenkernBuiltInClasses {
                 categoria = "logica"
             )
         )
+        // M1.3 (v0.1.22): classe JOYSTICK do Nick de joystick de tela — tipo
+        // (fixo/flutuante/dinâmico), tamanho, opacidade, zona morta, 8 direções,
+        // campo "Controla" (Player Body Nick) e modo "Seguir Nick".
+        NickClassRegistry.register(
+            NickClassDefinition(
+                "Joystick",
+                "Joystick de tela (tipo, tamanho, opacidade, zona morta, controla)",
+                listOf(
+                    NickFieldDefinition("tipo", "STRING", NickValue.StringValue("fixo")),
+                    NickFieldDefinition("tamanho", "FLOAT", NickValue.FloatValue(112f)),
+                    NickFieldDefinition("opacidade", "FLOAT", NickValue.FloatValue(0.9f)),
+                    NickFieldDefinition("zonaMorta", "FLOAT", NickValue.FloatValue(0.15f)),
+                    NickFieldDefinition("oitoDirecoes", "BOOL", NickValue.BoolValue(false)),
+                    NickFieldDefinition("controla", "STRING", NickValue.StringValue("")),
+                    NickFieldDefinition("seguirNick", "BOOL", NickValue.BoolValue(false))
+                ),
+                categoria = "movimento"
+            )
+        )
         NickFunctionRegistry.register(SpinFunction)
         NickFunctionRegistry.register(BobFunction)
     }

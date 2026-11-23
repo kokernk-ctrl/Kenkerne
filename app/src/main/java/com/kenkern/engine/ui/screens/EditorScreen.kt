@@ -86,6 +86,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -507,11 +508,19 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             !narrowDockCoversViewport &&
                             svForPlay != null
                         ) {
-                            PlayJoystick(
+                            // M1.3: JOYSTICK NICK editável — o 1º ui.joystick ATIVO
+                            // configura tamanho/opacidade/zona morta/8 direções/tipo;
+                            // sem joystick na cena, usa o de teste padrão.
+                            val cfg = remember(vm.scene.value, sceneRevision) {
+                                com.kenkern.engine.ui.screens.JoystickUiConfig.de(vm.scene.value)
+                            }
+                            val estadoInput = remember { com.kenkern.engine.engine.EstadoInputJogo() }
+                            LaunchedEffect(estadoInput, svForPlay) { svForPlay.estadoInput = estadoInput }
+                            PlayControles(
                                 sv = svForPlay,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(start = 12.dp, bottom = 12.dp)
+                                estado = estadoInput,
+                                cfg = cfg,
+                                modifier = Modifier.fillMaxSize()
                             )
                         }
 
@@ -1598,6 +1607,227 @@ private fun FlightHoldButton(
             tint = KenkernTextHigh,
             modifier = Modifier.size(26.dp)
         )
+    }
+}
+
+// ===================== Controles de jogo (M1.3, v0.1.22) =====================
+
+/**
+ * Configuração LIDA do 1º Nick de joystick (ui.joystick) ativo na cena —
+ * tipo (fixo/flutuante/dinâmico), tamanho, opacidade, zona morta, 8 direções
+ * e o campo "Controla" (Player Body Nick). Leitura DEFENSIVA (Nick antigo sem
+ * classe = defaults). Multitoque: joystick e botões são áreas SEPARADAS.
+ */
+data class JoystickUiConfig(
+    val tipo: String,
+    val tamanhoDp: Float,
+    val opacidade: Float,
+    val zonaMorta: Float,
+    val oitoDirecoes: Boolean,
+    val seguirNick: Boolean
+) {
+    companion object {
+        val PADRAO = JoystickUiConfig("fixo", 112f, 0.9f, 0.15f, false, false)
+
+        fun de(scene: com.kenkern.engine.core.Scene?): JoystickUiConfig {
+            if (scene == null) return PADRAO
+            val pilha = ArrayList<com.kenkern.engine.core.Nick>(16)
+            for (r in scene.roots) pilha.add(r)
+            var head = 0
+            while (head < pilha.size) {
+                val n = pilha[head++]
+                if (n.active && n.kind == "ui.joystick") {
+                    val inst = n.findClassInstance("Joystick")
+                    if (inst != null) {
+                        return JoystickUiConfig(
+                            tipo = inst.getString("tipo", "fixo"),
+                            tamanhoDp = inst.getFloat("tamanho", 112f).coerceIn(64f, 200f),
+                            opacidade = inst.getFloat("opacidade", 0.9f).coerceIn(0.15f, 1f),
+                            zonaMorta = inst.getFloat("zonaMorta", 0.15f).coerceIn(0f, 0.9f),
+                            oitoDirecoes = inst.getBool("oitoDirecoes", false),
+                            seguirNick = inst.getBool("seguirNick", false)
+                        )
+                    }
+                }
+                for (c in n.children) pilha.add(c)
+            }
+            return PADRAO
+        }
+    }
+}
+
+/**
+ * M1.3 (v0.1.22): CONTROLES DE JOGO em Play — joystick de tela (configuração
+ * do Nick) + BOTÕES DE AÇÃO (Pular/Atacar), com AÇÕES NOMEADAS no
+ * [EstadoInputJogo]. MULTITOQUE REAL: joystick e cada botão são áreas de
+ * pointerInput SEPARADAS (dois dedos simultâneos funcionam); a matemática
+ * (normalização/zona morta/8 direções) é o [InputJogo] puro e testado.
+ */
+@Composable
+internal fun PlayControles(
+    sv: KenkernSurfaceView,
+    estado: com.kenkern.engine.engine.EstadoInputJogo,
+    cfg: JoystickUiConfig,
+    modifier: Modifier = Modifier
+) {
+    val knob = remember { mutableStateOf(Offset.Zero) }
+    val centroBase = remember { mutableStateOf(Offset.Zero) }
+
+    DisposableEffect(sv) {
+        onDispose {
+            knob.value = Offset.Zero
+            estado.resetar()
+            sv.setPlayMovement(0f, 0f)
+        }
+    }
+
+    Box(modifier) {
+        // ---------- JOYSTICK (canto inferior esquerdo) ----------
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 12.dp, bottom = 12.dp)
+        ) {
+            androidx.compose.material3.Text(
+                text = stringResource(R.string.play_joystick_move),
+                color = KenkernTextHigh,
+                style = androidx.compose.material3.MaterialTheme.typography.labelSmall
+            )
+            Box(
+                modifier = Modifier
+                    .size(cfg.tamanhoDp.dp)
+                    .clip(CircleShape)
+                    .graphicsLayer { alpha = cfg.opacidade }
+                    .background(KenkernSurfaceOverlay.copy(alpha = 0.82f))
+                    .pointerInput(cfg, estado) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            fun aplicar(position: Offset) {
+                                val centro = if (cfg.tipo == "fixo") {
+                                    centroBase.value
+                                } else {
+                                    // flutuante/dinâmico: o centro NASCE no toque
+                                    centroBase.value = position
+                                    position
+                                }
+                                val raioMax = size.width * 0.27f
+                                val saida = FloatArray(2)
+                                com.kenkern.engine.engine.InputJogo.aplicar(
+                                    position.x - centro.x, position.y - centro.y,
+                                    raioMax, cfg.zonaMorta, cfg.oitoDirecoes, saida
+                                )
+                                estado.moverX = saida[0]
+                                estado.moverY = saida[1]
+                                val delta = position - centro
+                                val len = delta.getDistance()
+                                knob.value = if (len > raioMax && len > 0f) delta * (raioMax / len) else delta
+                            }
+                            try {
+                                centroBase.value = centerNoBox(size)
+                                aplicar(down.position)
+                                down.consume()
+                                while (true) {
+                                    val ev = awaitPointerEvent()
+                                    val mudanca = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (!mudanca.pressed) break
+                                    aplicar(mudanca.position)
+                                    mudanca.consume()
+                                }
+                            } finally {
+                                knob.value = Offset.Zero
+                                estado.moverX = 0f
+                                estado.moverY = 0f
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(Modifier.size(cfg.tamanhoDp.dp - 8.dp)) {
+                    val centro = Offset(size.width / 2f, size.height / 2f)
+                    drawCircle(
+                        color = KenkernAmber.copy(alpha = 0.55f),
+                        radius = size.minDimension * 0.47f,
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+                    drawCircle(
+                        color = KenkernAmber.copy(alpha = 0.22f),
+                        radius = size.minDimension * 0.25f,
+                        style = Stroke(width = 1.dp.toPx())
+                    )
+                    drawLine(
+                        color = KenkernAmber.copy(alpha = 0.24f),
+                        start = Offset(centro.x - size.width * 0.34f, centro.y),
+                        end = Offset(centro.x + size.width * 0.34f, centro.y),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                    drawLine(
+                        color = KenkernAmber.copy(alpha = 0.24f),
+                        start = Offset(centro.x, centro.y - size.height * 0.34f),
+                        end = Offset(centro.x, centro.y + size.height * 0.34f),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                }
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .graphicsLayer {
+                            translationX = knob.value.x
+                            translationY = knob.value.y
+                        }
+                        .clip(CircleShape)
+                        .background(KenkernAmber.copy(alpha = 0.92f))
+                )
+            }
+        }
+
+        // ---------- BOTÕES DE AÇÃO (canto inferior direito; dedo separado) ----------
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 12.dp, bottom = 12.dp)
+        ) {
+            BotaoAcao(stringResource(R.string.play_atacar)) { pressionado ->
+                estado.atacarPressionado = pressionado
+            }
+            BotaoAcao(stringResource(R.string.play_pular)) { pressionado ->
+                estado.pularPressionado = pressionado
+            }
+        }
+    }
+}
+
+private fun centerNoBox(size: androidx.compose.ui.unit.IntSize): Offset =
+    Offset(size.width / 2f, size.height / 2f)
+
+/** Botão de ação circular 56dp (alvo de toque ≥ 48dp) com borda de pressão. */
+@Composable
+private fun BotaoAcao(rotulo: String, onPressao: (Boolean) -> Unit) {
+    var pressionado by remember { mutableStateOf(false) }
+    Box(
+        Modifier
+            .size(56.dp)
+            .clip(CircleShape)
+            .background(
+                if (pressionado) KenkernOutline
+                else KenkernSurfaceOverlay.copy(alpha = 0.82f)
+            )
+            .pointerInput(rotulo) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    pressionado = true
+                    onPressao(true)
+                    waitForUpOrCancellation()
+                    pressionado = false
+                    onPressao(false)
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(rotulo, fontSize = 12.sp, color = KenkernTextHigh)
     }
 }
 

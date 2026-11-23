@@ -35,6 +35,15 @@ class NickPlayRuntime(private val scene: Scene) {
      */
     var scripts: NickLuaScripts? = null
 
+    /** M1.3: input de jogo (pulo com borda de 1 tick). */
+    private var pedirPulo = false
+    private var apoiado = false
+
+    /** M1.3: botão PULAR (borda) — consumido no próximo step com o jogador apoiado. */
+    fun pular() {
+        pedirPulo = true
+    }
+
     private val traversal = ArrayList<Nick>()
     private val playerLocalCenter = FloatArray(3)
     private val playerLocalHalf = FloatArray(3)
@@ -105,12 +114,18 @@ class NickPlayRuntime(private val scene: Scene) {
         val deltaTime = dt.coerceAtMost(MAX_STEP_SECONDS)
         val dx = x * PLAYER_SPEED * deltaTime
         val dz = z * PLAYER_SPEED * deltaTime
+        // M1.3: PULO — impulso único quando apoiado (borda consumida 1×).
+        if (pedirPulo) {
+            pedirPulo = false
+            if (apoiado) verticalVelocity = VELOCIDADE_PULO
+        }
         verticalVelocity = (verticalVelocity - GRAVITY * deltaTime).coerceAtLeast(-TERMINAL_VELOCITY)
         val dy = verticalVelocity * deltaTime
 
         moveAxis(AXIS_X, dx)
         moveAxis(AXIS_Z, dz)
         val movedY = moveAxis(AXIS_Y, dy)
+        apoiado = dy < 0f && movedY > dy + COLLISION_EPSILON // parou ao CAIR = no chão
         if ((dy < 0f && movedY > dy + COLLISION_EPSILON) ||
             (dy > 0f && movedY < dy - COLLISION_EPSILON)
         ) verticalVelocity = 0f
@@ -434,6 +449,8 @@ class NickPlayRuntime(private val scene: Scene) {
     companion object {
         private const val PLAYER_SPEED = 4f
         private const val GRAVITY = 20f
+        /** M1.3: impulso do pulo (m/s) — pulo de ~1,6 m com gravidade 20. */
+        private const val VELOCIDADE_PULO = 8f
         private const val TERMINAL_VELOCITY = 50f
         private const val MAX_STEP_SECONDS = 0.25f
         private const val COLLISION_EPSILON = 1e-5f

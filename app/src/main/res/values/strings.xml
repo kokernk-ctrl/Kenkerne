@@ -182,6 +182,8 @@
     <string name="hub_shortcut_animar">Animate</string>
     <string name="hub_shortcut_texturizar">Texture</string>
 
+    <string name="play_pular">Jump</string>
+    <string name="play_atacar">Attack</string>
     <!-- ===================== Luz do LUME (H2) ===================== -->
     <string name="light_section">Light</string>
     <string name="light_on">On</string>

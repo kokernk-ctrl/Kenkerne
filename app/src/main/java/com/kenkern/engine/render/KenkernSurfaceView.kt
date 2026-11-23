@@ -306,6 +306,14 @@ class KenkernSurfaceView(
     @Volatile private var playMovement: Long = 0L
     @Volatile private var requestedPlayState = PlayState.STOPPED
 
+    /**
+     * M1.3: ESTADO DO INPUT DE JOGO (escrito pela UI — joystick de tela e
+     * botões de ação; lido pelo thread GL por tick). Null = input antigo
+     * (playMovement) continua funcionando para compatibilidade.
+     */
+    @Volatile
+    var estadoInput: com.kenkern.engine.engine.EstadoInputJogo? = null
+
     fun setPlayMovement(x: Float, z: Float) {
         if (requestedPlayState != PlayState.PLAYING) return
         playMovement = (x.toRawBits().toLong() shl 32) or (z.toRawBits().toLong() and 0xffffffffL)
@@ -1070,6 +1078,7 @@ class KenkernSurfaceView(
                 // "Script"; o runtime de física usa a ponte para os eventos
                 // on_collision/on_trigger.
                 playScripts = copy?.let { c -> NickLuaScripts(c).also { s -> s.iniciarTodos() } }
+                playScripts?.estadoInput = estadoInput
                 playRuntime?.scripts = playScripts
             }
             return playScene
@@ -1148,8 +1157,16 @@ class KenkernSurfaceView(
                 val updateStart = System.nanoTime()
                 loop.tick(System.nanoTime()) { dt ->
                     scene?.updateFunctions(dt, loop.engineTime)
+                    val inp = estadoInput
                     val move = playMovement
-                    playRuntime?.step(dt, Float.fromBits((move ushr 32).toInt()), Float.fromBits(move.toInt()))
+                    if (inp != null) {
+                        // M1.3: input de jogo (joystick de tela + botões de ação)
+                        playRuntime?.step(dt, inp.moverX, inp.moverY)
+                        if (inp.pularBorda) playRuntime?.pular()
+                        inp.fimDoTick()
+                    } else {
+                        playRuntime?.step(dt, Float.fromBits((move ushr 32).toInt()), Float.fromBits(move.toInt()))
+                    }
                     // M1.1: on_update(dt) dos scripts Lua (erro desativa o script,
                     // não o jogo; orçamento de tempo + limite de instruções).
                     playScripts?.atualizar(dt)

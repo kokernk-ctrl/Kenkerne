@@ -13,6 +13,7 @@ import org.luaj.vm2.LuaValue
 import org.luaj.vm2.Varargs
 import org.luaj.vm2.lib.LibFunction
 import org.luaj.vm2.lib.VarArgFunction
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 /**
@@ -38,6 +39,14 @@ import kotlin.math.sqrt
  *   engine.time() → segundos desde o início do Play
  */
 class NickLuaScripts(private val scene: Scene) {
+
+    /**
+     * M1.3: estado do INPUT DE JOGO (setado pelo SurfaceView na abertura do
+     * Play) — exposto ao Lua como `input.joystick()` e `input.acao(nome)`.
+     */
+    var estadoInput: EstadoInputJogo? = null
+
+
 
     class Instancia(
         val nick: Nick,
@@ -205,6 +214,30 @@ class NickLuaScripts(private val scene: Scene) {
             override fun call(): LuaValue = LuaValue.valueOf(tempoSegundos.toDouble())
         })
         runtime.instalarTabela("engine", engine)
+
+        // ---------- input (M1.3) ----------
+        val input = LuaTable()
+        input.set("joystick", object : LibFunction() {
+            override fun call(): LuaValue {
+                val e = estadoInput
+                val t = LuaTable()
+                t.set("x", LuaValue.valueOf(e?.moverX?.toDouble() ?: 0.0))
+                t.set("y", LuaValue.valueOf(e?.moverY?.toDouble() ?: 0.0))
+                t.set("ativo", LuaValue.valueOf(e != null && (abs(e.moverX) > 1e-4 || abs(e.moverY) > 1e-4)))
+                return t
+            }
+        })
+        input.set("acao", object : VarArgFunction() {
+            override fun invoke(args: Varargs): LuaValue {
+                val e = estadoInput ?: return LuaValue.FALSE
+                return when (args.arg1().optjstring("")) {
+                    "pular" -> LuaValue.valueOf(e.pularPressionado)
+                    "atacar" -> LuaValue.valueOf(e.atacarPressionado)
+                    else -> LuaValue.FALSE
+                }
+            }
+        })
+        runtime.instalarTabela("input", input)
     }
 
     /**
