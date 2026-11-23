@@ -10,6 +10,17 @@ class GeometrySubmission {
     var grupoOffset: Int = -1   // ≥ 0 = sub-range com textura (grupo de material)
     var grupoCount: Int = 0
     var texturaHandle: Int = 0
+    // T0.4 (v0.1.20): MATERIAL PBR (mapas + fatores — o shader usa o que existir)
+    var normalHandle: Int = 0
+    var normalScale: Float = 1f
+    var mrHandle: Int = 0
+    var metalFactor: Float = 0f
+    var roughFactor: Float = 1f
+    var aoHandle: Int = 0
+    var aoStrength: Float = 1f
+    var emissiveHandle: Int = 0
+    var emissiveR: Float = 0f; var emissiveG: Float = 0f; var emissiveB: Float = 0f
+    var emissiveIntensity: Float = 1f
     val model = Mat4()
 }
 
@@ -31,6 +42,23 @@ interface GeometryPipeline {
         meshHandle: Int, indexOffset: Int, indexCount: Int, textureHandle: Int,
         model: Mat4, r: Float, g: Float, b: Float, a: Float
     )
+
+    /**
+     * T0.4 (v0.1.20): grupo de material com o PBR COMPLETO — mapas (handle 0 =
+     * usa o fator) + fatores; pré-alocado nos slots, zero alocação por frame.
+     */
+    fun submitGroupPBR(
+        meshHandle: Int, indexOffset: Int, indexCount: Int, textureHandle: Int,
+        model: Mat4, r: Float, g: Float, b: Float, a: Float,
+        normalHandle: Int, normalScale: Float,
+        mrHandle: Int, metalFactor: Float, roughFactor: Float,
+        aoHandle: Int, aoStrength: Float,
+        emissiveHandle: Int, emissiveR: Float, emissiveG: Float, emissiveB: Float,
+        emissiveIntensity: Float
+    ) {
+        // Compatibilidade: backends que não implementam caem no grupo simples.
+        submitGroup(meshHandle, indexOffset, indexCount, textureHandle, model, r, g, b, a)
+    }
 
     /** Submissão de contorno de seleção (inverted hull) — desenhada após as opacas. */
     fun submitOutline(meshHandle: Int, model: Mat4, r: Float, g: Float, b: Float, a: Float)
@@ -80,6 +108,40 @@ class DefaultGeometryPipeline(private val capacity: Int = 1024) : GeometryPipeli
         slot.grupoOffset = indexOffset
         slot.grupoCount = indexCount
         slot.texturaHandle = textureHandle
+        slot.normalHandle = 0; slot.mrHandle = 0; slot.aoHandle = 0; slot.emissiveHandle = 0
+        slot.normalScale = 1f; slot.metalFactor = 0f; slot.roughFactor = 1f
+        slot.aoStrength = 1f; slot.emissiveR = 0f; slot.emissiveG = 0f; slot.emissiveB = 0f
+        slot.emissiveIntensity = 1f
+    }
+
+    override fun submitGroupPBR(
+        meshHandle: Int, indexOffset: Int, indexCount: Int, textureHandle: Int,
+        model: Mat4, r: Float, g: Float, b: Float, a: Float,
+        normalHandle: Int, normalScale: Float,
+        mrHandle: Int, metalFactor: Float, roughFactor: Float,
+        aoHandle: Int, aoStrength: Float,
+        emissiveHandle: Int, emissiveR: Float, emissiveG: Float, emissiveB: Float,
+        emissiveIntensity: Float
+    ) {
+        if (count >= capacity || meshHandle == 0) return
+        val slot = slots[count++]
+        slot.meshHandle = meshHandle
+        slot.model.copyFrom(model)
+        slot.r = r; slot.g = g; slot.b = b; slot.a = a
+        slot.outline = false
+        slot.grupoOffset = indexOffset
+        slot.grupoCount = indexCount
+        slot.texturaHandle = textureHandle
+        slot.normalHandle = normalHandle
+        slot.normalScale = normalScale
+        slot.mrHandle = mrHandle
+        slot.metalFactor = metalFactor
+        slot.roughFactor = roughFactor
+        slot.aoHandle = aoHandle
+        slot.aoStrength = aoStrength
+        slot.emissiveHandle = emissiveHandle
+        slot.emissiveR = emissiveR; slot.emissiveG = emissiveG; slot.emissiveB = emissiveB
+        slot.emissiveIntensity = emissiveIntensity
     }
 
     override fun submitOutline(meshHandle: Int, model: Mat4, r: Float, g: Float, b: Float, a: Float) {
@@ -101,6 +163,14 @@ class DefaultGeometryPipeline(private val capacity: Int = 1024) : GeometryPipeli
             if (s.outline) {
                 backend.drawMeshOutline(s.meshHandle, s.model, viewProj, s.r, s.g, s.b, s.a)
             } else if (s.grupoOffset >= 0) {
+                // T0.4: material PBR do grupo antes do draw (o shader usa o que existir)
+                backend.setMaterialPBR(
+                    s.normalHandle, s.normalScale,
+                    s.mrHandle, s.metalFactor, s.roughFactor,
+                    s.aoHandle, s.aoStrength,
+                    s.emissiveHandle, s.emissiveR, s.emissiveG, s.emissiveB,
+                    s.emissiveIntensity
+                )
                 backend.drawMeshRange(
                     s.meshHandle, s.grupoOffset, s.grupoCount, s.texturaHandle,
                     s.model, viewProj, s.r, s.g, s.b, s.a

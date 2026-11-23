@@ -193,9 +193,12 @@ class GltfImporterTest {
             "aviso de extensão ignorada ausente: $avisos",
             avisos.contains("KHR_materials_transmission")
         )
+        // T0.4 (v0.1.20): as texturas PBR NÃO são mais ignoradas — entram no
+        // .KERN v3; SEM arquivo de origem (a amostra não tem "textures") viram
+        // aviso CLARO de textura ausente com o uso (emissive/occlusion/MR).
         assertTrue(
-            "aviso de textura PBR ignorada ausente: $avisos",
-            avisos.contains("emissiveTexture") && avisos.contains("occlusionTexture") &&
+            "aviso de textura PBR ausente (uso) esperado: $avisos",
+            avisos.contains("emissive") && avisos.contains("occlusion") &&
                 avisos.contains("metallicRoughness")
         )
         // O quad continua importando (4 vértices) — o aviso não bloqueia.

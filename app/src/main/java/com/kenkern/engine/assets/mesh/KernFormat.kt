@@ -10,7 +10,12 @@ object KernFormat {
     // FIX ETAPA B: versão 2 acrescenta a TABELA DE MATERIAIS e os GRUPOS por
     // submalha (offset/count/índice de material) DEPOIS dos blocos v1, marcados
     // no flag HAS_MATERIALS do header. O leitor aceita v1 (sem materiais) e v2.
-    const val VERSION: Short = 2
+    // T0.4 (v0.1.20): versão 3 estende CADA material com o PBR completo
+    // (textura metallicRoughness, oclusão, emissiva + fatores). O ESCRITOR só
+    // grava v3 quando algum material TEM extensão PBR — v1/v2 ficam byte-idênticos.
+    const val VERSION: Short = 3
+    const val VERSION_V2: Short = 2
+    const val VERSION_V1: Short = 1
 
     const val HEADER_SIZE = 80
     const val VERTEX_SIZE = 24

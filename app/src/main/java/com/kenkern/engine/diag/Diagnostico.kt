@@ -20,6 +20,8 @@ import com.kenkern.engine.assets.import.KernIntegrity
 import com.kenkern.engine.assets.import.ModelImporter
 import com.kenkern.engine.assets.import.ResolvedorZip
 import com.kenkern.engine.commands.ImportModelCommand
+import com.kenkern.engine.assets.mesh.KernFormat
+import com.kenkern.engine.assets.mesh.KernMaterial
 import com.kenkern.engine.assets.mesh.KernReader
 import com.kenkern.engine.assets.mesh.KernWriter
 import com.kenkern.engine.assets.mesh.MeshData
@@ -136,6 +138,7 @@ class Diagnostico(private val appContext: Context) {
         Checagem("malha-nativa", "Malha nativa (meshoptimizer) — dedup+cache+LOD: ms × Kotlin"),
         Checagem("ck", ".ck (cena) — ida e volta"),
         Checagem("kern", ".KERN (malha) — ida e volta"),
+        Checagem("materiais", "Materiais PBR — .KERN v3 (5 mapas + fatores) + compat v2"),
         Checagem("gltf", "Importador glTF/GLB → .KERN (meta + integridade)"),
         Checagem("fbx", "Importador FBX → .KERN (instâncias + integridade)"),
         Checagem("importar", "Botão Importar modelo (pipeline + undo/redo + zip)"),
@@ -178,7 +181,7 @@ class Diagnostico(private val appContext: Context) {
      */
     suspend fun executar(onAtualiza: (Checagem) -> Unit) {
         cancelado = false
-        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout")
+        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "materiais", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout")
         val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "luz", "astc")
         // E2: ids já FINALIZADAS nesta rodada — no cancel, só o que NÃO rodou vira
         // CANCELADA (aprovadas/falhas anteriores permanecem com o resultado delas).
@@ -273,6 +276,7 @@ class Diagnostico(private val appContext: Context) {
                             "malha-nativa" -> checarMalhaNativa(c)
                             "ck" -> checarCk(c)
                             "kern" -> checarKern(c)
+                            "materiais" -> checarMateriais(c)
                             "gltf" -> checarGltf(c)
                             "fbx" -> checarFbx(c)
                             "importar" -> checarImportar(c)
@@ -1282,6 +1286,90 @@ class Diagnostico(private val appContext: Context) {
             }
         }
         return saida
+    }
+
+    /**
+     * Checagem "materiais" (T0.4, v0.1.20) — FIDELIDADE DO MATERIAL PBR:
+     *  (a) .KERN v3: material com TODOS os mapas (base/normal/MR/oclusão/
+     *      emissiva) + fatores sobrevive ao roundtrip (cada campo confere);
+     *  (b) COMPATIBILIDADE: material SEM extensão PBR grava .KERN v2
+     *      (byte-compatível com a versão anterior — versão lida = 2);
+     *  (c) AMOSTRA REAL: o glTF embutido com materiais importa com a tabela
+     *      de materiais preenchida (modelos de amostra da checagem "gltf").
+     */
+    private fun checarMateriais(c: Checagem) {
+        // ---------- (a) roundtrip v3 com todos os mapas ----------
+        val b = KernWriter.Builder()
+        b.vertex(0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f, 0f)
+        b.vertex(1f, 0f, 0f, 0f, 1f, 0f, 1f, 0f, 1f, 0f, 0f)
+        b.vertex(1f, 1f, 0f, 0f, 1f, 0f, 1f, 1f, 1f, 0f, 0f)
+        b.triangle(0, 1, 2)
+        b.material(
+            KernMaterial(
+                "pbr", 0.8f, 0.6f, 0.4f, 1f, 0.35f, 0.7f,
+                true, true, true, "assets/textures/base.kimg", "assets/textures/normal.kimg",
+                "assets/textures/mr.kimg", "assets/textures/ao.kimg", "assets/textures/emiss.kimg",
+                0.9f, 0.1f, 0.05f, 2.5f, 1.2f, 0.8f
+            )
+        )
+        b.materialGroup(0, 3, 0)
+        val original = b.build()
+        val bytes = KernWriter.write(original)
+        val (versaoGravada, _, _) = KernReader.readHeader(bytes)
+        val lida = KernReader.read(bytes)
+        val mat = lida.materiais.firstOrNull()
+        val problemas = ArrayList<String>(3)
+        if (versaoGravada != KernFormat.VERSION) {
+            problemas.add("material PBR não gravou v3 (versão lida = $versaoGravada)")
+        }
+        if (mat == null) {
+            problemas.add("tabela de materiais vazia após o roundtrip")
+        } else {
+            if (mat.texturaMrPath != "assets/textures/mr.kimg") problemas.add("texturaMrPath divergiu: ${mat.texturaMrPath}")
+            if (mat.texturaOclusaoPath != "assets/textures/ao.kimg") problemas.add("texturaOclusaoPath divergiu")
+            if (mat.texturaEmissivaPath != "assets/textures/emiss.kimg") problemas.add("texturaEmissivaPath divergiu")
+            if (abs(mat.emissiveR - 0.9f) > 1e-3 || abs(mat.emissiveG - 0.1f) > 1e-3 ||
+                abs(mat.emissiveB - 0.05f) > 1e-3
+            ) problemas.add("emissiveFactor divergiu (${mat.emissiveR}, ${mat.emissiveG}, ${mat.emissiveB})")
+            if (abs(mat.emissiveIntensity - 2.5f) > 1e-3) problemas.add("emissiveIntensity divergiu: ${mat.emissiveIntensity}")
+            if (abs(mat.normalScale - 1.2f) > 1e-3) problemas.add("normalScale divergiu: ${mat.normalScale}")
+            if (abs(mat.oclusaoStrength - 0.8f) > 1e-3) problemas.add("oclusaoStrength divergiu: ${mat.oclusaoStrength}")
+            if (abs(mat.metallic - 0.35f) > 1e-3 || abs(mat.roughness - 0.7f) > 1e-3) problemas.add("fatores MR divergiram")
+        }
+
+        // ---------- (b) compatibilidade v2 (sem extensão PBR) ----------
+        val b2 = KernWriter.Builder()
+        b2.vertex(0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f, 0f)
+        b2.vertex(1f, 0f, 0f, 0f, 1f, 0f, 1f, 0f, 1f, 0f, 0f)
+        b2.vertex(1f, 1f, 0f, 0f, 1f, 0f, 1f, 1f, 1f, 0f, 0f)
+        b2.triangle(0, 1, 2)
+        b2.material(KernMaterial("v2", 1f, 1f, 1f, 1f, 0f, 1f, false, false, false, "", ""))
+        b2.materialGroup(0, 3, 0)
+        val bytes2 = KernWriter.write(b2.build())
+        val (versao2, _, _) = KernReader.readHeader(bytes2)
+        if (versao2 != KernFormat.VERSION_V2) {
+            problemas.add("material sem PBR deveria gravar v2 (gravou $versao2)")
+        }
+
+        // ---------- (c) amostra real (glTF embutido) ----------
+        try {
+            val amostra = GltfImporter.importar(GltfAmostras.quadGlb(), null, "quad.glb")
+            if (amostra.mesh.materiais.isEmpty()) {
+                problemas.add("amostra quad.glb importou SEM tabela de materiais")
+            }
+        } catch (e: Exception) {
+            problemas.add("amostra quad.glb falhou: ${e.message ?: e.javaClass.simpleName}")
+        }
+
+        if (problemas.isEmpty()) {
+            c.aprovado(
+                ".KERN v3 preserva os 5 mapas + fatores do material PBR (roundtrip completo) · " +
+                    "material sem PBR segue gravando v2 (compatibilidade) · amostra real importou " +
+                    "${lida.materiais.size} material(is)"
+            )
+        } else {
+            c.falhou(problemas.joinToString("; "))
+        }
     }
 
     /**

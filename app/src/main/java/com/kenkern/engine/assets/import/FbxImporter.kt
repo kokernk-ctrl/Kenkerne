@@ -668,8 +668,25 @@ object FbxImporter {
                 "Video" -> videosPorId[obj.propLong(0)] = obj
             }
         }
+        // T0.4: SKINNING DETECTADO no FBX (Deformer do tipo Skin) — causa clara
+        // para o personagem "sem cabeça"/colapsado (Fase 8 OSSATURA).
+        var deformers = 0
+        for (obj in objetos.filhos) {
+            if (obj.nome == "Deformer" && obj.props.getOrNull(2) == "Skin") deformers++
+        }
+        if (deformers > 0) {
+            val motivo = "SKIN: $deformers Deformer(s) Skin no FBX — os ossos não movem vértices nesta " +
+                "versão (Fase 8): partes presas ao esqueleto ficam na pose de bind e podem aparecer " +
+                "colapsadas/ausentes (ex.: cabeça)"
+            avisos.add(motivo)
+            KenkernLog.w(TAG, motivo)
+        }
         val materiaisDoModelo = HashMap<Long, MutableList<Long>>()
         val videoDoMaterial = HashMap<Long, Long>()
+        // T0.4 (v0.1.20): textura POR PROPRIEDADE do material (conexão OP):
+        // "DiffuseColor" (base), "NormalMap"/"BumpMap" (normal), "EmissiveColor".
+        val videoPorPropriedade = HashMap<Long, HashMap<String, Long>>()
+        val propriedadesConhecidas = setOf("DiffuseColor", "NormalMap", "BumpMap", "EmissiveColor")
         for (c in conexoes.filhos) {
             if (c.nome != "C" || c.props.size < 3) continue
             val tipo = c.props.getOrNull(0) as? String ?: continue
@@ -680,14 +697,30 @@ object FbxImporter {
                 materiaisDoModelo.getOrPut(pai) { ArrayList() }.add(filho)
             }
             if (filho in videosPorId && pai in materiaisPorId) {
-                videoDoMaterial.putIfAbsent(pai, filho)
+                if (tipo == "OP" && c.props.size >= 4) {
+                    val prop = (c.props.getOrNull(3) as? String) ?: ""
+                    if (propriedadesConhecidas.any { prop.contains(it) }) {
+                        val chave = propriedadesConhecidas.first { prop.contains(it) }
+                        videoPorPropriedade.getOrPut(pai) { HashMap() }.putIfAbsent(chave, filho)
+                    } else {
+                        videoDoMaterial.putIfAbsent(pai, filho)
+                    }
+                } else {
+                    videoDoMaterial.putIfAbsent(pai, filho)
+                }
             }
         }
         // tabela DEDUPADA (B.4) por conteúdo + mapa id-FBX → índice
         val tabelaMateriais = ArrayList<KernMaterial>()
         val indiceMaterialPorId = HashMap<Long, Int>()
         for ((id, mat) in materiaisPorId) {
-            val kern = kernMaterialDeFbx(mat, videosPorId[videoDoMaterial[id]])
+            val videos = videoPorPropriedade[id]
+            val kern = kernMaterialDeFbx(
+                mat,
+                videosPorId[videoDoMaterial[id]],
+                videos?.get("NormalMap")?.let { videosPorId[it] } ?: videos?.get("BumpMap")?.let { videosPorId[it] },
+                videos?.get("EmissiveColor")?.let { videosPorId[it] }
+            )
             if (kern != null) {
                 val existente = tabelaMateriais.indexOfFirst { it == kern }
                 indiceMaterialPorId[id] = if (existente >= 0) existente else {
@@ -754,7 +787,8 @@ object FbxImporter {
             nodesComMesh = modelosComMesh,
             normaisCalculadas = normaisCalculadas,
             materialCount = tabelaMateriais.size,
-            textureCount = texturasEmbutidas.size
+            textureCount = texturasEmbutidas.size,
+            verticesComSkin = if (deformers > 0) malha.vertexCount else 0
         )
         return ImportResult(malha, bytesKern, report, avisos.toList(), texturasEmbutidas.values.toList())
     }
@@ -764,10 +798,16 @@ object FbxImporter {
      * textura só se o Video tiver Content EMBUTIDO (bytes) — arquivo externo
      * é AVISO (não dá para converter sem os bytes nesta fase).
      */
-    private fun kernMaterialDeFbx(mat: FbxNode, video: FbxNode?): KernMaterial? {
+    private fun kernMaterialDeFbx(
+        mat: FbxNode,
+        video: FbxNode?,
+        videoNormal: FbxNode? = null,
+        videoEmissivo: FbxNode? = null
+    ): KernMaterial? {
         // nome amigável: prop 1 já vem limpa ("Material::vermelho" → "vermelho")
         val nomeAmigavel = (mat.props.getOrNull(1) as? String) ?: mat.nome
         var r = 1f; var g = 1f; var b = 1f; var a = 1f
+        var emR = 0f; var emG = 0f; var emB = 0f
         val p70 = mat.filho("Properties70")
         if (p70 != null) {
             for (p in p70.filhos) {
@@ -780,6 +820,12 @@ object FbxImporter {
                     }
                     "Opacity" -> {
                         if (p.props.size >= 5) a = valor(p, 4)
+                    }
+                    // T0.4: emissivo do FBX (cor; a intensidade fica 1)
+                    "EmissiveColor" -> {
+                        if (p.props.size >= 7) {
+                            emR = valor(p, 4); emG = valor(p, 5); emB = valor(p, 6)
+                        }
                     }
                 }
             }
@@ -805,9 +851,37 @@ object FbxImporter {
                 KenkernLog.w(TAG, motivo)
             }
         }
+
+        // T0.4 (v0.1.20): normal map (NormalMap/BumpMap) e textura emissiva —
+        // mesmo critério do DiffuseColor: só Video COM Content EMBUTIDO.
+        var temTexNormal = false
+        var texNormalPath = ""
+        var texEmissivaPath = ""
+        fun caminhoDe(videoTex: FbxNode?): String? {
+            if (videoTex == null) return null
+            val content2 = videoTex.props.filterIsInstance<ByteArray>().firstOrNull()
+            if (content2 == null || content2.isEmpty()) {
+                avisos.add(
+                    "material '${mat.nome}': textura '${videoTex.propString(1)}' sem conteúdo " +
+                        "embutido — mapa ignorado nesta importação"
+                )
+                return null
+            }
+            val sha1 = AssetLayout.sha1Hex(content2)
+            texturasEmbutidas[sha1] = TexturaImportada("image/png", content2, videoTex.propString(1), sha1)
+            return "${AssetLayout.DIR_TEXTURAS}/$sha1.kimg"
+        }
+        caminhoDe(videoNormal)?.let {
+            temTexNormal = true
+            texNormalPath = it
+        }
+        caminhoDe(videoEmissivo)?.let { texEmissivaPath = it }
+
         return KernMaterial(
             nomeAmigavel, r.coerceIn(0f, 1f), g.coerceIn(0f, 1f), b.coerceIn(0f, 1f), a.coerceIn(0f, 1f),
-            0f, 1f, temTexBase, false, false, texPath, ""
+            0f, 1f, temTexBase, temTexNormal, false, texPath, texNormalPath,
+            "", "", texEmissivaPath,
+            emR.coerceIn(0f, 1f), emG.coerceIn(0f, 1f), emB.coerceIn(0f, 1f), 1f, 1f, 1f
         )
     }
 

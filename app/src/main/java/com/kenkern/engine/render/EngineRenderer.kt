@@ -488,6 +488,9 @@ class EngineRenderer {
         camFwd.set(-view.m[2], -view.m[6], -view.m[10])
         camEye.set(eyeX, eyeY, eyeZ)
 
+        // T0.4: posição da câmera no shader (especular do material PBR)
+        backend.setCameraPosition(camEye.x, camEye.y, camEye.z)
+
         // H2 (v0.1.20): luzes dos NICKS coletadas ANTES do céu — a direcional
         // substitui o sol (o disco do céu segue a direção do Nick) e as
         // pontuais/spot entram por contribuição para a câmera. Arrays do
@@ -564,13 +567,22 @@ class EngineRenderer {
                             if (malha != null && malha.gruposMaterial.isNotEmpty()) {
                                 // GRUPOS DE MATERIAL (B.3/C.4): um sub-range por grupo,
                                 // com textura .KIMG do material (fallback = cor do material).
+                                // T0.4 (v0.1.20): PBR COMPLETO — o shader usa o que existe:
+                                // textura quando carregada, FATOR quando não (um só programa).
                                 for (g in malha.gruposMaterial) {
                                     val material = malha.materiais.getOrNull(g.materialIndex)
                                     var texHandle = 0
                                     var mr = materialGray; var mg = materialGray; var mb = materialGray; var ma = 1f
+                                    var normalH = 0; var mrH = 0; var aoH = 0; var emH = 0
+                                    var nScale = 1f; var metal = 0f; var rough = 1f; var aoStr = 1f
+                                    var emR = 0f; var emG = 0f; var emB = 0f; var emInt = 1f
                                     if (material != null) {
                                         mr = material.baseColorR; mg = material.baseColorG
                                         mb = material.baseColorB; ma = material.baseColorA
+                                        metal = material.metallic; rough = material.roughness
+                                        nScale = material.normalScale; aoStr = material.oclusaoStrength
+                                        emR = material.emissiveR; emG = material.emissiveG
+                                        emB = material.emissiveB; emInt = material.emissiveIntensity
                                         if (material.temTexturaBase && material.texturaBasePath.isNotEmpty()) {
                                             texHandle = TextureLibrary.handleDe(material.texturaBasePath)
                                             if (texHandle == 0) {
@@ -579,10 +591,28 @@ class EngineRenderer {
                                                 texHandle = 0
                                             }
                                         }
+                                        if (material.temTexturaNormal && material.texturaNormalPath.isNotEmpty()) {
+                                            normalH = TextureLibrary.handleDe(material.texturaNormalPath)
+                                            if (normalH == 0) TextureLibrary.marcarNecessario(material.texturaNormalPath)
+                                        }
+                                        if (material.texturaMrPath.isNotEmpty()) {
+                                            mrH = TextureLibrary.handleDe(material.texturaMrPath)
+                                            if (mrH == 0) TextureLibrary.marcarNecessario(material.texturaMrPath)
+                                        }
+                                        if (material.texturaOclusaoPath.isNotEmpty()) {
+                                            aoH = TextureLibrary.handleDe(material.texturaOclusaoPath)
+                                            if (aoH == 0) TextureLibrary.marcarNecessario(material.texturaOclusaoPath)
+                                        }
+                                        if (material.texturaEmissivaPath.isNotEmpty()) {
+                                            emH = TextureLibrary.handleDe(material.texturaEmissivaPath)
+                                            if (emH == 0) TextureLibrary.marcarNecessario(material.texturaEmissivaPath)
+                                        }
                                     }
-                                    geometry.submitGroup(
+                                    geometry.submitGroupPBR(
                                         h, g.indexOffset, g.indexCount, texHandle,
-                                        nick.transform.worldMatrix, mr, mg, mb, ma
+                                        nick.transform.worldMatrix, mr, mg, mb, ma,
+                                        normalH, nScale, mrH, metal, rough,
+                                        aoH, aoStr, emH, emR, emG, emB, emInt
                                     )
                                     malhasDrawnThisFrame++
                                 }

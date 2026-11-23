@@ -44,6 +44,8 @@ class KernMesh(
 
 /**
  * Malha pronta para render (floats dequantizados, índices em Int).
+ * T0.4 (v0.1.20): carrega as TANGENTES do .KERN (normal mapping do shader PBR;
+ * tangente zerada = o shader constrói uma base arbitrária estável).
  */
 class MeshData(
     val positions: FloatArray,
@@ -51,7 +53,8 @@ class MeshData(
     val uvs: FloatArray,
     val indices: IntArray,
     val boundsMin: Vec3,
-    val boundsMax: Vec3
+    val boundsMax: Vec3,
+    val tangents: FloatArray = FloatArray(0)
 ) {
     val vertexCount: Int get() = positions.size / 3
 
@@ -65,13 +68,18 @@ class MeshData(
                 positions[i * 3 + 1] = mesh.positions[i * 3 + 1]
                 positions[i * 3 + 2] = mesh.positions[i * 3 + 2]
             }
+            // T0.4: tangentes chegam à GPU (oct 8:8 decodificado pelo leitor);
+            // se a malha não as tem, o VBO fica zerado (shader trata).
+            val tangentes = if (mesh.tangents.size == count * 3) mesh.tangents
+            else FloatArray(count * 3)
             return MeshData(
                 positions,
                 mesh.normals,
                 mesh.uvs,
                 mesh.indices,
                 mesh.boundsMin,
-                mesh.boundsMax
+                mesh.boundsMax,
+                tangentes
             )
         }
     }

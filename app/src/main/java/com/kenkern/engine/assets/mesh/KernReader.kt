@@ -19,10 +19,11 @@ object KernReader {
         buffer.get(magic)
         require(String(magic, Charsets.US_ASCII) == KernFormat.MAGIC) { "Arquivo KERN inválido: magic incorreto" }
         val version = buffer.short
-        // FIX ETAPA B: v1 (sem materiais) e v2 (com materiais opcionais) são lidos;
-        // versão 3+ = erro claro (não silêncio).
-        require(version == KernFormat.VERSION || version == 1.toShort()) {
-            "Versão KERN não suportada: $version (suportadas: 1, ${KernFormat.VERSION})"
+        // FIX ETAPA B: v1 (sem materiais) e v2 (com materiais) são lidos;
+        // T0.4 (v0.1.20): v3 estende CADA material com o PBR completo.
+        // versão 4+ = erro claro (não silêncio).
+        require(version == KernFormat.VERSION || version == KernFormat.VERSION_V2 || version == KernFormat.VERSION_V1) {
+            "Versão KERN não suportada: $version (suportadas: 1, 2, ${KernFormat.VERSION})"
         }
         val flags = buffer.short
 
@@ -131,6 +132,7 @@ object KernReader {
             }
             val mCount = buffer.short.toInt() and 0xFFFF
             val ms = ArrayList<KernMaterial>(mCount)
+            val ehV3 = version >= KernFormat.VERSION
             for (m in 0 until mCount) {
                 val nomeLen = buffer.get().toInt() and 0xFF
                 val nomeBytes = ByteArray(nomeLen)
@@ -146,11 +148,32 @@ object KernReader {
                 val tbBytes = ByteArray(tbLen); buffer.get(tbBytes)
                 val tnLen = buffer.get().toInt() and 0xFF
                 val tnBytes = ByteArray(tnLen); buffer.get(tnBytes)
+                var tmrPath = ""
+                var tocPath = ""
+                var temPath = ""
+                var emR = 0f; var emG = 0f; var emB = 0f
+                var emInt = 1f; var nScale = 1f; var ocStr = 1f
+                if (ehV3) {
+                    // v3 (T0.4): extensão PBR — 3 caminhos + 6 floats
+                    val tmrLen = buffer.get().toInt() and 0xFF
+                    val tmrBytes = ByteArray(tmrLen); buffer.get(tmrBytes)
+                    tmrPath = String(tmrBytes, Charsets.UTF_8)
+                    val tocLen = buffer.get().toInt() and 0xFF
+                    val tocBytes = ByteArray(tocLen); buffer.get(tocBytes)
+                    tocPath = String(tocBytes, Charsets.UTF_8)
+                    val temLen = buffer.get().toInt() and 0xFF
+                    val temBytes = ByteArray(temLen); buffer.get(temBytes)
+                    temPath = String(temBytes, Charsets.UTF_8)
+                    emR = buffer.float; emG = buffer.float; emB = buffer.float
+                    emInt = buffer.float; nScale = buffer.float; ocStr = buffer.float
+                }
                 ms.add(
                     KernMaterial(
                         String(nomeBytes, Charsets.UTF_8), r, gg, b, a, metal, rough,
                         (fl and 1) != 0, (fl and 2) != 0, (fl and 4) != 0,
-                        String(tbBytes, Charsets.UTF_8), String(tnBytes, Charsets.UTF_8)
+                        String(tbBytes, Charsets.UTF_8), String(tnBytes, Charsets.UTF_8),
+                        tmrPath, tocPath, temPath,
+                        emR, emG, emB, emInt, nScale, ocStr
                     )
                 )
             }

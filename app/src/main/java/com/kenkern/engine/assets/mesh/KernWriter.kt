@@ -103,6 +103,9 @@ object KernWriter {
             if (mesh.vertexCount <= 65535) KernFormat.INDEX_TYPE_U16 else KernFormat.INDEX_TYPE_U32
 
         val temMateriais = mesh.materiais.isNotEmpty() || mesh.gruposMaterial.isNotEmpty()
+        // T0.4: v3 SÓ quando algum material tem extensão PBR (v1/v2 byte-idênticos).
+        val versao = if (temMateriais && mesh.materiais.any { it.temExtensaoPbr })
+            KernFormat.VERSION else KernFormat.VERSION_V2
         val flags: Short =
             ((if (mesh.clusters != null && mesh.clusters!!.isNotEmpty()) KernFormat.FLAG_HAS_CLUSTERS else 0) +
                 (if (temMateriais) KernFormat.FLAG_HAS_MATERIALS else 0)).toShort()
@@ -128,6 +131,13 @@ object KernWriter {
                 materialBlockSize += 1 // flags
                 materialBlockSize += 1 + m.texturaBasePath.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
                 materialBlockSize += 1 + m.texturaNormalPath.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
+                if (versao >= KernFormat.VERSION) {
+                    // v3 (T0.4): PBR completo por material
+                    materialBlockSize += 1 + m.texturaMrPath.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
+                    materialBlockSize += 1 + m.texturaOclusaoPath.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
+                    materialBlockSize += 1 + m.texturaEmissivaPath.toByteArray(Charsets.UTF_8).size.coerceAtMost(255)
+                    materialBlockSize += 4 * 6 // emissive RGB + intensidade, normalScale, oclusão strength
+                }
             }
         }
 
@@ -152,7 +162,7 @@ object KernWriter {
 
         // Header (80 bytes)
         buffer.put(KernFormat.MAGIC.toByteArray(Charsets.US_ASCII))
-        buffer.putShort(KernFormat.VERSION)
+        buffer.putShort(versao)
         buffer.putShort(flags)
         buffer.putFloat(mesh.boundsMin.x); buffer.putFloat(mesh.boundsMin.y); buffer.putFloat(mesh.boundsMin.z)
         buffer.putFloat(mesh.boundsMax.x); buffer.putFloat(mesh.boundsMax.y); buffer.putFloat(mesh.boundsMax.z)
@@ -257,6 +267,24 @@ object KernWriter {
                 val tn = m.texturaNormalPath.toByteArray(Charsets.UTF_8)
                 buffer.put(tn.size.coerceAtMost(255).toByte())
                 buffer.put(tn.take(255).toByteArray())
+                if (versao >= KernFormat.VERSION) {
+                    // v3 (T0.4): extensão PBR — 3 caminhos + 6 floats
+                    val tmr = m.texturaMrPath.toByteArray(Charsets.UTF_8)
+                    buffer.put(tmr.size.coerceAtMost(255).toByte())
+                    buffer.put(tmr.take(255).toByteArray())
+                    val toc = m.texturaOclusaoPath.toByteArray(Charsets.UTF_8)
+                    buffer.put(toc.size.coerceAtMost(255).toByte())
+                    buffer.put(toc.take(255).toByteArray())
+                    val tem = m.texturaEmissivaPath.toByteArray(Charsets.UTF_8)
+                    buffer.put(tem.size.coerceAtMost(255).toByte())
+                    buffer.put(tem.take(255).toByteArray())
+                    buffer.putFloat(m.emissiveR)
+                    buffer.putFloat(m.emissiveG)
+                    buffer.putFloat(m.emissiveB)
+                    buffer.putFloat(m.emissiveIntensity)
+                    buffer.putFloat(m.normalScale)
+                    buffer.putFloat(m.oclusaoStrength)
+                }
             }
         }
 

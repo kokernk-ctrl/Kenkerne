@@ -51,6 +51,22 @@ interface RenderBackend {
         dirArr: FloatArray, coneArr: FloatArray
     ) = Unit
 
+    /** H2/T0.4: posição da câmera do frame (o especular do material precisa). */
+    fun setCameraPosition(x: Float, y: Float, z: Float) = Unit
+
+    /**
+     * T0.4 (v0.1.20): MATERIAL PBR do draw corrente — chamado ANTES do
+     * drawMesh/drawMeshRange com material. Handle 0 = usa o FATOR (shader usa
+     * o que existe; um único programa de material).
+     */
+    fun setMaterialPBR(
+        normalHandle: Int, normalScale: Float,
+        mrHandle: Int, metalFactor: Float, roughFactor: Float,
+        aoHandle: Int, aoStrength: Float,
+        emissiveHandle: Int, emissiveR: Float, emissiveG: Float, emissiveB: Float,
+        emissiveIntensity: Float
+    ) = Unit
+
     /** Cria/upload de malha; retorna handle opaco (0 = falha). */
     fun createMesh(mesh: MeshData): Int
 

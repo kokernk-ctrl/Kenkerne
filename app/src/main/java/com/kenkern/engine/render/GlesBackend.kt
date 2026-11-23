@@ -69,6 +69,23 @@ class GlesBackend : RenderBackend {
     private var uLsDir = 0
     private var uLsCone = 0
 
+    // T0.4 (v0.1.20): MATERIAL PBR — um único programa de material
+    private var uCamPos = 0
+    private var uHasNormalTex = 0
+    private var uNormalScale = 0
+    private var uHasMrTex = 0
+    private var uMetalFactor = 0
+    private var uRoughFactor = 0
+    private var uHasAoTex = 0
+    private var uAoStrength = 0
+    private var uHasEmissiveTex = 0
+    private var uEmissiveColor = 0
+    private var uEmissiveStrength = 0
+    private var uNormalTexLoc = 0
+    private var uMrTexLoc = 0
+    private var uAoTexLoc = 0
+    private var uEmissiveTexLoc = 0
+
     // Uniforms do céu
     private var uSkyFwd = 0
     private var uSkyRight = 0
@@ -145,15 +162,18 @@ class GlesBackend : RenderBackend {
         layout(location = 0) in vec3 aPos;
         layout(location = 1) in vec3 aNormal;
         layout(location = 2) in vec2 aUV;
+        layout(location = 3) in vec3 aTangent;
         uniform mat4 uMVP;
         uniform mat4 uModel;
         out vec3 vNormal;
         out vec2 vUV;
         out vec3 vWorld;
+        out vec3 vTangent;
         void main() {
             vNormal = mat3(uModel) * aNormal;
             vUV = aUV;
             vWorld = (uModel * vec4(aPos, 1.0)).xyz;
+            vTangent = mat3(uModel) * aTangent;
             gl_Position = uMVP * vec4(aPos, 1.0);
         }
     """.trimIndent()
@@ -185,6 +205,23 @@ class GlesBackend : RenderBackend {
         uniform vec2 uLsCone[4];
         uniform sampler2D uTex;
         uniform int uHasTex;
+        // T0.4 (v0.1.20): MATERIAL PBR — um único programa usa O QUE EXISTIR:
+        // fator quando não há textura, textura quando há (uHasX por mapa).
+        uniform vec3 uCamPos;
+        uniform int uHasNormalTex;
+        uniform float uNormalScale;
+        uniform int uHasMrTex;
+        uniform float uMetalFactor;
+        uniform float uRoughFactor;
+        uniform int uHasAoTex;
+        uniform float uAoStrength;
+        uniform int uHasEmissiveTex;
+        uniform vec3 uEmissiveColor;
+        uniform float uEmissiveStrength;
+        uniform sampler2D uNormalTex;
+        uniform sampler2D uMrTex;
+        uniform sampler2D uAoTex;
+        uniform sampler2D uEmissiveTex;
         out vec4 fragColor;
 
         float atenuacaoSuave(float d, float alcance) {
@@ -195,13 +232,43 @@ class GlesBackend : RenderBackend {
         }
 
         void main() {
-            vec3 n = normalize(vNormal);
+            vec3 nGeometrica = normalize(vNormal);
+            vec3 n = nGeometrica;
+            float metal = uMetalFactor;
+            float rough = uRoughFactor;
+            float ao = 1.0;
+            if (uHasMrTex == 1) {
+                vec3 mr = texture(uMrTex, vUV).rgb;
+                rough = mr.g;               // convenção glTF: G = rugosidade
+                metal = mr.b;               // B = metálico
+            }
+            if (uHasAoTex == 1) {
+                ao = mix(1.0, texture(uAoTex, vUV).r, uAoStrength);
+            }
+            // normal map SÓ com tangente real (importador calcula/lege do arquivo);
+            // tangente zerada (malha antiga) fica na normal geométrica — sem artefato.
+            vec3 vT = vTangent - nGeometrica * dot(nGeometrica, vTangent);
+            bool temTangente = length(vT) > 1e-3;
+            if (uHasNormalTex == 1 && temTangente) {
+                vec3 tangente = normalize(vT);
+                vec3 bitan = cross(nGeometrica, tangente);
+                vec3 nMapa = texture(uNormalTex, vUV).rgb * 2.0 - 1.0;
+                n = normalize(nGeometrica + (tangente * nMapa.x + bitan * nMapa.y + nGeometrica * nMapa.z) * uNormalScale);
+            }
+            vec3 viewDir = normalize(uCamPos - vWorld);
+
             float diff = max(dot(n, normalize(-uLightDir)), 0.0);
-            vec3 hemi = mix(vec3(0.30, 0.28, 0.25), vec3(0.46, 0.54, 0.66), n.y * 0.5 + 0.5);
+            vec3 hemi = mix(vec3(0.30, 0.28, 0.25), vec3(0.46, 0.54, 0.66), n.y * 0.5 + 0.5) * ao;
             vec3 albedo = (uHasTex == 1)
                 ? texture(uTex, vUV).rgb * uColor.rgb
                 : uColor.rgb;
-            vec3 rgb = albedo * (hemi + uLightColor * diff * uLightIntensity);
+            // especular Blinn-Phong barato dirigido pela rugosidade (um programa
+            // de material SEM ramificação cara por pixel além dos uHasX).
+            float shininess = mix(128.0, 8.0, clamp(rough, 0.0, 1.0));
+            vec3 H = normalize(viewDir + normalize(-uLightDir));
+            float espec = pow(max(dot(n, H), 0.0), shininess) * mix(0.04, 1.0, metal);
+            vec3 rgb = albedo * (hemi + uLightColor * diff * uLightIntensity) +
+                uLightColor * espec * uLightIntensity;
             for (int i = 0; i < 4; i++) {
                 if (i >= uLsCount) break;
                 vec3 delta = uLsPos[i] - vWorld;
@@ -215,7 +282,15 @@ class GlesBackend : RenderBackend {
                     float cosT = dot(-paraLuz, uLsDir[i]);
                     spot = smoothstep(uLsCone[i].y, uLsCone[i].x, cosT);
                 }
-                rgb += albedo * (uLsCor[i] * (atenua * lambert * spot));
+                vec3 Hp = normalize(viewDir + paraLuz);
+                float especL = pow(max(dot(n, Hp), 0.0), shininess) * mix(0.04, 1.0, metal);
+                rgb += albedo * (uLsCor[i] * (atenua * lambert * spot)) +
+                    uLsCor[i] * (atenua * especL * spot);
+            }
+            if (uHasEmissiveTex == 1) {
+                rgb += texture(uEmissiveTex, vUV).rgb * uEmissiveColor * uEmissiveStrength;
+            } else {
+                rgb += uEmissiveColor * uEmissiveStrength;
             }
             fragColor = vec4(min(rgb, vec3(1.0)), uColor.a);
         }
@@ -485,6 +560,21 @@ class GlesBackend : RenderBackend {
         uLsAlcance = GLES30.glGetUniformLocation(program, "uLsAlcance")
         uLsDir = GLES30.glGetUniformLocation(program, "uLsDir")
         uLsCone = GLES30.glGetUniformLocation(program, "uLsCone")
+        uCamPos = GLES30.glGetUniformLocation(program, "uCamPos")
+        uHasNormalTex = GLES30.glGetUniformLocation(program, "uHasNormalTex")
+        uNormalScale = GLES30.glGetUniformLocation(program, "uNormalScale")
+        uHasMrTex = GLES30.glGetUniformLocation(program, "uHasMrTex")
+        uMetalFactor = GLES30.glGetUniformLocation(program, "uMetalFactor")
+        uRoughFactor = GLES30.glGetUniformLocation(program, "uRoughFactor")
+        uHasAoTex = GLES30.glGetUniformLocation(program, "uHasAoTex")
+        uAoStrength = GLES30.glGetUniformLocation(program, "uAoStrength")
+        uHasEmissiveTex = GLES30.glGetUniformLocation(program, "uHasEmissiveTex")
+        uEmissiveColor = GLES30.glGetUniformLocation(program, "uEmissiveColor")
+        uEmissiveStrength = GLES30.glGetUniformLocation(program, "uEmissiveStrength")
+        uNormalTexLoc = GLES30.glGetUniformLocation(program, "uNormalTex")
+        uMrTexLoc = GLES30.glGetUniformLocation(program, "uMrTex")
+        uAoTexLoc = GLES30.glGetUniformLocation(program, "uAoTex")
+        uEmissiveTexLoc = GLES30.glGetUniformLocation(program, "uEmissiveTex")
 
         // Programas visuais: cada um é independente; se falhar, o recurso é desativado.
         runCatching {
@@ -693,6 +783,63 @@ class GlesBackend : RenderBackend {
         GLES30.glUniform2fv(uLsCone, 4, coneArr, 0)
     }
 
+    /** H2/T0.4: posição da câmera do frame (especular precisa do viewDir). */
+    override fun setCameraPosition(x: Float, y: Float, z: Float) {
+        if (program == 0 || uCamPos < 0) return
+        useProgram(program)
+        uniformScratch[0] = fin(x); uniformScratch[1] = fin(y); uniformScratch[2] = fin(z)
+        GLES30.glUniform3fv(uCamPos, 1, uniformScratch, 0)
+    }
+
+    /**
+     * T0.4 (v0.1.20): MATERIAL PBR do draw corrente — chamado ANTES de cada
+     * drawMesh/drawMeshRange com material; o shader usa O QUE EXISTIR (textura
+     * quando handle != 0; FATOR quando não). Texturas nas unidades 1–4 (a
+     * base fica na 0). Chamadas sem material não alteram nada.
+     */
+    override fun setMaterialPBR(
+        normalHandle: Int, normalScale: Float,
+        mrHandle: Int, metalFactor: Float, roughFactor: Float,
+        aoHandle: Int, aoStrength: Float,
+        emissiveHandle: Int, emissiveR: Float, emissiveG: Float, emissiveB: Float,
+        emissiveIntensity: Float
+    ) {
+        if (program == 0 || uHasNormalTex < 0) return
+        useProgram(program)
+        GLES30.glUniform1i(uHasNormalTex, if (normalHandle != 0) 1 else 0)
+        GLES30.glUniform1f(uNormalScale, fin(normalScale))
+        GLES30.glUniform1i(uHasMrTex, if (mrHandle != 0) 1 else 0)
+        GLES30.glUniform1f(uMetalFactor, fin(metalFactor))
+        GLES30.glUniform1f(uRoughFactor, fin(roughFactor))
+        GLES30.glUniform1i(uHasAoTex, if (aoHandle != 0) 1 else 0)
+        GLES30.glUniform1f(uAoStrength, fin(aoStrength))
+        GLES30.glUniform1i(uHasEmissiveTex, if (emissiveHandle != 0) 1 else 0)
+        uniformScratch[0] = fin(emissiveR); uniformScratch[1] = fin(emissiveG); uniformScratch[2] = fin(emissiveB)
+        GLES30.glUniform3fv(uEmissiveColor, 1, uniformScratch, 0)
+        GLES30.glUniform1f(uEmissiveStrength, fin(emissiveIntensity))
+        // Unidades de textura 1–4 FIXAS por programa (a 0 fica com a base):
+        if (uNormalTexLoc >= 0) GLES30.glUniform1i(uNormalTexLoc, 1)
+        if (uMrTexLoc >= 0) GLES30.glUniform1i(uMrTexLoc, 2)
+        if (uAoTexLoc >= 0) GLES30.glUniform1i(uAoTexLoc, 3)
+        if (uEmissiveTexLoc >= 0) GLES30.glUniform1i(uEmissiveTexLoc, 4)
+        bindTextureToUnit(1, normalHandle)
+        bindTextureToUnit(2, mrHandle)
+        bindTextureToUnit(3, aoHandle)
+        bindTextureToUnit(4, emissiveHandle)
+    }
+
+    /** Vincula o handle às unidades 1–4 (0 = desliga a unidade com textura vazia). */
+    private fun bindTextureToUnit(unidade: Int, handle: Int) {
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0 + unidade)
+        if (handle != 0) {
+            val t = texturas[handle]
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, t?.id ?: 0)
+        } else {
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, 0)
+        }
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+    }
+
     override fun createMesh(mesh: MeshData): Int {
         if (mesh.vertexCount <= 0 || mesh.indices.isEmpty()) return 0
         val vertexCount = mesh.vertexCount
@@ -708,6 +855,12 @@ class GlesBackend : RenderBackend {
             fb.put(mesh.positions[v * 3]); fb.put(mesh.positions[v * 3 + 1]); fb.put(mesh.positions[v * 3 + 2])
             fb.put(mesh.normals[v * 3]); fb.put(mesh.normals[v * 3 + 1]); fb.put(mesh.normals[v * 3 + 2])
             fb.put(mesh.uvs[v * 2]); fb.put(mesh.uvs[v * 2 + 1])
+            // T0.4: tangente por vértice (normal mapping); zero = base arbitrária no shader
+            if (mesh.tangents.size >= (v + 1) * 3) {
+                fb.put(mesh.tangents[v * 3]); fb.put(mesh.tangents[v * 3 + 1]); fb.put(mesh.tangents[v * 3 + 2])
+            } else {
+                fb.put(0f); fb.put(0f); fb.put(0f)
+            }
         }
         fb.position(0)
 
@@ -751,6 +904,9 @@ class GlesBackend : RenderBackend {
         GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, STRIDE, 12)
         GLES30.glEnableVertexAttribArray(2)
         GLES30.glVertexAttribPointer(2, 2, GLES30.GL_FLOAT, false, STRIDE, 24)
+        // T0.4: tangente (location 3) — normal mapping do shader PBR
+        GLES30.glEnableVertexAttribArray(3)
+        GLES30.glVertexAttribPointer(3, 3, GLES30.GL_FLOAT, false, STRIDE, 32)
         GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, ebo[0])
         GLES30.glBufferData(
             GLES30.GL_ELEMENT_ARRAY_BUFFER, mesh.indices.size * bytesPerIndex, indexBuffer, GLES30.GL_STATIC_DRAW
@@ -1221,6 +1377,8 @@ class GlesBackend : RenderBackend {
 
     companion object {
         private const val TAG = "Kenkern/GlesBackend"
-        private const val STRIDE = 32 // 3 pos + 3 normal + 2 uv (floats)
+
+        // T0.4 (v0.1.20): 3 pos + 3 normal + 2 uv + 3 tangente = 11 floats (44 bytes)
+        private const val STRIDE = 44
     }
 }

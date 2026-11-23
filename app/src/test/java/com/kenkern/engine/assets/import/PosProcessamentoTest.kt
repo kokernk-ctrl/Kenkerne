@@ -183,7 +183,9 @@ class PosProcessamentoTest {
         b.triangle(0, 1, 2)
         val mesh = b.build()
         val bytes = KernWriter.write(mesh)
-        assertEquals(KernFormat.VERSION.toShort(), com.kenkern.engine.assets.mesh.KernReader.readHeader(bytes).first)
+        // T0.4 (v0.1.20): SEM material (e sem extensão PBR) o arquivo segue v2 —
+        // VERSION (3) só é gravado quando algum material tem extensão PBR.
+        assertEquals(KernFormat.VERSION_V2.toShort(), com.kenkern.engine.assets.mesh.KernReader.readHeader(bytes).first)
         val lida = KernReader.read(bytes)
         assertEquals(0, lida.materiais.size)
         assertEquals(0, lida.gruposMaterial.size)

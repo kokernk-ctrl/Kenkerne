@@ -107,6 +107,8 @@ class ImportSummary(
     val aabbMin: FloatArray,
     val aabbMax: FloatArray,
     val contemEsqueleto: Boolean,
+    /** T0.4 (v0.1.20): vértices com JOINTS/WEIGHTS (skin não aplicado — Fase 8). */
+    val verticesComSkin: Int = 0,
     /** Escala do Nick sugerida pela opção "Ajustar ao tamanho" (1f = sem ajuste). */
     val escalaSugerida: Float = 1f,
     /** Texturas de origem coletadas (ETAPA C converte para .KIMG com esses bytes). */
@@ -146,6 +148,13 @@ class ImportSummary(
             appendLine()
         }
         if (contemEsqueleto) appendLine("AVISO: contém esqueleto: ignorado nesta fase (Fase 8 OSSATURA)")
+        if (verticesComSkin > 0) {
+            appendLine(
+                "SKIN: $verticesComSkin vértices com JOINTS/WEIGHTS NÃO APLICADOS — os ossos não movem " +
+                    "vértices nesta versão (Fase 8): partes presas ao esqueleto ficam na pose de bind e " +
+                    "podem aparecer colapsadas/ausentes (ex.: cabeça)." 
+            )
+        }
         for (a in avisos) appendLine("AVISO: $a")
         for (r in texturasRelatorio) appendLine("TEXTURA: $r")
         appendLine("Gravado: $caminhoKernRelativo · origem copiada: $caminhoOrigemRelativo")
@@ -355,6 +364,7 @@ object ModelImporter {
             aabbMin = floatArrayOf(min.x, min.y, min.z),
             aabbMax = floatArrayOf(max.x, max.y, max.z),
             contemEsqueleto = esqueleto,
+            verticesComSkin = resultado.report.verticesComSkin,
             escalaSugerida = escalaSugerida,
             texturasExtraidas = texturasFinais
         )

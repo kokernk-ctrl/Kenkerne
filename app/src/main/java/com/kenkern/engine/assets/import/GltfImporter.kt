@@ -37,7 +37,9 @@ class ImportReport(
     // ETAPA B/C: materiais e texturas extraídos (0 até a ETAPA B implementar a
     // extração; ModelImporter usa esses contadores no ImportSummary).
     val materialCount: Int = 0,
-    val textureCount: Int = 0
+    val textureCount: Int = 0,
+    /** T0.4: vértices com JOINTS/WEIGHTS (skin não aplicado — Fase 8 OSSATURA). */
+    val verticesComSkin: Int = 0
 ) {
     /** Razão origem/.KERN (ex.: 5.0 = 100 MB viraram 20 MB). */
     val razao: Float get() = if (bytesKern > 0) bytesOrigem / bytesKern.toFloat() else 0f
@@ -502,6 +504,8 @@ object GltfImporter {
         val texturasPorHash = HashMap<String, Int>()          // sha1 → índice em texturas
         val avisos = ArrayList<String>(2)
         var algumNormalMap = false
+        /** T0.4: vértices com JOINTS/WEIGHTS (skinning não aplicado — Fase 8). */
+        var verticesComSkin = 0
     }
 
     private fun montarMalha(
@@ -545,6 +549,16 @@ object GltfImporter {
             throw GltfImportException("cena sem geometria importável (0 primitivas TRIANGLES)")
         }
 
+        // T0.4: causa CLARA no relatório quando o personagem é skinned — sem
+        // skinning os vértices ficam na pose de bind (Fase 8 OSSATURA).
+        if (ctx.verticesComSkin > 0) {
+            ctx.avisos.add(
+                "SKIN: ${ctx.verticesComSkin} vértices com JOINTS/WEIGHTS não aplicados — os ossos " +
+                    "não movem vértices nesta versão (Fase 8): partes presas ao esqueleto ficam na pose de " +
+                    "bind e podem aparecer colapsadas/ausentes (ex.: cabeça)"
+            )
+        }
+
         // Tabela de materiais dedupada entra no .KERN v2 (B.3)
         for (m in ctx.materiaisTabela) builder.material(m)
 
@@ -565,7 +579,8 @@ object GltfImporter {
             nodesComMesh = nodesComMesh,
             normaisCalculadas = normaisCalculadas,
             materialCount = ctx.materiaisTabela.size,
-            textureCount = ctx.texturas.size
+            textureCount = ctx.texturas.size,
+            verticesComSkin = ctx.verticesComSkin
         )
         return ImportResult(malha, bytesKern, report, ctx.avisos, ctx.texturas)
     }
@@ -643,6 +658,10 @@ object GltfImporter {
         if (posIndex < 0) {
             throw GltfImportException("primitiva $primIndex da mesh $meshIndex sem POSITION (obrigatório)")
         }
+        // T0.4: SKINNING DETECTADO — os ossos não movem vértices nesta versão
+        // (Fase 8 OSSATURA); o vértice fica na pose de BIND. É a causa típica de
+        // personagem "sem cabeça"/colapsado (partes que o esqueleto posiciona).
+        val skinNestaPrimitiva = attrs.has("JOINTS_0") || attrs.has("WEIGHTS_0")
         val pos = lerAcessorFloat(ctx.raiz, ctx.buffers, posIndex)
         if (pos.isEmpty() || pos.size % 3 != 0) {
             throw GltfImportException(
@@ -650,6 +669,7 @@ object GltfImporter {
             )
         }
         val verts = pos.size / 3
+        if (skinNestaPrimitiva) ctx.verticesComSkin += verts
 
         // MATERIAL (B.3): resolve/cria na tabela; materialIndex = -1 = sem material.
         val materialIdx = if (prim.has("material")) resolverMaterial(ctx, prim.getInt("material")) else -1
@@ -805,6 +825,13 @@ object GltfImporter {
         var temTexBase = false
         var texNormalPath = ""
         var temTexNormal = false
+        var texMrPath = ""
+        var texOclusaoPath = ""
+        var texEmissivaPath = ""
+        var normalScale = 1f
+        var oclusaoStrength = 1f
+        var emR = 0f; var emG = 0f; var emB = 0f
+        var emIntensidade = 1f
 
         pbr?.optJSONObject("baseColorTexture")?.let { t ->
             val caminho = caminhoTextura(ctx, t.optInt("index", -1), "baseColor")
@@ -812,24 +839,44 @@ object GltfImporter {
         }
         m.optJSONObject("normalTexture")?.let { t ->
             val caminho = caminhoTextura(ctx, t.optInt("index", -1), "normal")
-            if (caminho != null) { texNormalPath = caminho; temTexNormal = true; ctx.algumNormalMap = true }
-        }
-
-        // HONESTIDADE (V3): texturas de PBR que o .KERN v2 NÃO carrega ficam
-        // no ImportReport — o aparelho não pode surpreender o usuário.
-        for (ignorado in listOf("emissiveTexture", "occlusionTexture")) {
-            if (m.optJSONObject(ignorado) != null) {
-                ctx.avisos.add("material '$nome': textura $ignorado IGNORADA nesta fase (o .KERN v2 só leva baseColor + normal)")
+            if (caminho != null) {
+                texNormalPath = caminho; temTexNormal = true; ctx.algumNormalMap = true
+                normalScale = t.optDouble("scale", 1.0).toFloat().coerceIn(0f, 2f)
             }
         }
-        if (pbr?.optJSONObject("metallicRoughnessTexture") != null) {
-            ctx.avisos.add("material '$nome': textura metallicRoughness IGNORADA nesta fase (entram os FATORES metallic/roughness)")
+        // T0.4 (v0.1.20): TODOS os mapas PBR entram no .KERN v3
+        pbr?.optJSONObject("metallicRoughnessTexture")?.let { t ->
+            val caminho = caminhoTextura(ctx, t.optInt("index", -1), "metallicRoughness")
+            if (caminho != null) texMrPath = caminho
+        }
+        m.optJSONObject("occlusionTexture")?.let { t ->
+            val caminho = caminhoTextura(ctx, t.optInt("index", -1), "occlusion")
+            if (caminho != null) {
+                texOclusaoPath = caminho
+                oclusaoStrength = t.optDouble("strength", 1.0).toFloat().coerceIn(0f, 1f)
+            }
+        }
+        m.optJSONObject("emissiveTexture")?.let { t ->
+            val caminho = caminhoTextura(ctx, t.optInt("index", -1), "emissive")
+            if (caminho != null) texEmissivaPath = caminho
+        }
+        m.optJSONArray("emissiveFactor")?.let { e ->
+            if (e.length() >= 3) {
+                emR = e.getDouble(0).toFloat(); emG = e.getDouble(1).toFloat(); emB = e.getDouble(2).toFloat()
+            }
+        }
+        // KHR_materials_emissive_strength (quando presente)
+        val exts = m.optJSONObject("extensions")
+        exts?.optJSONObject("KHR_materials_emissive_strength")?.let { es ->
+            emIntensidade = es.optDouble("emissiveStrength", 1.0).toFloat().coerceAtLeast(0f)
         }
 
         val kern = KernMaterial(
             nome, r.coerceIn(0f, 1f), g.coerceIn(0f, 1f), b.coerceIn(0f, 1f), a.coerceIn(0f, 1f),
             metallic.coerceIn(0f, 1f), roughness.coerceIn(0f, 1f),
-            temTexBase, temTexNormal, doubleSided, texBasePath, texNormalPath
+            temTexBase, temTexNormal, doubleSided, texBasePath, texNormalPath,
+            texMrPath, texOclusaoPath, texEmissivaPath,
+            emR, emG, emB, emIntensidade, normalScale, oclusaoStrength
         )
         // DEDUP de materiais iguais (B.4): conteúdo idêntico = MESMA entrada.
         val existente = ctx.materiaisTabela.indexOfFirst { it == kern }
