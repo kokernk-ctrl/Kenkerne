@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Kenkern.Base" parent="android:Theme.Material.NoActionBar">
+    <style name="KenkernBaseTheme" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/kenkern_background</item>
         <item name="android:statusBarColor">@color/kenkern_background</item>
         <item name="android:navigationBarColor">@color/kenkern_background</item>
     </style>
-    <style name="Theme.Kenkern" parent="@style/Theme.Kenkern.Base" />
+    <style name="Theme.Kenkern" parent="@style/KenkernBaseTheme" />
 </resources>

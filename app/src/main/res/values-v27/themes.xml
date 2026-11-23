@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Kenkern" parent="@style/Theme.Kenkern.Base">
+    <style name="Theme.Kenkern" parent="@style/KenkernBaseTheme">
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>
