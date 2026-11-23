@@ -93,7 +93,7 @@ class KimgException(motivo: String) : Exception(motivo)
  */
 object KimgReader {
 
-    fun read(bytes: ByteArray): KimgImagem {
+    fun read(bytes: ByteArray, maxDecodedBytes: Int = Int.MAX_VALUE): KimgImagem {
         if (bytes.size < KimgFormat.HEADER_SIZE) {
             throw KimgException(".KIMG truncado: ${bytes.size} bytes (mínimo ${KimgFormat.HEADER_SIZE})")
         }
@@ -135,7 +135,9 @@ object KimgReader {
 
         val mips = ArrayList<KimgMip>(mipCount)
         var fimMipAnterior = inicioDados
+        var totalDecoded = 0L
         for (i in 0 until mipCount) {
+            if (Thread.currentThread().isInterrupted) throw InterruptedException()
             if (buf.remaining() < KimgFormat.MIP_ENTRY_SIZE) {
                 throw KimgException(".KIMG truncado: tabela de mipmaps incompleta (mip $i)")
             }
@@ -151,6 +153,10 @@ object KimgReader {
             val mw = maxOf(1, largura shr i)
             val mh = maxOf(1, altura shr i)
             val esperado = tamanhoBloco(formato, mw, mh)
+            totalDecoded += esperado
+            if (totalDecoded > maxDecodedBytes) {
+                throw KimgException("mips .KIMG excedem o limite de carga ($maxDecodedBytes bytes decodificados)")
+            }
             val dadosMip: ByteArray = if (emDiscoDeflate) {
                 // V2: "tamanho" da tabela é o tamanho COMPRIMIDO — infla e
                 // valida contra o esperado do formato (erro claro em qualquer

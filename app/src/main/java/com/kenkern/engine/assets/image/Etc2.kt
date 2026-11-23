@@ -495,6 +495,7 @@ object Etc2 {
         val blocosY = blocosDe(altura)
         val px = IntArray(16 * 4)
         for (bx in 0 until blocosX) {
+            if (Thread.currentThread().isInterrupted) throw InterruptedException()
             for (by in 0 until blocosY) {
                 val base = (by * blocosX + bx) * 8
                 if (base + 8 > blocos.size) {
@@ -514,6 +515,7 @@ object Etc2 {
         val blocosY = blocosDe(altura)
         val px = IntArray(16 * 4)
         for (bx in 0 until blocosX) {
+            if (Thread.currentThread().isInterrupted) throw InterruptedException()
             for (by in 0 until blocosY) {
                 val base = (by * blocosX + bx) * 16
                 if (base + 16 > blocos.size) {

@@ -11,7 +11,7 @@ package com.kenkern.engine.core
  *
  * Leitura defensiva: campos ausentes/errados devolvem default (Nick antigo,
  * classe parcial) — a engine NUNCA crasha por classe malformada; falha de
- * carregamento da malha em si é tratada no AssetMeshLibrary com erro claro.
+ * carregamento da malha em si é tratada no ProjectAssetStream com erro claro.
  */
 object MalhaNick {
 

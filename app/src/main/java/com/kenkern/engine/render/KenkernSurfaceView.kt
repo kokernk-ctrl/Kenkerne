@@ -314,6 +314,11 @@ class KenkernSurfaceView(
         super.onPause()
     }
 
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow() // GLSurfaceView joins its GL thread.
+        glRenderer.abandonProjectAssets()
+    }
+
     private val controls = object : EngineControls {
         override fun setPlayState(state: PlayState) {
             requestedPlayState = state
@@ -966,12 +971,14 @@ class KenkernSurfaceView(
     }
 
     private inner class KenkernGLRenderer : Renderer {
-        private val backend = GlesBackend()
+        @Volatile private var backend = GlesBackend()
         private val engineRenderer = EngineRenderer()
         private var surfaceReady = false
 
         // Marcador de progresso: "primeiro frame" só é gravado 1x por sessão.
         private var firstFrameMarked = false
+
+        fun abandonProjectAssets() = engineRenderer.abandonProjectAssets()
 
         fun currentFps(): Int = engineRenderer.fps
 
@@ -999,15 +1006,8 @@ class KenkernSurfaceView(
             BootTrace.mark("surface criada")
             surfaceReady = false
             isEngineHealthy = false
-            runCatching {
-                // Contexto novo = handles de GPU antigos inválidos: as malhas
-                // importadas voltam a subir pela fila pendente (nada de handle órfão).
-                AssetMeshLibrary.limpar()
-                // As texturas guardam handles opacos do backend, também inválidos
-                // após perda do contexto. Limpando a cache, o renderer as reenfileira.
-                TextureLibrary.limpar()
-                backend.destroy() // libera restos de contexto anterior
-            }.onFailure { KenkernLog.w(TAG, "destroy() do backend anterior falhou", it) }
+            // No contexto recém-criado, nomes GL antigos não são nossos.
+            backend = GlesBackend()
             runCatching {
                 engineRenderer.initialize(backend, gizmo)
                 surfaceReady = true
@@ -1065,7 +1065,7 @@ class KenkernSurfaceView(
                     if (source == null) drawSceneFrame(null)
                     else source.withEditorAccess { drawSceneFrame(source) }
                 } else {
-                    drawSceneFrame(sceneForPlay(source))
+                    drawSceneFrame(sceneForPlay(source), source)
                 }
                 // Depois do draw e fora do monitor da edição.
                 if (surfaceReady && !firstFrameMarked) {
@@ -1083,7 +1083,7 @@ class KenkernSurfaceView(
         }
 
         /** Cena de edição: chamador mantém o monitor até o fim da travessia. */
-        private fun drawSceneFrame(scene: Scene?) {
+        private fun drawSceneFrame(scene: Scene?, assetSource: Scene? = scene) {
             // Instrumentação: ms de update (timestep fixo + world transforms).
             val updateStart = System.nanoTime()
             loop.tick(System.nanoTime()) { dt ->
@@ -1147,7 +1147,7 @@ class KenkernSurfaceView(
                 engineRenderer.renderFrame(
                     backend, scene,
                     frameCamera,
-                    loop.engineTime, if (engineRenderer.emJogo) null else selectionProvider(), gizmoState
+                    loop.engineTime, if (engineRenderer.emJogo) null else selectionProvider(), gizmoState, assetSource
                 )
                 // Publicação de debug (overlay de toque): alças em px de
                 // framebuffer + tamanho do render. Só quando o overlay está ON.

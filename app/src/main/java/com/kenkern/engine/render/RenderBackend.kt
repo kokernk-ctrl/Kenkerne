@@ -1,5 +1,6 @@
 package com.kenkern.engine.render
 
+import com.kenkern.engine.assets.image.KimgImagem
 import com.kenkern.engine.assets.mesh.MeshData
 import com.kenkern.engine.core.math.Mat4
 
@@ -40,6 +41,9 @@ interface RenderBackend {
 
     /** Cria/upload de malha; retorna handle opaco (0 = falha). */
     fun createMesh(mesh: MeshData): Int
+
+    /** Upload de buffers já preparados pelo worker, sem empacotar vértices na GL. */
+    fun createPreparedMesh(mesh: PreparedMesh): Int = 0
 
     /** Cria buffer de linhas coloridas (interleaved x, y, z, r, g, b) — gizmo de eixos. */
     fun createColoredLineBuffer(data: FloatArray): Int
@@ -110,6 +114,9 @@ interface RenderBackend {
      * chamador). Implementado pelo GlesBackend; outros backends retornam 0.
      */
     fun createTextureFromKimg(kimg: ByteArray): Int = 0
+
+    /** Upload sem decodificação; -1 solicita fallback ETC2 no worker, 0 = falha. */
+    fun uploadPreparedTexture(image: KimgImagem): Int = 0
 
     /** Libera textura criada por [createTextureFromKimg]. */
     fun destroyTexture(handle: Int) = Unit

@@ -6,6 +6,7 @@ import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.diag.KenkernLog
+import com.kenkern.engine.render.ProjectAssetBindings
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -70,6 +71,7 @@ class ImportModelCommand(
             }
             detached = null
             pastaLixeira.deleteRecursively()
+            ProjectAssetBindings.invalidate(scene, arquivosCriados)
             return
         }
         val parent = parentId?.let { scene.findNick(it) }
@@ -81,6 +83,7 @@ class ImportModelCommand(
         )
         nick.addClassInstance(classeMalha)
         created = nick
+        ProjectAssetBindings.invalidate(scene, arquivosCriados)
     }
 
     override fun undo() {
@@ -97,6 +100,7 @@ class ImportModelCommand(
             throw ImportException("undo da importação não destacou o Nick '${nick.id.value}'")
         }
         detached = state
+        ProjectAssetBindings.invalidate(scene, arquivosCriados)
     }
 
     /** Move os arquivos criados para a lixeira; falha reverte os movimentos feitos. */

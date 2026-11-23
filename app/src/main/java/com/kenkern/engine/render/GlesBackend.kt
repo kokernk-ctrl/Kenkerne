@@ -2,6 +2,9 @@ package com.kenkern.engine.render
 
 import android.opengl.GLES30
 import android.util.Log
+import com.kenkern.engine.assets.image.KimgImagem
+import com.kenkern.engine.assets.image.KimgFormato
+import com.kenkern.engine.assets.image.KimgReader
 import com.kenkern.engine.assets.mesh.MeshData
 import com.kenkern.engine.core.math.Mat4
 import com.kenkern.engine.diag.BootTrace
@@ -619,40 +622,14 @@ class GlesBackend : RenderBackend {
     }
 
     override fun createMesh(mesh: MeshData): Int {
-        if (mesh.vertexCount <= 0 || mesh.indices.isEmpty()) return 0
-        val vertexCount = mesh.vertexCount
-
-        val interleaved = runCatching {
-            ByteBuffer.allocateDirect(vertexCount * STRIDE).order(ByteOrder.nativeOrder())
-        }.onFailure {
-            // OOM na alocação de VBO não pode virar "malha invisível" sem rastro (regra nova).
-            KenkernLog.e(TAG, "sem memória para VBO de $vertexCount vértices — malha não sobe para a GPU", it)
+        val prepared = runCatching { PreparedMesh.pack(mesh) }.onFailure {
+            KenkernLog.e(TAG, "falha ao preparar buffers da malha (${mesh.vertexCount} vértices)", it)
         }.getOrNull() ?: return 0
-        val fb = interleaved.asFloatBuffer()
-        for (v in 0 until vertexCount) {
-            fb.put(mesh.positions[v * 3]); fb.put(mesh.positions[v * 3 + 1]); fb.put(mesh.positions[v * 3 + 2])
-            fb.put(mesh.normals[v * 3]); fb.put(mesh.normals[v * 3 + 1]); fb.put(mesh.normals[v * 3 + 2])
-            fb.put(mesh.uvs[v * 2]); fb.put(mesh.uvs[v * 2 + 1])
-        }
-        fb.position(0)
+        return createPreparedMesh(prepared)
+    }
 
-        val useShort = vertexCount <= 65535
-        val bytesPerIndex = if (useShort) 2 else 4
-        val indexBuffer = runCatching {
-            ByteBuffer.allocateDirect(mesh.indices.size * bytesPerIndex).order(ByteOrder.nativeOrder())
-        }.onFailure {
-            KenkernLog.e(TAG, "sem memória para buffer de índices (${mesh.indices.size}) — malha não sobe para a GPU", it)
-        }.getOrNull() ?: return 0
-        if (useShort) {
-            val sb = indexBuffer.asShortBuffer()
-            for (i in mesh.indices) sb.put(i.toShort())
-            sb.position(0)
-        } else {
-            val ib = indexBuffer.asIntBuffer()
-            for (i in mesh.indices) ib.put(i)
-            ib.position(0)
-        }
-
+    override fun createPreparedMesh(mesh: PreparedMesh): Int {
+        val stride = PreparedMesh.STRIDE
         val vao = IntArray(1)
         val vbo = IntArray(1)
         val ebo = IntArray(1)
@@ -669,24 +646,30 @@ class GlesBackend : RenderBackend {
 
         GLES30.glBindVertexArray(vao[0])
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo[0])
-        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, vertexCount * STRIDE, fb, GLES30.GL_STATIC_DRAW)
+        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, mesh.vertices.remaining() * Float.SIZE_BYTES, mesh.vertices, GLES30.GL_STATIC_DRAW)
         GLES30.glEnableVertexAttribArray(0)
-        GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, STRIDE, 0)
+        GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, stride, 0)
         GLES30.glEnableVertexAttribArray(1)
-        GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, STRIDE, 12)
+        GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, stride, 12)
         GLES30.glEnableVertexAttribArray(2)
-        GLES30.glVertexAttribPointer(2, 2, GLES30.GL_FLOAT, false, STRIDE, 24)
+        GLES30.glVertexAttribPointer(2, 2, GLES30.GL_FLOAT, false, stride, 24)
         GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, ebo[0])
         GLES30.glBufferData(
-            GLES30.GL_ELEMENT_ARRAY_BUFFER, mesh.indices.size * bytesPerIndex, indexBuffer, GLES30.GL_STATIC_DRAW
+            GLES30.GL_ELEMENT_ARRAY_BUFFER, mesh.indices.remaining(), mesh.indices, GLES30.GL_STATIC_DRAW
         )
         GLES30.glBindVertexArray(0)
-        drainGlErrors()
+        if (GLES30.glGetError() != GLES30.GL_NO_ERROR) {
+            GLES30.glDeleteVertexArrays(1, vao, 0)
+            GLES30.glDeleteBuffers(1, vbo, 0)
+            GLES30.glDeleteBuffers(1, ebo, 0)
+            drainGlErrors()
+            return 0
+        }
 
         val handle = nextHandle++
         meshes[handle] = GpuMesh(
-            vao[0], vbo[0], ebo[0], mesh.indices.size,
-            if (useShort) GLES30.GL_UNSIGNED_SHORT else GLES30.GL_UNSIGNED_INT
+            vao[0], vbo[0], ebo[0], mesh.indexCount,
+            if (mesh.shortIndices) GLES30.GL_UNSIGNED_SHORT else GLES30.GL_UNSIGNED_INT
         )
         return handle
     }
@@ -874,11 +857,24 @@ class GlesBackend : RenderBackend {
      */
     override fun createTextureFromKimg(kimg: ByteArray): Int {
         val imagem = try {
-            com.kenkern.engine.assets.image.KimgReader.read(kimg)
+            KimgReader.read(kimg)
         } catch (e: Exception) {
             KenkernLog.e(TAG, ".KIMG inválido para upload de GPU", e)
             return 0
         }
+        val handle = uploadPreparedTexture(imagem)
+        if (handle != TEXTURE_RETRY_AS_RGBA) return handle
+        // Synchronous convenience wrapper for the offscreen diagnostic only.
+        return try {
+            uploadPreparedTexture(textureFallback(imagem, 64 * 1024 * 1024))
+        } catch (e: Exception) {
+            KenkernLog.e(TAG, "fallback RGBA8 falhou na decodificação ETC2", e)
+            0
+        }
+    }
+
+    override fun uploadPreparedTexture(image: KimgImagem): Int {
+        val imagem = image
         val id = IntArray(1)
         GLES30.glGenTextures(1, id, 0)
         if (id[0] == 0) {
@@ -889,24 +885,23 @@ class GlesBackend : RenderBackend {
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, id[0])
         var falha = false
         val usouEtc2 = when (imagem.formato) {
-            com.kenkern.engine.assets.image.KimgFormato.ETC2_RGB -> true
-            com.kenkern.engine.assets.image.KimgFormato.ETC2_RGBA -> true
+            KimgFormato.ETC2_RGB -> true
+            KimgFormato.ETC2_RGBA -> true
             else -> false
         }
         val internaEtc2Rgb = 0x9274 // GL_COMPRESSED_RGB8_ETC2
         val internaEtc2Rgba = 0x9278 // GL_COMPRESSED_RGBA8_ETC2_EAC
-        var usouFallbackRgba = false
         var uploadedLevels = 0
         for ((i, mip) in imagem.mips.withIndex()) {
             val ok = if (usouEtc2) {
-                val interna = if (imagem.formato == com.kenkern.engine.assets.image.KimgFormato.ETC2_RGBA) internaEtc2Rgba else internaEtc2Rgb
+                val interna = if (imagem.formato == KimgFormato.ETC2_RGBA) internaEtc2Rgba else internaEtc2Rgb
                 GLES30.glCompressedTexImage2D(
                     GLES30.GL_TEXTURE_2D, i, interna,
                     mip.largura, mip.altura, 0, mip.dados.size,
                     java.nio.ByteBuffer.wrap(mip.dados)
                 )
                 GLES30.glGetError() == GLES30.GL_NO_ERROR
-            } else if (imagem.formato == com.kenkern.engine.assets.image.KimgFormato.RGBA8_RAW) {
+            } else if (imagem.formato == KimgFormato.RGBA8_RAW) {
                 GLES30.glTexImage2D(
                     GLES30.GL_TEXTURE_2D, i, GLES30.GL_RGBA8,
                     mip.largura, mip.altura, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE,
@@ -922,28 +917,10 @@ class GlesBackend : RenderBackend {
             else if (i == uploadedLevels) uploadedLevels++
         }
         if (falha && usouEtc2) {
-            // FALLBACK automático: decodifica ETC2 na CPU e sobe como RGBA8.
-            KenkernLog.w(TAG, "driver recusou ETC2 — fallback RGBA8 decodificado na CPU")
             drainGlErrors()
-            val rgba = try {
-                if (imagem.formato == com.kenkern.engine.assets.image.KimgFormato.ETC2_RGBA) {
-                    com.kenkern.engine.assets.image.Etc2.decodificarRgba(imagem.mips[0].dados, imagem.largura, imagem.altura)
-                } else {
-                    com.kenkern.engine.assets.image.Etc2.decodificarRgb(imagem.mips[0].dados, imagem.largura, imagem.altura)
-                }
-            } catch (e: Exception) {
-                KenkernLog.e(TAG, "fallback RGBA8 falhou na decodificação ETC2", e)
-                GLES30.glDeleteTextures(1, id, 0)
-                drainGlErrors()
-                return 0
-            }
-            GLES30.glTexImage2D(
-                GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA8,
-                imagem.largura, imagem.altura, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE,
-                java.nio.ByteBuffer.wrap(rgba)
-            )
-            usouFallbackRgba = true
-            uploadedLevels = 1
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, 0)
+            GLES30.glDeleteTextures(1, id, 0)
+            return TEXTURE_RETRY_AS_RGBA
         }
         if (uploadedLevels == 0) {
             KenkernLog.e(TAG, "nenhum nível .KIMG foi enviado à GPU (${imagem.formato.rotulo})")
@@ -965,8 +942,7 @@ class GlesBackend : RenderBackend {
             imagem.largura,
             imagem.altura,
             uploadedLevels,
-            formatoRgba8 = imagem.formato == com.kenkern.engine.assets.image.KimgFormato.RGBA8_RAW,
-            fallbackRgba8 = usouFallbackRgba
+            formatoRgba8 = imagem.formato == KimgFormato.RGBA8_RAW, fallbackRgba8 = false
         )
         val minFilter = when (mipPolicy) {
             MipmapPolicy.GENERATE -> {
@@ -1182,7 +1158,6 @@ class GlesBackend : RenderBackend {
 
     companion object {
         private const val TAG = "Kenkern/GlesBackend"
-        private const val STRIDE = 32 // 3 pos + 3 normal + 2 uv (floats)
 
         /** Quantidade de níveis necessária até 1×1, incluindo o nível base. */
         internal fun mipCountCompleto(width: Int, height: Int): Int {

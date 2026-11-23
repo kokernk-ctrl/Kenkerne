@@ -42,6 +42,7 @@ class EngineRenderer {
     private val geometry: GeometryPipeline = DefaultGeometryPipeline()
     private val lighting: LightingPipeline = DefaultLightingPipeline()
 
+    private val projectAssets = ProjectAssetStream()
     private var initialized = false
     private var cubeHandle = 0
     private var gizmoHandle = 0
@@ -176,6 +177,7 @@ class EngineRenderer {
         transformGizmo: TransformGizmo? = null,
         registrarBootTrace: Boolean = true
     ) {
+        projectAssets.abandonContext()
         initialized = false
         cubeHandle = 0
         gizmoHandle = 0
@@ -339,6 +341,8 @@ class EngineRenderer {
 
     fun isKernRoundtripOk(): Boolean = kernRoundtripOk
 
+    internal fun abandonProjectAssets() = projectAssets.abandonContext()
+
     // ---------- Frame ----------
 
     fun renderFrame(
@@ -347,12 +351,13 @@ class EngineRenderer {
         camera: OrbitCamera,
         engineTime: Float,
         selectedId: ReferenceId?,
-        gizmoState: GizmoSharedState? = null
+        gizmoState: GizmoSharedState? = null,
+        assetSource: Scene? = scene
     ) {
         updateFps(System.nanoTime())
         val drawStart = System.nanoTime()
         try {
-            renderFrameInner(backend, scene, camera, engineTime, selectedId, gizmoState)
+            renderFrameInner(backend, scene, camera, engineTime, selectedId, gizmoState, assetSource)
         } catch (e: Throwable) {
             // Última linha de defesa: nenhum erro de GL/frame derruba o processo.
             Log.e(TAG, "Frame descartado", e)
@@ -370,18 +375,14 @@ class EngineRenderer {
         camera: OrbitCamera,
         engineTime: Float,
         selectedId: ReferenceId?,
-        gizmoState: GizmoSharedState?
+        gizmoState: GizmoSharedState?,
+        assetSource: Scene?
     ) {
         // CRÍTICO: zera a fila de submissões — sem isso ela acumula entre frames
         // até saturar a capacidade e redesenhar a cena centenas de vezes.
         geometry.reset()
 
-        // Malhas e texturas importadas pendentes: carrega FORA do flush (orçamento de 6 ms
-        // cada) — nunca trava o frame que está desenhando (anti-trave; streaming completo = F2.11).
-        runCatching { AssetMeshLibrary.processarPendentes(backend) }
-            .onFailure { KenkernLog.e(TAG, "carga de malhas importadas falhou", it) }
-        runCatching { TextureLibrary.processarPendentes(backend) }
-            .onFailure { KenkernLog.e(TAG, "carga de texturas .KIMG falhou", it) }
+        projectAssets.beginFrame(ProjectAssetBindings.of(assetSource), backend)
 
         backend.beginFrame(0.075f, 0.075f, 0.105f, 1f)
         var skyDrawn = 0
@@ -449,26 +450,22 @@ class EngineRenderer {
                     val caminhoMalha = MalhaNick.path(nick)
                     if (caminhoMalha != null) {
                         // Nick importado (ETAPA A): desenha a MALHA do .KERN em vez do cubo.
-                        val h = AssetMeshLibrary.handleDe(caminhoMalha)
-                        if (h != 0) {
-                            val malha = AssetMeshLibrary.malhaDe(caminhoMalha)
-                            if (malha != null && malha.gruposMaterial.isNotEmpty()) {
+                        val malha = projectAssets.mesh(caminhoMalha)
+                        if (malha != null) {
+                            val h = malha.handle
+                            if (malha.groups.isNotEmpty()) {
                                 // GRUPOS DE MATERIAL (B.3/C.4): um sub-range por grupo,
                                 // com textura .KIMG do material (fallback = cor do material).
-                                for (g in malha.gruposMaterial) {
-                                    val material = malha.materiais.getOrNull(g.materialIndex)
+                                for (g in malha.groups) {
+                                    val material = malha.materials.getOrNull(g.materialIndex)
                                     var texHandle = 0
                                     var mr = materialGray; var mg = materialGray; var mb = materialGray; var ma = 1f
                                     if (material != null) {
                                         mr = material.baseColorR; mg = material.baseColorG
                                         mb = material.baseColorB; ma = material.baseColorA
                                         if (material.temTexturaBase && material.texturaBasePath.isNotEmpty()) {
-                                            texHandle = TextureLibrary.handleDe(material.texturaBasePath)
-                                            if (texHandle == 0) {
-                                                TextureLibrary.marcarNecessario(material.texturaBasePath)
-                                                // textura ainda não pronta: desenha cor do material
-                                                texHandle = 0
-                                            }
+                                            // Se não estiver pronta, preserva a cor do material.
+                                            texHandle = projectAssets.texture(material.texturaBasePath)
                                         }
                                     }
                                     geometry.submitGroup(
@@ -491,11 +488,8 @@ class EngineRenderer {
                                     h, outlineScratch, outlineR, outlineG, outlineB, 1f
                                 )
                             }
-                        } else {
-                            // Ainda não na cache de GPU (ou falhou): enfileira a carga.
-                            // O Nick continua selecionável/picker pela AABB da classe Malha.
-                            AssetMeshLibrary.marcarNecessario(caminhoMalha)
                         }
+                        // Enquanto a malha não chega (ou falha), o Nick continua selecionável pela AABB.
                     } else if (cubeHandle != 0) {
                         geometry.submit(
                             cubeHandle,
