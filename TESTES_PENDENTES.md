@@ -1,5 +1,40 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## PARADA C — v0.1.22: jogável no editor (M1.3–M1.6)
+
+> 4 tarefas COMPILADO+CI (310 testes JVM verdes). Aceite curto.
+
+### M1.3 — input de jogo
+
+1. Adicionar Nick → grupo UI → **Nick de Joystick**; Inspetor: tipo
+   (fixo/flutuante/dinâmico), Tamanho, Opacidade, Zona morta, 8 direções,
+   "Controla", "Seguir Nick". Play: o joystick de tela USA a configuração
+   (tamanho/opacidade/zona morta mudam de cara).
+2. Joystick: empurrar devagar no centro NÃO move (zona morta); borda = corre
+   na velocidade máxima; com "8 direções" marcado, a diagonal anda PERFEITA.
+3. Botões PULAR/ATACAR (canto direito): dois dedos simultâneos funcionam
+   (joystick + botão); PULAR não repete segurando (borda de 1 tick); o
+   jogador pula e volta ao chão.
+4. Lua: `local j = input.joystick()` (x/y) e `input.acao("pular")`.
+5. Diagnóstico → checagem **"joystick"**: APROVADO.
+
+### M1.4 — câmera 3ª pessoa
+
+6. Câmera Seguidora com Altura negativa/pequena em Play: a câmera NÃO entra
+   no chão (fica ≥ pés do jogador + 0,35 m).
+
+### M1.5 — UI de jogo
+
+7. Script com `ui.texto("moedas", 3)` e `ui.contador("pontos", 120)` em
+   Play: o texto/contador aparecem no canto superior esquerdo em paisagem;
+   `ui.limpar()` apaga.
+
+### M1.6 — Play/Stop reais
+
+8. Play com script que MOVE o jogador, DESTRÓI um nick (scene.destroy) e
+   CRIA outro (scene.spawn): Stop restaura a cena EXATAMENTE (jogador no
+   lugar, nick destruído de volta, criado some); Play de novo reconstrói.
+
 ## PARADA B — v0.1.21: Hub novo (T0.5) + Lua nos Nicks (M1.1) + Colliders (M1.2)
 
 > 3 tarefas COMPILADO+CI (297 testes JVM verdes). Aceite curto; nada vira

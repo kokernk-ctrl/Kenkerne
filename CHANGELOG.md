@@ -1,5 +1,59 @@
 # KENKERN — CHANGELOG
 
+## v0.1.22 — PARADA C: JOGÁVEL NO EDITOR (M1.3–M1.6)
+
+> 4 tarefas, um commit por ID (M1.3, M1.4, M1.5, M1.6), CI verde em cada uma.
+
+### M1.3 — Input de jogo (Joystick Nick + botões de ação + ações nomeadas)
+
+- **Matemática PURA** (engine/InputJogo.kt): normalização no círculo unitário,
+  ZONA MORTA com re-normalização contínua, CURVA v^1,5, TRAVAR EM 8 DIREÇÕES
+  (45°), borda de 1 tick nos botões.
+- **Joystick Nick**: tipo `ui.joystick` novo com classe "Joystick" — tipo
+  (fixo/flutuante/dinâmico), tamanho, opacidade, zonaMorta, oitoDirecoes,
+  campo "Controla" (Player Body) e "seguirNick"; sem joystick na cena usa o
+  de teste padrão. UI: joystick com a config do Nick + BOTÕES DE AÇÃO
+  (Pular/Atacar) — MULTITOQUE REAL (áreas de pointerInput separadas).
+- **PULO**: impulso único quando o jogador está APOIADO (runtime.pular()).
+- **API Lua**: input.joystick() → {x, y, ativo} · input.acao("pular"/"atacar").
+- **Diagnóstico**: checagem "joystick" (a mesma matemática da tela contra
+  toques sintéticos).
+- **Provas**: InputJogoTest (9 — normalização, zona morta, curva, 8 direções,
+  multitoque, borda, pulo sobe/volta, Lua lê input, JoystickUiConfig).
+  306 testes verdes (297 + 9).
+
+### M1.4 — Câmera de jogador 3ª pessoa que não atravessa o chão
+
+- O olho da Follow Camera fica sempre ACIMA dos pés do alvo (+ 0,35 m): tanto
+  no preview (LenteNickMatriz.viewFollow) quanto NO PLAY (NickPlayCamera.update
+  — a clamp que faltava; o primeiro commit falhou no teste novo e foi
+  corrigido no commit seguinte, documentado). Meia-altura do alvo = AABB.
+- **Provas**: NickPlayCameraTest (+1 — altura −5 m ainda deixa o olho acima
+  dos pés). 307 testes verdes.
+
+### M1.5 — Interface de jogo mínima (texto e contador por Lua)
+
+- API Lua: ui.texto(nome, texto) · ui.contador(nome, valor) · ui.limpar();
+  mapa SINCRONIZADO escrito no thread GL e lido pelo overlay do editor ~2 Hz
+  ("nome: texto", canto superior esquerdo, paisagem).
+- **Provas**: InputJogoTest (+1 — texto/contador chegam ao snapshot; limpar).
+  308 testes verdes.
+
+### M1.6 — Play e Stop reais (snapshot completo)
+
+- O Play inicia SCRIPTS (M1.1), FÍSICA (M1.2) e INPUT (M1.3) na CÓPIA; o Stop
+  restaura a cena do editor EXATAMENTE — inclusive Nicks CRIADOS e DESTRUÍDOS por
+  script e posições movidas pela física.
+- **Provas**: M1PlayStopTest (2 — play DESTRUTIVO (move/destroi/cria/ui) e a
+  serialização da cena do editor IDÊNTICA byte a byte antes × depois + novo
+  Play reconstrói o snapshot; play inicia física+scripts+input em 1 tick).
+  310 testes verdes (308 + 2).
+
+### Fechamento da PARADA C (F)
+
+- Versão 0.1.22-fase2 (versionCode 23); docs atualizados; lint sem erros
+  novos; Release `v0.1.22-fase2-teste` com APK assinado.
+
 ## v0.1.21 — PARADA B: HUB NOVO (T0.5) + LUA NOS NICKS (M1.1) + COLISORES (M1.2)
 
 > 3 tarefas, um commit por ID (T0.5, M1.1, M1.2), CI verde em cada uma.
@@ -468,6 +522,60 @@
   463 KB com etcpak+meshoptimizer+handler). 184 testes JVM verdes.
 
 # KENKERN — CHANGELOG
+
+## v0.1.22 — PARADA C: JOGÁVEL NO EDITOR (M1.3–M1.6)
+
+> 4 tarefas, um commit por ID (M1.3, M1.4, M1.5, M1.6), CI verde em cada uma.
+
+### M1.3 — Input de jogo (Joystick Nick + botões de ação + ações nomeadas)
+
+- **Matemática PURA** (engine/InputJogo.kt): normalização no círculo unitário,
+  ZONA MORTA com re-normalização contínua, CURVA v^1,5, TRAVAR EM 8 DIREÇÕES
+  (45°), borda de 1 tick nos botões.
+- **Joystick Nick**: tipo `ui.joystick` novo com classe "Joystick" — tipo
+  (fixo/flutuante/dinâmico), tamanho, opacidade, zonaMorta, oitoDirecoes,
+  campo "Controla" (Player Body) e "seguirNick"; sem joystick na cena usa o
+  de teste padrão. UI: joystick com a config do Nick + BOTÕES DE AÇÃO
+  (Pular/Atacar) — MULTITOQUE REAL (áreas de pointerInput separadas).
+- **PULO**: impulso único quando o jogador está APOIADO (runtime.pular()).
+- **API Lua**: input.joystick() → {x, y, ativo} · input.acao("pular"/"atacar").
+- **Diagnóstico**: checagem "joystick" (a mesma matemática da tela contra
+  toques sintéticos).
+- **Provas**: InputJogoTest (9 — normalização, zona morta, curva, 8 direções,
+  multitoque, borda, pulo sobe/volta, Lua lê input, JoystickUiConfig).
+  306 testes verdes (297 + 9).
+
+### M1.4 — Câmera de jogador 3ª pessoa que não atravessa o chão
+
+- O olho da Follow Camera fica sempre ACIMA dos pés do alvo (+ 0,35 m): tanto
+  no preview (LenteNickMatriz.viewFollow) quanto NO PLAY (NickPlayCamera.update
+  — a clamp que faltava; o primeiro commit falhou no teste novo e foi
+  corrigido no commit seguinte, documentado). Meia-altura do alvo = AABB.
+- **Provas**: NickPlayCameraTest (+1 — altura −5 m ainda deixa o olho acima
+  dos pés). 307 testes verdes.
+
+### M1.5 — Interface de jogo mínima (texto e contador por Lua)
+
+- API Lua: ui.texto(nome, texto) · ui.contador(nome, valor) · ui.limpar();
+  mapa SINCRONIZADO escrito no thread GL e lido pelo overlay do editor ~2 Hz
+  ("nome: texto", canto superior esquerdo, paisagem).
+- **Provas**: InputJogoTest (+1 — texto/contador chegam ao snapshot; limpar).
+  308 testes verdes.
+
+### M1.6 — Play e Stop reais (snapshot completo)
+
+- O Play inicia SCRIPTS (M1.1), FÍSICA (M1.2) e INPUT (M1.3) na CÓPIA; o Stop
+  restaura a cena do editor EXATAMENTE — inclusive Nicks CRIADOS e DESTRUÍDOS por
+  script e posições movidas pela física.
+- **Provas**: M1PlayStopTest (2 — play DESTRUTIVO (move/destroi/cria/ui) e a
+  serialização da cena do editor IDÊNTICA byte a byte antes × depois + novo
+  Play reconstrói o snapshot; play inicia física+scripts+input em 1 tick).
+  310 testes verdes (308 + 2).
+
+### Fechamento da PARADA C (F)
+
+- Versão 0.1.22-fase2 (versionCode 23); docs atualizados; lint sem erros
+  novos; Release `v0.1.22-fase2-teste` com APK assinado.
 
 ## v0.1.21 — PARADA B: HUB NOVO (T0.5) + LUA NOS NICKS (M1.1) + COLISORES (M1.2)
 

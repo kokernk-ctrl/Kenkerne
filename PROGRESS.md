@@ -27,11 +27,14 @@ de tarefas do BACKLOG sem refazer o que está pronto.
   forma — sem solver completo), gatilhos on_trigger na borda e
   on_collision; gravidade básica. 297 testes JVM verdes. **Release
   `v0.1.21-fase2-teste` publicada — aguardando aceite no aparelho.**
-- **Prioridade seguinte — PARADA C (v0.1.22)**: M1.3 input de jogo
-  (Joystick Nick + botões de ação + ações nomeadas), M1.4 câmera de jogador
-  3ª pessoa que não atravessa o chão, M1.5 UI de jogo mínima (Lua), M1.6
-  Play/Stop reais com snapshot completo. Depois PARADA D (v0.1.23: template
-  "Coletar moedas" + exportar APK do jogo).
+- **v0.1.22 — PARADA C (M1.3–M1.6) COMPILADO**: M1.3 input de jogo
+  (Joystick Nick editável + botões de ação + ações nomeadas + pulo +
+  checagem "joystick"); M1.4 câmera 3ª pessoa que não atravessa o chão;
+  M1.5 UI de jogo mínima por Lua (ui.texto/contador/limpar + overlay);
+  M1.6 Play/Stop reais com snapshot completo PROVADO na JVM. 310 testes
+  JVM verdes. **Release `v0.1.22-fase2-teste` publicada.**
+- **Prioridade seguinte — PARADA D (v0.1.23)**: M1.7 template "Coletar
+  moedas" e M1.8 exportar APK do jogo por botão (GitHub Actions).
 - **T0.4 parcial — resolução de texturas**: opção Original, redução proporcional
   e cache por resolução efetiva e qualidade ETC2. O usuário aprovou no aparelho
   a comparação 512 × Original e a reabertura do projeto. (O PBR completo entrou
@@ -90,8 +93,8 @@ de tarefas do BACKLOG sem refazer o que está pronto.
   itens de aceite implementados; (2) nenhum `runCatching` engole erro em
   silêncio — Log + Console (`KenkernLog`) + tela Diagnóstico; auditoria em
   `docs/RUNCATCHING_AUDIT.md`.
-- **App**: v0.1.21 (versionCode 22) — release de pré-lançamento
-  `v0.1.21-fase2-teste` com APK assinado (CI: 297 testes + assembleRelease +
+- **App**: v0.1.22 (versionCode 23) — release de pré-lançamento
+  `v0.1.22-fase2-teste` com APK assinado (CI: 310 testes + assembleRelease +
   llvm-nm E1 sobre a .so do APK).
 
 ## O que existe (Fases 1–2, validado por CI)
