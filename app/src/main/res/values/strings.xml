@@ -176,6 +176,8 @@
 
 
 
+    <string name="hub_template_vazio">Empty</string>
+    <string name="hub_template_moedas">Coin collection</string>
     <!-- ===================== Hub 2.5D + atalhos Sandbox (T0.5) ===================== -->
     <string name="hub_shortcuts_label">Start:</string>
     <string name="hub_shortcut_modelar">Model</string>

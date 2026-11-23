@@ -145,7 +145,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         if (existente != null) openProject(existente) else createAndEnterProject("Sandbox")
     }
 
-    fun createAndEnterProject(rawName: String) {
+    fun createAndEnterProject(rawName: String, template: String? = null) {
         if (isLoading.value) return
         // Marcador de progresso: criar também abre o editor — mesma trilha de
         // etapas rastreada para localizar crash nativo (a última etapa gravada
@@ -155,7 +155,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         isLoading.value = true
         viewModelScope.launch {
             val handle = withContext(Dispatchers.IO) {
-                ProjectManager.createProject(getApplication(), rawName)
+                ProjectManager.createProject(getApplication(), rawName, template)
             }
             isLoading.value = false
             if (handle == null) {

@@ -53,6 +53,9 @@ class NickLuaScripts(private val scene: Scene) {
      */
     private val textosUi = LinkedHashMap<String, String>()
 
+    /** M1.7: contadores ACUMULATIVOS por sessão (compartilhados entre scripts). */
+    private val contagens = HashMap<String, Int>()
+
     @Synchronized
     fun snapshotUi(): Map<String, String> = LinkedHashMap(textosUi)
 
@@ -73,9 +76,15 @@ class NickLuaScripts(private val scene: Scene) {
 
     val total: Int get() = instancias.size
 
-    /** M1.5: leitura do overlay (UI thread) — cópia barata e sincronizada. */
+    /** M1.5/M1.7: leitura do overlay — textos + contadores acumulados. */
     @Synchronized
-    fun snapshotUiJogo(): Map<String, String> = LinkedHashMap(textosUi)
+    fun snapshotUiJogo(): Map<String, String> {
+        val saida = LinkedHashMap(textosUi)
+        synchronized(contagens) {
+            for ((nome, valor) in contagens) saida[nome] = valor.toString()
+        }
+        return saida
+    }
 
     /** Instância pelo nome de exibição do Nick (testes e diagnóstico). */
     fun instanciaDe(nomeNick: String): Instancia? =
@@ -274,6 +283,17 @@ class NickLuaScripts(private val scene: Scene) {
         ui.set("limpar", object : LibFunction() {
             override fun call(): LuaValue {
                 synchronized(textosUi) { textosUi.clear() }
+                synchronized(contagens) { contagens.clear() }
+                return LuaValue.NIL
+            }
+        })
+        // M1.7: CONTADOR ACUMULATIVO compartilhado por TODOS os scripts da cena
+        // (cada Nick tem um runtime próprio; a contagem mora na ponte).
+        ui.set("contagem", object : VarArgFunction() {
+            override fun invoke(args: Varargs): LuaValue {
+                val nome = args.arg1().optjstring("")
+                val delta = args.arg(2).optint(1)
+                synchronized(contagens) { contagens[nome] = (contagens[nome] ?: 0) + delta }
                 return LuaValue.NIL
             }
         })

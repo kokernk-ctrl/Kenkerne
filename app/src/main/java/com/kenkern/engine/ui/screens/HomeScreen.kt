@@ -116,7 +116,7 @@ fun HomeScreen(
     isLoading: Boolean,
     statusMessage: String?,
     onConsumeStatus: () -> Unit,
-    onCreateProject: (String) -> Unit,
+    onCreateProject: (String, String?) -> Unit,
     onOpenProject: (ProjectHandle) -> Unit,
     onRenameProject: (ProjectHandle, String) -> Unit,
     onDeleteProject: (ProjectHandle) -> Unit,
@@ -390,9 +390,9 @@ fun HomeScreen(
     if (showNewDialog) {
         NewProjectDialog(
             onDismiss = { showNewDialog = false },
-            onCreate = { name ->
+            onCreate = { name, template ->
                 showNewDialog = false
-                onCreateProject(name)
+                onCreateProject(name, template)
             }
         )
     }
@@ -734,8 +734,10 @@ private fun RenameProjectDialog(
 }
 
 @Composable
-private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
+private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String, String?) -> Unit) {
     var name by remember { mutableStateOf("") }
+    // M1.7: TEMPLATE ao criar — Vazio ou "Coletar moedas" (jogável na hora)
+    var template by remember { mutableStateOf<String?>(null) }
     val valid = name.trim().length >= 2
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -766,6 +768,20 @@ private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) 
                     )
                 }
                 Spacer(Modifier.height(12.dp))
+                // M1.7: seletor de TEMPLATE (chips; padrão = vazio)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    androidx.compose.material3.FilterChip(
+                        selected = template == null,
+                        onClick = { template = null },
+                        label = { Text(stringResource(R.string.hub_template_vazio), fontSize = 11.sp) }
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = template == "coletar-moedas",
+                        onClick = { template = "coletar-moedas" },
+                        label = { Text(stringResource(R.string.hub_template_moedas), fontSize = 11.sp) }
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { if (it.length <= 60) name = it },
@@ -785,7 +801,7 @@ private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) 
         },
         confirmButton = {
             TextButton(
-                onClick = { if (valid) onCreate(name.trim()) },
+                onClick = { if (valid) onCreate(name.trim(), template) },
                 enabled = valid
             ) { Text(stringResource(R.string.hub_create), color = KenkernAmber, fontWeight = FontWeight.SemiBold) }
         },

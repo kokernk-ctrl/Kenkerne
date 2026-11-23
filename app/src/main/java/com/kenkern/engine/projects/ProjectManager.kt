@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.kenkern.engine.BuildConfig
 import com.kenkern.engine.core.NickClassRegistry
+import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.NickKindRegistry
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.serialization.CkFormat
@@ -74,7 +75,7 @@ object ProjectManager {
      * Cria um projeto novo com a estrutura padrão de pastas e o project.kenkern.
      * Retorna null em caso de falha (mensagem em [lastError]) — NUNCA lança exceção.
      */
-    fun createProject(context: Context, projectName: String): ProjectHandle? = runCatching {
+    fun createProject(context: Context, projectName: String, template: String? = null): ProjectHandle? = runCatching {
         clearError()
         val clean = sanitize(projectName)
         if (clean.isBlank()) {
@@ -120,6 +121,14 @@ object ProjectManager {
         )
         cube.transform.setLocalPosition(0f, 0.5f, 0f)
         NickClassRegistry.createInstance("Spin")?.let { cube.addClassInstance(it) }
+
+        // M1.7 (v0.1.23): TEMPLATE "COLETAR MOEDAS" — chão, jogador, ponto de
+        // surgimento, câmera seguidora, 3 moedas (áreas-gatilho com script que
+        // soma no contador e se destrói) e o contador no Lua (ui.contagem).
+        val templateEfetivo = template ?: "vazio"
+        if (templateEfetivo == "coletar-moedas") {
+            montarTemplateColetarMoedas(scene)
+        }
         writeFileAtomic(
             File(root, "scenes/cena.ck"),
             "# Cena principal criada pelo projeto $projectName\n" + CkFormat.writeToString(scene)
@@ -328,6 +337,50 @@ object ProjectManager {
 
     /** Pasta única para IMPORTS (.kernpack) e futuras cópias: "Base", "Base 2"… */
     fun novaPastaUnica(parent: File, base: String): File = uniqueDirectory(parent, base)
+
+    /**
+     * M1.7 (v0.1.23): TEMPLATE "COLETAR MOEDAS" — o projeto já nasce JOGÁVEL:
+     * chão estático, Corpo de Jogador, Ponto de Surgimento, Câmera Seguidora,
+     * 3 moedas (area.volume com Script Lua que soma no contador e se destrói
+     * ao ser tocada) e a classe Script no jogador. Contagem via ui.contagem
+     * (acumulativa por sessão de Play) — aparece no overlay "moedas: N".
+     */
+    fun montarTemplateColetarMoedas(scene: com.kenkern.engine.core.Scene) {
+        val mundo = scene.createRootNick(null, kind = NickKindRegistry.NICK_GROUP)
+        // chão
+        val chao = scene.createNick("Chão", mundo, kind = "body.static")
+        chao.transform.setLocalPosition(0f, -0.5f, 0f)
+        chao.transform.scale.set(14f, 1f, 14f)
+        // jogador
+        val player = scene.createNick("Herói", mundo, kind = "body.player")
+        player.transform.setLocalPosition(-3f, 0.5f, 0f)
+        // surgimento
+        val spawn = scene.createNick(null, mundo, kind = "area.spawn")
+        spawn.transform.setLocalPosition(0f, 1.5f, 0f)
+        // câmera seguidora
+        val follow = scene.createNick(null, mundo, kind = "camera.follow")
+        follow.transform.setLocalPosition(0f, 5f, 6f)
+        // 3 moedas: área-gatilho com script de coleta
+        val posicoes = listOf(
+            Triple(0f, 0.5f, 0f), Triple(3f, 0.5f, 2f), Triple(-3f, 0.5f, 3f)
+        )
+        for ((i, p) in posicoes.withIndex()) {
+            val moeda = scene.createNick("Moeda ${i + 1}", mundo, kind = "area.volume")
+            moeda.transform.setLocalPosition(p.first, p.second, p.third)
+            moeda.transform.scale.set(0.6f, 0.6f, 0.6f)
+            val inst = NickClassRegistry.createInstance("Script")
+            if (inst != null) {
+                inst.fields["fonte"] = NickValue.StringValue(
+                    "// coleta: soma no contador e desaparece\n" +
+                        "on_trigger = function(outro)\n" +
+                        "  ui.contagem(\"moedas\", 1)\n" +
+                        "  nick.destroy()\n" +
+                        "end"
+                )
+                moeda.addClassInstance(inst)
+            }
+        }
+    }
 
     private fun uniqueDirectory(parent: File, base: String): File {
         var candidate = File(parent, base)
