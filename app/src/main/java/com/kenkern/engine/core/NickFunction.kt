@@ -171,6 +171,19 @@ object KenkernBuiltInClasses {
                 categoria = "camera"
             )
         )
+        // M1.1 (v0.1.21): classe SCRIPT do Nick — campo `fonte` = código Lua;
+        // os DEMAIS campos são VARIÁVEIS PÚBLICAS (params.<nome> no script e
+        // editáveis no Inspetor). Erros desativam o script; o jogo continua.
+        NickClassRegistry.register(
+            NickClassDefinition(
+                "Script",
+                "Script Lua do Nick (LUA_API mínima: nick/scene/engine/params)",
+                listOf(
+                    NickFieldDefinition("fonte", "STRING", NickValue.StringValue(""))
+                ),
+                categoria = "logica"
+            )
+        )
         NickFunctionRegistry.register(SpinFunction)
         NickFunctionRegistry.register(BobFunction)
     }

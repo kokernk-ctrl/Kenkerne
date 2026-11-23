@@ -21,6 +21,7 @@ import com.kenkern.engine.core.math.Mat4
 import com.kenkern.engine.core.math.Quaternion
 import com.kenkern.engine.core.math.Vec3
 import com.kenkern.engine.engine.FixedStepLoop
+import com.kenkern.engine.engine.NickLuaScripts
 import com.kenkern.engine.engine.NickPlayRuntime
 import com.kenkern.engine.engine.PlayState
 import javax.microedition.khronos.egl.EGL10
@@ -1022,6 +1023,8 @@ class KenkernSurfaceView(
         private var playScene: Scene? = null
         private var playRuntime: NickPlayRuntime? = null
         private var playCamera: NickPlayCamera? = null
+        // M1.1 (v0.1.21): scripts Lua ligados aos Nicks da cópia de Play.
+        private var playScripts: NickLuaScripts? = null
 
         // H3 (v0.1.20): preview "Ver pela câmera" (editor) — id do Nick de
         // câmera escolhido (selecionado ou o principal); null = desligado.
@@ -1044,6 +1047,7 @@ class KenkernSurfaceView(
             playScene = null
             playRuntime = null
             playCamera = null
+            playScripts = null
             avisoSemCameraFeito = false
         }
 
@@ -1062,6 +1066,8 @@ class KenkernSurfaceView(
                 playCamera = copy?.let { c ->
                     playRuntime?.let { r -> NickPlayCamera(c, r.player, r.followCamera, r.basicCamera) }
                 }
+                // M1.1: ponte Lua/nick — 1 runtime por Nick com classe "Script".
+                playScripts = copy?.let { c -> NickLuaScripts(c).also { s -> s.iniciarTodos() } }
             }
             return playScene
         }
@@ -1141,6 +1147,9 @@ class KenkernSurfaceView(
                     scene?.updateFunctions(dt, loop.engineTime)
                     val move = playMovement
                     playRuntime?.step(dt, Float.fromBits((move ushr 32).toInt()), Float.fromBits(move.toInt()))
+                    // M1.1: on_update(dt) dos scripts Lua (erro desativa o script,
+                    // não o jogo; orçamento de tempo + limite de instruções).
+                    playScripts?.atualizar(dt)
                 }
                 // Matrizes de mundo sempre atualizadas (mesmo pausado, o Inspetor edita transform).
                 scene?.updateWorldTransforms()

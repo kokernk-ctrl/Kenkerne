@@ -194,13 +194,29 @@ object ChecagemRelease {
         // produziram os números CERTOS (não só que não lançaram).
         val globals = (rt as? com.kenkern.engine.core.script.LuaJScriptRuntime)?.ambiente()
         val valor = globals?.get("diag_resultado")?.toint() ?: Int.MIN_VALUE
-        return if (valor == 29) {
-            Resultado(
-                "lua", ok = true,
-                "script real executou print + math + bit32 + string (resultado 28 = 7+19+2; +1 no on_update = 29) — bind reflexivo das libs OK"
-            )
-        } else {
-            Resultado("lua", ok = false, "resultado do script foi $valor (esperado 29) — math/bit32/string produziram números errados ou o ambiente divergiu")
+        if (valor != 29) {
+            return Resultado("lua", ok = false, "resultado do script foi $valor (esperado 29) — math/bit32/string produziram números errados ou o ambiente divergiu")
         }
+        // M1.1 (v0.1.21): LIMITE DE INSTRUÇÕES com script REAL — while true do
+        // end precisa PARAR pelo hook (no release minificado o DebugLib deve
+        // sobreviver ao R8; o -keep class org.luaj.** cobre).
+        val rtLimite = com.kenkern.engine.core.script.LuaJScriptRuntime("diag-limite", 50L)
+        rtLimite.definirLimiteInstrucoes(100_000)
+        val compilouLimite = rtLimite.carregar("diag-limite", "while true do end")
+        if (compilouLimite != null) {
+            return Resultado("lua", ok = false, "script do limite não compilou: $compilouLimite")
+        }
+        val iniciouLimite = rtLimite.iniciar()
+        val erroLimite = rtLimite.ultimoErro() ?: ""
+        if (iniciouLimite || !erroLimite.contains("LIMITE DE INSTRUÇÕES")) {
+            return Resultado(
+                "lua", ok = false,
+                "limite de instruções FALHOU (iniciou=$iniciouLimite, erro='$erroLimite') — while true do end travaria o Play no aparelho"
+            )
+        }
+        return Resultado(
+            "lua", ok = true,
+            "script real executou print + math + bit32 + string (resultado 29 = 28+1 no on_update) · limite de instruções parou o while true com a mensagem correta — bind reflexivo e DebugLib OK no release"
+        )
     }
 }

@@ -486,6 +486,7 @@ private fun categoriaLocalizada(categoria: String): String = stringResource(
         "fisica" -> R.string.class_cat_fisica
         "iluminacao" -> R.string.class_cat_iluminacao
         "camera" -> R.string.class_cat_camera
+        "logica" -> R.string.class_cat_logica
         else -> R.string.class_cat_geral
     }
 )

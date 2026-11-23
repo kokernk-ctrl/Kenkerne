@@ -9,7 +9,10 @@ import org.luaj.vm2.LuaValue
 import org.luaj.vm2.compiler.LuaC
 import org.luaj.vm2.lib.Bit32Lib
 import org.luaj.vm2.lib.CoroutineLib
+import org.luaj.vm2.lib.DebugLib
 import org.luaj.vm2.lib.MathLib
+import org.luaj.vm2.lib.OneArgFunction
+import org.luaj.vm2.lib.ZeroArgFunction
 import org.luaj.vm2.lib.StringLib
 import org.luaj.vm2.lib.TableLib
 import org.luaj.vm2.lib.jse.JseBaseLib
@@ -25,10 +28,10 @@ import com.kenkern.engine.diag.KenkernLog
  * Erros NUNCA vazam: qualquer LuaError desativa o script com a mensagem
  * (linha incluída pelo LuaJ). Orçamento de TEMPO por tick de update:
  * excedeu, o script é desativado por orçamento (o editor mostra o motivo).
- *
- * LIMITAÇÃO CONHECIDA (documentada em DECISIONS.md): LuaJ não tem limite de
- * INSTRUÇÕES — um `while true do end` sem syscalls trava o Play até o Stop;
- * a mitigação é o orçamento de tempo + desativação manual no editor.
+ * M1.1 (v0.1.21): LIMITE DE INSTRUÇÕES por hook de contagem (DebugLib
+ * sethook) — o antigo "while true do end trava o Play" NÃO existe mais:
+ * estourou o teto de instruções → LuaError → script DESATIVADO com a
+ * mensagem e o jogo continua. O orçamento de TEMPO continua como 2ª rede.
  */
 class LuaJScriptRuntime(
     private val nomeScript: String,
@@ -40,6 +43,22 @@ class LuaJScriptRuntime(
     private var funcaoUpdate: LuaFunction? = null
     private var ambiente: Globals? = null
     private var chunkTopo: LuaValue? = null // top-level compilado; roda no iniciar()
+
+    /**
+     * M1.1 (v0.1.21): LIMITE DE INSTRUÇÕES por chamada (hook de contagem do
+     * LuaJ DebugLib) — rede de segurança para `while true do end` SEM syscalls:
+     * o orçamento de TEMPO não vê um laço puro de bytecode... e o hook SIM.
+     * Estourou → LuaError → o script é DESATIVADO com a mensagem (o jogo
+     * continua). O hook é (re)instalado no iniciar() e validado por tick.
+     */
+    private var limiteInstrucoes: Int = LIMITE_INSTRUCOES_PADRAO
+    private var hookInstalado = false
+
+    /** M1.1: ajusta o teto de instruções (testes usam valores pequenos). */
+    fun definirLimiteInstrucoes(maxPorChamada: Int) {
+        limiteInstrucoes = maxPorChamada.coerceAtLeast(1_000)
+        hookInstalado = false // reinstala na próxima execução
+    }
 
     override fun carregar(nome: String, fonte: String): String? {
         return try {
@@ -66,6 +85,9 @@ class LuaJScriptRuntime(
         val globals = ambiente ?: return falhou("script não carregado")
         val chunk = chunkTopo ?: return falhou("script não compilado")
         return runCatching {
+            // M1.1: hook de INSTRUÇÕES antes de QUALQUER execução (top-level,
+            // on_start e todos os on_update) — `while true do end` para aqui.
+            instalarHookInstrucoes(globals)
             // 1) top-level (define funções e estado inicial do script)
             chunk.call()
             // 2) on_start (se existir)
@@ -84,6 +106,7 @@ class LuaJScriptRuntime(
         if (estado == ScriptRuntime.Estado.DESATIVADO) return false
         val update = funcaoUpdate ?: return true // script sem on_update: ok, não é erro
         val inicio = System.nanoTime()
+        garantirHook(ambiente)
         return runCatching {
             // Nota: LuaJ aloca internamente por chamada (impossível zero-alloc
             // com script) — registrado em DECISIONS.md; orçamento de tempo segura
@@ -115,8 +138,10 @@ class LuaJScriptRuntime(
     // ---------------------------------------------------------------- sandbox
 
     /**
-     * Ambiente SEGURO: base/math/string/table/coroutine/bit32. Sem os/io.
-     * A ponte de engine (nick/scene/engine) é instalada pela F3.2 via
+     * Ambiente SEGURO: base/math/string/table/coroutine/bit32 + DEBUG (SÓ
+     * para o hook de instruções — sem getfenv exposto a abuso além do que o
+     * sandbox já controla). Sem os/io/luajava.
+     * A ponte de engine (nick/scene/engine) é instalada pela ponte M1.1 via
      * [instalarTabela] — mantida separada para o runtime ficar testável puro.
      */
     private fun criarAmbiente(): Globals = Globals().also { g ->
@@ -134,8 +159,39 @@ class LuaJScriptRuntime(
         g.load(TableLib())
         g.load(CoroutineLib())
         g.load(Bit32Lib())
+        // M1.1: DebugLib SÓ para debug.sethook (contagem de instruções).
+        g.load(DebugLib())
         LoadState.install(g)
         LuaC.install(g)
+    }
+
+    /**
+     * M1.1: instala o hook de contagem — [limiteInstrucoes] instruções de VM
+     * por chamada (iniciar ou atualizar); estourou = LuaError com a mensagem
+     * do limite (script desativado, jogo continua).
+     */
+    private fun instalarHookInstrucoes(globals: Globals) {
+        val debug = globals.get("debug")
+        if (!debug.istable()) return
+        val sethook = debug.get("sethook")
+        if (!sethook.isfunction()) return
+        val hook = object : ZeroArgFunction() {
+            override fun call(): LuaValue {
+                throw LuaError(
+                    "script '$nomeScript' passou do LIMITE DE INSTRUÇÕES " +
+                        "($limiteInstrucoes por chamada) — desativado (o jogo continua)"
+                )
+            }
+        }
+        // assinatura LuaJ: sethook(hookFn, "", count) — o 3º arg ativa o hook
+        // de CONTAGEM (máscara vazia = sem hooks de chamada/retorno/linha).
+        sethook.invoke(LuaValue.varargsOf(hook, LuaValue.valueOf(""), LuaValue.valueOf(limiteInstrucoes)))
+        hookInstalado = true
+    }
+
+    /** Verifica o hook por tick (script que limpou o debug o reativa): */
+    private fun garantirHook(globals: Globals?) {
+        if (!hookInstalado && globals != null) instalarHookInstrucoes(globals)
     }
 
     /** Instala uma tabela global extra (ponte nick/scene/engine na F3.2). */
@@ -145,6 +201,11 @@ class LuaJScriptRuntime(
 
     /** Acesso ao ambiente (F3.2 lê para montar a ponte antes do iniciar). */
     fun ambiente(): Globals? = ambiente
+
+    /** M1.1: teto de instruções por chamada (padrão do runtime). */
+    companion object {
+        const val LIMITE_INSTRUCOES_PADRAO: Int = 8_000_000
+    }
 
     private fun falhou(motivo: String): Boolean {
         estado = ScriptRuntime.Estado.DESATIVADO

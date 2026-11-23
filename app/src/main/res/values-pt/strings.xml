@@ -212,6 +212,7 @@
     <string name="camera_preview_on">Vendo pela câmera: %1$s</string>
     <string name="camera_preview_exit">Sair da visão da câmera</string>
     <string name="class_cat_camera">Câmeras</string>
+    <string name="class_cat_logica">Lógica</string>
 
     <!-- ===================== Panels (docked/floating) ===================== -->
     <string name="panel_options">Opções do painel %1$s</string>

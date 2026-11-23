@@ -212,6 +212,7 @@
     <string name="camera_preview_on">Viewing by camera: %1$s</string>
     <string name="camera_preview_exit">Exit camera view</string>
     <string name="class_cat_camera">Cameras</string>
+    <string name="class_cat_logica">Logic</string>
 
     <!-- ===================== Panels (docked/floating) ===================== -->
     <string name="panel_options">Panel options of %1$s</string>
