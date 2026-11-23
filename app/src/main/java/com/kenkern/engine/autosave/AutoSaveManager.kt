@@ -40,7 +40,7 @@ class AutoSaveManager(private val scope: CoroutineScope, private val debounceMs:
                 }
                 val project = projectProvider() ?: continue
                 val scene = sceneProvider() ?: continue
-                ProjectManager.saveAutosaveAtomic(project, scene)
+                if (!ProjectManager.saveAutosaveAtomic(project, scene)) dirty.set(true)
             }
         }
     }
@@ -53,8 +53,13 @@ class AutoSaveManager(private val scope: CoroutineScope, private val debounceMs:
     /** Salva imediatamente o auto-save e a cena principal (saída da tela / pausa do app). */
     fun saveNow(scene: Scene?, project: ProjectHandle?) {
         if (scene == null || project == null) return
-        ProjectManager.saveAutosaveAtomic(project, scene)
-        ProjectManager.saveSceneAtomic(project, scene)
-        dirty.set(false)
+        saveImmediately(scene, project)
+    }
+
+    fun saveImmediately(scene: Scene, project: ProjectHandle): Boolean {
+        val salvou = ProjectManager.saveSceneAtomic(project, scene)
+        if (!salvou) ProjectManager.saveAutosaveAtomic(project, scene) // segunda chance; não fecha o editor
+        dirty.set(!salvou)
+        return salvou
     }
 }

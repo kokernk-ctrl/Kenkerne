@@ -2,6 +2,7 @@ package com.kenkern.engine.editor
 
 import android.app.Application
 import android.net.Uri
+import android.os.Looper
 import android.util.Log
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -115,7 +116,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     var engineControls: EngineControls? = null
 
-    val history = CommandHistory()
+    private val history = CommandHistory()
     val panelStore = PanelStateStore(application)
 
     private val autosave = AutoSaveManager(viewModelScope)
@@ -183,8 +184,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         isLoading.value = true
         viewModelScope.launch {
             runCatching {
-                val recovered = withContext(Dispatchers.IO) { ProjectManager.hasAutosave(handle) }
-                val loaded = withContext(Dispatchers.IO) { ProjectManager.loadScene(handle) }
+                val result = withContext(Dispatchers.IO) { ProjectManager.loadSceneForEditing(handle) }
+                    ?: error(ProjectManager.lastError ?: "Cena inválida")
+                val loaded = result.scene
                 BootTrace.mark("cena carregada") // loadScene retornou sem exceção
                 // Encerra o estado anterior DEPOIS que a cena nova carregou com sucesso.
                 detachEngineState()
@@ -198,7 +200,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 AssetMeshLibrary.baseDir = handle.root
                 TextureLibrary.limpar()
                 TextureLibrary.baseDir = handle.root
-                recoveryNotice.value = recovered
+                recoveryNotice.value = result.fromAutosave
                 history.clear()
                 selection.value = null
                 selectionRef = null
@@ -220,7 +222,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val handle = project.value
         val currentScene = sceneRef
         if (handle != null && currentScene != null) {
-            autosave.saveNow(currentScene, handle)
+            if (!persistScene(currentScene, handle)) return
         }
         detachEngineState()
         autosave.stop()
@@ -376,34 +378,43 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun saveNow() {
         val handle = project.value ?: activeHandleAtEnter ?: return
         val currentScene = sceneRef ?: return
-        runCatching { autosave.saveNow(currentScene, handle) }.onFailure {
+        persistScene(currentScene, handle)
+    }
+
+    private fun persistScene(scene: Scene, handle: ProjectHandle): Boolean =
+        runCatching { check(autosave.saveImmediately(scene, handle)) { ProjectManager.lastError ?: "I/O" } }.onFailure {
             // SAVE silencioso era a pior perda possível (regra nova: registrar sempre).
             Log.e(TAG, "saveNow falhou — cena pode não ter sido salva", it)
             KenkernLog.e(TAG, "Falha ao salvar o projeto (saveNow)", it)
             statusMessage.value = getApplication<Application>()
                 .getString(R.string.vm_save_fail, it.message ?: it.javaClass.simpleName)
-        }
-    }
+        }.isSuccess
 
     fun select(id: ReferenceId?) {
         selection.value = id
         selectionRef = id
     }
 
-    fun run(command: Command) {
-        history.push(command)
+    private inline fun editScene(action: (Scene) -> Unit) {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "Edição da cena fora da thread principal" }
+        val current = sceneRef ?: return
+        current.withEditorAccess { action(current) }
+    }
+
+    private fun run(command: Command) {
+        editScene { history.push(command) }
         autosave.markDirty()
         bump()
     }
 
     fun undo() {
-        history.undo()
+        editScene { history.undo() }
         autosave.markDirty()
         bump()
     }
 
     fun redo() {
-        history.redo()
+        editScene { history.redo() }
         autosave.markDirty()
         bump()
     }
@@ -437,8 +448,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
      * aplicadas, nasce SELECIONADO na posição do centro da tela projetada no
      * chão. [spawnXz] traz x/z do ponto projetado (null = origem).
      */
-    fun addNickOfKind(kind: String, comoFilhoDoSelecionado: Boolean, spawnXz: FloatArray?) {
-        val s = sceneRef ?: return
+    fun addNickOfKind(kind: String, comoFilhoDoSelecionado: Boolean, spawnXz: FloatArray?) = editScene { s ->
         val def = NickKindRegistry.find(kind)
         val parent = if (comoFilhoDoSelecionado) {
             selection.value?.let { s.findNick(it) } ?: s.roots.firstOrNull()
@@ -746,27 +756,31 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 if (importCancelado.get()) throw ImportException("importação cancelada pelo usuário")
 
                 // ---------------- UM Command: Nick + assets (undo remove os dois)
+                // A importação suspendeu por I/O; o editor pode ter mudado de cena.
+                if (sceneRef !== scene) return@launch
                 val classe = ModelImporter.criarClasseMalha(
                     kernRel!!, summary.aabbMin, summary.aabbMax,
                     if (ajustar) summary.escalaSugerida else 1f
                 )
-                val parent = selection.value?.let { scene.findNick(it) } ?: scene.roots.firstOrNull()
                 val nomeNick = nomeFonte.substringBeforeLast('.')
-                cronometro.medir("criação do Nick (Command)", nomeNick) {
-                    run(ImportModelCommand(scene, parent?.id, nomeNick, raiz, listOf(kernRel!!, origemRel!!), classe))
-                }
-
-                // Seleciona o novo Nick e aplica a escala de enquadramento (opção).
-                val criado = scene.findNickByNameAnywhere(nomeNick)
-                if (criado != null) {
-                    if (ajustar && summary.escalaSugerida != 1f) {
-                        criado.transform.scale.set(
-                            summary.escalaSugerida, summary.escalaSugerida, summary.escalaSugerida
-                        )
+                editScene { current ->
+                    val parent = selection.value?.let { current.findNick(it) } ?: current.roots.firstOrNull()
+                    cronometro.medir("criação do Nick (Command)", nomeNick) {
+                        run(ImportModelCommand(current, parent?.id, nomeNick, raiz, listOf(kernRel!!, origemRel!!), classe))
                     }
-                    select(criado.id)
+
+                    // Seleciona o novo Nick e aplica a escala de enquadramento (opção).
+                    val criado = current.findNickByNameAnywhere(nomeNick)
+                    if (criado != null) {
+                        if (ajustar && summary.escalaSugerida != 1f) {
+                            criado.transform.scale.set(
+                                summary.escalaSugerida, summary.escalaSugerida, summary.escalaSugerida
+                            )
+                        }
+                        select(criado.id)
+                    }
+                    bump()
                 }
-                bump()
                 // B1: tabela de tempo por etapa (ms + % do total) no ImportReport E no
                 // Console — sem medição, nenhuma afirmação sobre o gargalo.
                 val tabela = cronometro.tabela()

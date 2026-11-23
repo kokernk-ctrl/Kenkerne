@@ -9,6 +9,10 @@ import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.serialization.CkFormat
 import com.kenkern.engine.diag.KenkernLog
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -81,7 +85,7 @@ object ProjectManager {
             lastError = "Nome de projeto inválido"
             return null
         }
-        val root = uniqueDirectory(projectsRoot(context), clean)
+        val root = novaPastaUnica(projectsRoot(context), clean)
         if (!ensureDir(root)) {
             lastError = "Não foi possível criar a pasta do projeto"
             return null
@@ -102,11 +106,6 @@ object ProjectManager {
             appendLine("created=${CkFormat.quote(created)}")
             appendLine("scene=scenes/cena.ck")
         }
-        if (!writeFileAtomic(File(root, PROJECT_FILE), meta)) {
-            lastError = "Falha ao gravar $PROJECT_FILE"
-            return null
-        }
-
         // Cena padrão (T0.2, adendo v4): TIPOS com name NULO — a Hierarquia
         // exibe o RÓTULO do tipo no idioma do app ("Group Nick"/"Nick de Grupo"
         // + "Mesh Nick"/"Nick de Malha"); o usuário renomeia se quiser. O cubo
@@ -120,10 +119,13 @@ object ProjectManager {
         )
         cube.transform.setLocalPosition(0f, 0.5f, 0f)
         NickClassRegistry.createInstance("Spin")?.let { cube.addClassInstance(it) }
-        writeFileAtomic(
-            File(root, "scenes/cena.ck"),
-            "# Cena principal criada pelo projeto $projectName\n" + CkFormat.writeToString(scene)
-        )
+        // Publica o marcador que torna o projeto visível ao Hub somente após a cena.
+        if (!writeFileAtomic(File(root, "scenes/cena.ck"), CkFormat.writeToString(scene)) ||
+            !writeFileAtomic(File(root, PROJECT_FILE), meta)) {
+            lastError = "Falha ao inicializar a cena ou os metadados do projeto"
+            root.deleteRecursively() // diretório reservado exclusivamente por esta criação
+            return null
+        }
         writeFileAtomic(File(root, "nicks/README.txt"), "Nicks salvos individualmente (.ck) ficam nesta pasta.\n")
         writeFileAtomic(File(root, "assets/README.txt"), "Assets do projeto (malhas .kern, texturas, fontes).\n")
         ProjectHandle(root, projectName.trim(), created)
@@ -237,57 +239,57 @@ object ProjectManager {
         }
     }
 
-    /** Carrega a cena principal; se existir auto-save mais recente, usa-o (recuperação pós-crash). */
-    fun loadScene(handle: ProjectHandle): Scene = runCatching {
-        val autosave = handle.autosaveFile
+    data class CenaCarregada(val scene: Scene, val fromAutosave: Boolean)
+
+    /** Nunca ativa uma cena substituta vazia: a saída/pausa a gravaria sobre os originais. */
+    fun loadSceneForEditing(handle: ProjectHandle): CenaCarregada? {
         val main = handle.mainSceneFile
-        val useAutosave = autosave.isFile && (!main.isFile || autosave.lastModified() > main.lastModified())
-        val source = if (useAutosave) autosave else main
-        if (source.isFile) {
-            val text = runCatching { source.readText() }
-                .onFailure {
-                    // Cena ILEGÍVEL não pode virar cena vazia em silêncio (regra nova).
-                    KenkernLog.e(TAG, "arquivo de cena ilegível (${source.name}) — abrindo cena vazia", it)
+        val auto = handle.autosaveFile
+        val order = if (hasAutosave(handle)) listOf(auto, main) else listOf(main, auto)
+        for (file in order) {
+            if (!file.isFile) continue
+            try {
+                val text = file.readText()
+                val lines = text.lineSequence().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith('#') }
+                val first = lines.firstOrNull()
+                if ((first == CkFormat.MAGIC || first == CkFormat.MAGIC_LEGADO) &&
+                    lines.any { it == "SCENE" || it.startsWith("SCENE ") } && lines.lastOrNull() == "ENDCK") {
+                    CkFormat.parseToNewScene(text, handle.name)?.let { return CenaCarregada(it, file == auto) }
                 }
-                .getOrNull()
-            if (!text.isNullOrBlank()) {
-                val scene = CkFormat.parseToNewScene(text, handle.name)
-                if (scene != null) return scene
-                KenkernLog.w(TAG, "cena .ck não parseou (${source.name}) — abrindo cena vazia")
-            } else if (text != null) {
-                KenkernLog.w(TAG, "arquivo de cena em branco (${source.name}) — abrindo cena vazia")
+                KenkernLog.w(TAG, "Cena incompleta ou inválida (${file.name}); verificando outra cópia")
+            } catch (e: IOException) {
+                KenkernLog.w(TAG, "Cena ilegível (${file.name}); verificando outra cópia", e)
             }
-        } else {
-            KenkernLog.w(TAG, "arquivo de cena ausente (${source.name}) — cena nova")
         }
-        Scene(handle.name)
-    }.onFailure { reportError("loadScene", it) }.getOrDefault(Scene(handle.name))
+        lastError = "Nenhuma cópia completa de cena.ck ou cena.autosave.ck; originais preservados"
+        return null
+    }
 
-    fun hasAutosave(handle: ProjectHandle): Boolean = runCatching {
-        handle.autosaveFile.isFile &&
-            (!handle.mainSceneFile.isFile || handle.autosaveFile.lastModified() > handle.mainSceneFile.lastModified())
-    }.onFailure { KenkernLog.w(TAG, "hasAutosave falhou — recuperação pode não ocorrer", it) }
-        .getOrDefault(false)
+    /** Compatibilidade para consumidores que apenas consultam a cena; o editor usa o resultado anulável. */
+    fun loadScene(handle: ProjectHandle): Scene = loadSceneForEditing(handle)?.scene ?: Scene(handle.name)
 
-    /** Gravação atômica: escreve em .tmp e renomeia (nunca corrompe o arquivo final). */
+    fun hasAutosave(handle: ProjectHandle): Boolean = handle.autosaveFile.isFile &&
+        (!handle.mainSceneFile.isFile || handle.autosaveFile.lastModified() > handle.mainSceneFile.lastModified())
+
+    /** O destino nunca é apagado/truncado antes da publicação do temporário no mesmo volume. */
     fun writeFileAtomic(target: File, content: String): Boolean {
+        var tmp: File? = null
         return try {
-            val parent = target.parentFile
-            if (parent != null && !ensureDir(parent)) return false
-            val tmp = File(parent, target.name + ".tmp")
-            tmp.writeText(content)
-            if (target.exists()) target.delete()
-            if (!tmp.renameTo(target)) {
-                // Fallback: gravação direta (melhor falhar suave do que perder o dado).
-                target.writeText(content)
-                tmp.delete()
+            val parent = target.absoluteFile.parentFile ?: return false
+            if (!ensureDir(parent)) return false
+            val staged = File.createTempFile(".ken-", ".tmp", parent)
+            tmp = staged
+            FileOutputStream(staged).use { out ->
+                out.write(content.toByteArray(Charsets.UTF_8))
+                out.fd.sync()
             }
+            Files.move(staged.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             true
         } catch (e: Exception) {
-            // Perda de gravação NUNCA é silenciosa (regra nova: runCatching/catch
-            // em caminho de carregamento registra Log + Console + Diagnóstico).
-            KenkernLog.e(TAG, "writeFileAtomic(${target.name}) falhou — dado não gravado", e)
+            reportError("writeFileAtomic(${target.name})", e)
             false
+        } finally {
+            tmp?.let { if (it.exists() && !it.delete()) KenkernLog.w(TAG, "temporário não removido: ${it.name}") }
         }
     }
 
@@ -327,16 +329,13 @@ object ProjectManager {
             .getOrDefault(false)
 
     /** Pasta única para IMPORTS (.kernpack) e futuras cópias: "Base", "Base 2"… */
-    fun novaPastaUnica(parent: File, base: String): File = uniqueDirectory(parent, base)
-
-    private fun uniqueDirectory(parent: File, base: String): File {
-        var candidate = File(parent, base)
-        var i = 2
-        while (candidate.exists()) {
-            candidate = File(parent, "$base ($i)")
-            i++
-            if (i > 999) break // proteção contra loop infinito em FS degenerado
+    fun novaPastaUnica(parent: File, base: String): File {
+        val clean = sanitize(base).ifBlank { "Projeto" }
+        for (i in 1..999) {
+            val candidate = File(parent, if (i == 1) clean else "$clean ($i)")
+            if (candidate.mkdir()) return candidate
+            if (!candidate.exists()) throw IOException("Falha ao reservar diretório do projeto")
         }
-        return candidate
+        throw IOException("Não há nome livre para o projeto")
     }
 }
