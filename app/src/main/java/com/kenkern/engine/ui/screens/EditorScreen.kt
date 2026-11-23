@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Videocam
@@ -70,6 +71,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -83,6 +86,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1113,6 +1117,18 @@ private fun EditorTopBar(
                         active = mostrarAuxiliares
                     ) { onMostrarAuxiliaresChange(!mostrarAuxiliares) }
 
+                    // M1.8 (v0.1.23): EXPORTAR APK DO JOGO por botão — dispara o
+                    // GitHub Actions COM O PROJETO (workflow_dispatch) e o APK
+                    // assinado sai como artifact. Token do usuário fica SÓ em
+                    // memória (campo de senha; nunca no repo nem em log).
+                    var exportarMenu by remember { mutableStateOf(false) }
+                    TopBarIcon(Icons.Filled.RocketLaunch, stringResource(R.string.export_jogo)) {
+                        exportarMenu = true
+                    }
+                    if (exportarMenu) {
+                        DialogoExportarJogo(vm) { exportarMenu = false }
+                    }
+
                     // Diagnóstico de toque: overlay ao vivo (ponto vermelho = toque,
                     // círculos verdes = alças) para ver por que seleção/gizmo não respondem.
                     TopBarIcon(
@@ -1635,6 +1651,87 @@ private fun FlightHoldButton(
             modifier = Modifier.size(26.dp)
         )
     }
+}
+
+// ===================== Exportar APK do jogo (M1.8, v0.1.23) =====================
+
+/**
+ * Diálogo da EXPORTAÇÃO: repositório (dono/repo), workflow, branch e o TOKEN
+ * (campo de SENHA — fica só em memória, nunca gravado nem logado). Dispara o
+ * workflow_dispatch e informa o resultado; os passos e o workflow de exemplo
+ * estão documentados em docs/EXPORTAR_JOGO.md.
+ */
+@Composable
+private fun DialogoExportarJogo(vm: EditorViewModel, onFechar: () -> Unit) {
+    var repositorio by remember { mutableStateOf("kokernk-ctrl/Kenkerne") }
+    var workflow by remember { mutableStateOf("exportar-jogo.yml") }
+    var ref by remember { mutableStateOf("main") }
+    var token by remember { mutableStateOf("") }
+    var mensagem by remember { mutableStateOf<String?>(null) }
+    val escopo = remember { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO) }
+    AlertDialog(
+        onDismissRequest = onFechar,
+        containerColor = KenkernSurfaceOverlay,
+        title = { Text(stringResource(R.string.export_jogo), fontSize = 16.sp, color = KenkernTextHigh) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.export_jogo_doc), fontSize = 11.sp, color = KenkernTextMid)
+                OutlinedTextField(
+                    value = repositorio, onValueChange = { repositorio = it },
+                    label = { Text(stringResource(R.string.export_jogo_repo), fontSize = 12.sp) },
+                    singleLine = true, textStyle = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = workflow, onValueChange = { workflow = it },
+                    label = { Text(stringResource(R.string.export_jogo_workflow), fontSize = 12.sp) },
+                    singleLine = true, textStyle = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = ref, onValueChange = { ref = it },
+                    label = { Text(stringResource(R.string.export_jogo_ref), fontSize = 12.sp) },
+                    singleLine = true, textStyle = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = { token = it },
+                    label = { Text(stringResource(R.string.export_jogo_token), fontSize = 12.sp) },
+                    supportingText = { Text(stringResource(R.string.export_jogo_token_nota), fontSize = 10.sp) },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall
+                )
+                mensagem?.let {
+                    Text(it, fontSize = 12.sp, color = if (it.startsWith("OK")) KenkernSuccess else KenkernError)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val projeto = vm.project.value
+                if (projeto == null) {
+                    mensagem = "sem projeto aberto"
+                } else {
+                    mensagem = "enviando…"
+                    escopo.launch {
+                        val erro = com.kenkern.engine.projects.ExportadorJogo.disparar(
+                            com.kenkern.engine.projects.ExportadorJogo.Config(
+                                repositorio = repositorio,
+                                workflow = workflow,
+                                ref = ref,
+                                projetoNome = projeto.name,
+                                token = token
+                            )
+                        )
+                        mensagem = if (erro == null) "OK — dispatch aceito. Baixe o APK assinado em Actions → artifacts."
+                        else erro
+                    }
+                }
+            }) { Text(stringResource(R.string.export_jogo_disparar), color = KenkernAmber, fontSize = 12.sp) }
+        },
+        dismissButton = {
+            TextButton(onClick = onFechar) { Text(stringResource(R.string.hub_cancel), color = KenkernTextMid, fontSize = 12.sp) }
+        }
+    )
 }
 
 // ===================== Controles de jogo (M1.3, v0.1.22) =====================

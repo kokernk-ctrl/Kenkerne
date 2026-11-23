@@ -178,6 +178,14 @@
 
     <string name="hub_template_vazio">Vazio</string>
     <string name="hub_template_moedas">Coletar moedas</string>
+    <string name="export_jogo">Exportar APK do jogo</string>
+    <string name="export_jogo_doc">Dispara o GitHub Actions COM ESTE projeto; o APK assinado sai como artifact do workflow. Workflow de exemplo e passos: docs/EXPORTAR_JOGO.md.</string>
+    <string name="export_jogo_repo">Repositório (dono/repo)</string>
+    <string name="export_jogo_workflow">Arquivo do workflow</string>
+    <string name="export_jogo_ref">Branch</string>
+    <string name="export_jogo_token">Token de acesso pessoal (escopo workflow)</string>
+    <string name="export_jogo_token_nota">Fica só em memória — nunca gravado nem logado.</string>
+    <string name="export_jogo_disparar">Disparar exportação</string>
     <!-- ===================== Hub 2.5D + atalhos Sandbox (T0.5) ===================== -->
     <string name="hub_shortcuts_label">Começar:</string>
     <string name="hub_shortcut_modelar">Modelar</string>

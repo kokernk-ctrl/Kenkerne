@@ -178,6 +178,14 @@
 
     <string name="hub_template_vazio">Empty</string>
     <string name="hub_template_moedas">Coin collection</string>
+    <string name="export_jogo">Export game APK</string>
+    <string name="export_jogo_doc">Triggers GitHub Actions with THIS project; the signed APK comes out as a workflow artifact. Example workflow and steps: docs/EXPORTAR_JOGO.md.</string>
+    <string name="export_jogo_repo">Repository (owner/repo)</string>
+    <string name="export_jogo_workflow">Workflow file</string>
+    <string name="export_jogo_ref">Branch</string>
+    <string name="export_jogo_token">Personal access token (workflow scope)</string>
+    <string name="export_jogo_token_nota">Stays in memory only — never stored or logged.</string>
+    <string name="export_jogo_disparar">Run export</string>
     <!-- ===================== Hub 2.5D + atalhos Sandbox (T0.5) ===================== -->
     <string name="hub_shortcuts_label">Start:</string>
     <string name="hub_shortcut_modelar">Model</string>
