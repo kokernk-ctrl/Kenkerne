@@ -570,6 +570,10 @@ class EngineRenderer {
         // por grupo e ÂMBAR quando selecionado. NÃO contam como malha (E6):
         // cada auxiliar = 1 draw de linhas no espaço do mundo.
         var helperDc = 0
+        // H1 (v0.1.20): gate de desenho = AuxiliaresPreferencia.deveDesenhar
+        // (mostrarAuxiliares && !emJogo) — a MESMA regra do picking
+        // (KenkernSurfaceView.pickNickAt): a preferência do usuário nunca é
+        // alterada pelo Play; Play/Pausa só SUPRIMEM, Stop restaura.
         if (mostrarAuxiliares && !emJogo && auxCount > 0) {
             // Pirâmide da câmera: reconstruída SÓ quando o FOV REAL/aspect mudam.
             val chavePiramide = "${camera.fovDegrees}|${aspect}"

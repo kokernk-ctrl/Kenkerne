@@ -780,13 +780,18 @@ class KenkernSurfaceView(
                     (pickMaxW.y - pickMinW.y) * 0.5f,
                     (pickMaxW.z - pickMinW.z) * 0.5f
                 )
-            } else if (nick.active && nick.visible && mostrarAuxiliares &&
-                loop.playState != com.kenkern.engine.engine.PlayState.STOPPED &&
+            } else if (nick.active && nick.visible &&
+                com.kenkern.engine.engine.AuxiliaresPreferencia.devePegar(mostrarAuxiliares, loop.playState) &&
                 MalhaNick.ehAuxiliar(nick)
             ) {
-                // E5: AUXILIAR DE EDITOR — pegável por toque (mesma tolerância de
-                // 24dp) com caixa de toque de 0,4 m na posição do Nick. Some em
-                // Play e com 'Mostrar auxiliares' desligado (invisível = não pegável).
+                // E5 + H1 (v0.1.20): AUXILIAR DE EDITOR — pegável por toque (mesma
+                // tolerância de 24dp) com caixa de toque de 0,4 m na posição do Nick.
+                // CAUSA RAIZ do H1 estava AQUI (linha 784 do E5): a condição usava
+                // `playState != STOPPED` — o INVERSO da regra ("pegáveis fora de
+                // Play"): depois do Stop os auxiliares NÃO voltavam a ser pegáveis
+                // no editor e em Play seriam pegáveis invisíveis. Agora a decisão
+                // vem de AuxiliaresPreferencia (preference do usuário nunca muda;
+                // Play/Pausa só suprimem — mesma regra do desenho).
                 tested++
                 val wm = nick.transform.worldMatrix
                 val e = EditorHelpers.AABB_TOQUE
