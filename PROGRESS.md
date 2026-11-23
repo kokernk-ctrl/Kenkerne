@@ -4,7 +4,11 @@
 arquivo, BACKLOG.md, ARCHITECTURE.md, DECISIONS.md e REGRESSION.md, e siga o loop
 de tarefas do BACKLOG sem refazer o que está pronto.
 
-## Estado agora
+## Estabilização na branch `dev/1.0-estabilizacao`
+
+O [inventário inicial](docs/estabilizacao/README.md) distingue o estado da base `1ac8474` dos novos commits. O [contrato de aceite](docs/estabilizacao/ACEITE.md) explica por que um build verde não autoriza tag. A branch entrega recuperação e undo corrigidos, controles M1 configuráveis, navegador de arquivos e o novo Hub; não há aceite de aparelho dessas mudanças. Ver o [projeto de exemplo](exemplos/README.md).
+
+## Histórico — estado ao abrir a branch de estabilização
 
 - **Prioridade atual — M1**: primeiro teste jogável com jogador, surgimento,
   chão/parede, joystick de teste e câmera. Ver o catálogo `NICKS.md` e o roteiro
