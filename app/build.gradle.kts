@@ -37,6 +37,9 @@ android {
     // Testes de unidade JVM: métodos do android.jar (ex.: Log.d feito a cada
     // reset de baseline no TouchController) retornam padrão em vez de lançar
     // "not mocked" — sem isso os testes da pinça quebrariam no Log.d.
+    // O mesmo projeto de exemplo do usuário é a fixture de integração, não uma cópia.
+    sourceSets["test"].resources.srcDir(rootProject.file("exemplos"))
+
     testOptions {
         unitTests.isReturnDefaultValues = true
         // Medições em modelos REAIS (auditoria V2): a pasta vem da linha de
