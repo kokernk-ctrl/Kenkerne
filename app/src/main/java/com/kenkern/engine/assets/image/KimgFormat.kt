@@ -146,7 +146,7 @@ object KimgReader {
             val fim = offset.toLong() + tamanho.toLong()
             if (offset.toLong() < fimMipAnterior || tamanho < 0 || fim > bytes.size) {
                 throw KimgException(
-                    "mip $i fora da área de dados .KIMG ou sobreposto (offset $offset + $tamanho; próximo offset mínimo $fimMipAnterior, arquivo tem ${bytes.size})"
+                    "mip $i fora do arquivo/área de dados .KIMG ou sobreposto (offset $offset + $tamanho; próximo offset mínimo $fimMipAnterior, arquivo tem ${bytes.size})"
                 )
             }
             fimMipAnterior = fim
