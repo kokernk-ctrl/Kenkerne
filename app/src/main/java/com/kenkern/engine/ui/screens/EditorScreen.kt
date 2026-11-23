@@ -612,7 +612,10 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 containerColor = KenkernSurfaceOverlay,
                 title = { Text(stringResource(R.string.import_title), fontSize = 16.sp, color = KenkernTextHigh) },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text(
                             if (pastaImportacaoPendente) stringResource(R.string.import_folder_label, nomePendente) + "\n\n" +
                                 stringResource(R.string.import_folder_note)
@@ -627,19 +630,29 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             Text(stringResource(R.string.import_adjust), fontSize = 12.sp, color = KenkernTextHigh)
                         }
 
-                        // B2a: LIMITE DE RESOLUÇÃO DE TEXTURA (padrão 1024; opções
-                        // 512/1024/2048). Reduz ANTES de gerar mipmaps — a importação
-                        // fica muito mais rápida e o .KIMG menor.
                         Text(stringResource(R.string.import_res_limit), fontSize = 12.sp, color = KenkernTextHigh)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             for (opcao in com.kenkern.engine.editor.EditorViewModel.OPCOES_LIMITE_TEXTURA) {
                                 androidx.compose.material3.FilterChip(
                                     selected = vm.importLimiteTextura.intValue == opcao,
                                     onClick = { vm.importLimiteTextura.intValue = opcao },
-                                    label = { Text(opcao.toString(), fontSize = 11.sp) },
+                                    label = {
+                                        Text(
+                                            if (opcao == com.kenkern.engine.assets.image.PerfilTexturaImportacao.ORIGINAL)
+                                                stringResource(R.string.import_res_original)
+                                            else opcao.toString(),
+                                            fontSize = 11.sp
+                                        )
+                                    },
                                     leadingIcon = null
                                 )
                             }
+                        }
+                        if (vm.importLimiteTextura.intValue == com.kenkern.engine.assets.image.PerfilTexturaImportacao.ORIGINAL) {
+                            Text(stringResource(R.string.import_res_original_note), fontSize = 11.sp, color = KenkernTextMid)
                         }
 
                         // B2b: QUALIDADE do encoder ETC2 — rápida por padrão

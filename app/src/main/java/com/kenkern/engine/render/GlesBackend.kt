@@ -34,6 +34,7 @@ class GlesBackend : RenderBackend {
     override var viewportHeight: Int = 1
 
     /** GL_MAX_TEXTURE_SIZE real do aparelho (lido no initialize). */
+    @Volatile
     override var maxTextureSize: Int = 0
         private set
 

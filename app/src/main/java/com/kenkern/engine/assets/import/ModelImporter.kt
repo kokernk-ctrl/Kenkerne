@@ -1,5 +1,8 @@
 package com.kenkern.engine.assets.import
 
+import com.kenkern.engine.assets.image.PerfilTexturaImportacao
+import com.kenkern.engine.assets.mesh.KernMaterial
+import com.kenkern.engine.assets.mesh.KernMesh
 import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.diag.KenkernLog
@@ -171,7 +174,8 @@ object ModelImporter {
     class Opcoes(
         val ajustarAoTamanho: Boolean = false,
         val alturaMeta: Float = 2f,
-        val manterTangentes: Boolean = false
+        val manterTangentes: Boolean = false,
+        val perfilTextura: PerfilTexturaImportacao? = null
     )
 
     /** Detecta o formato pela ASSINATURA (magic), nunca pela extensão sozinha. */
@@ -273,7 +277,8 @@ object ModelImporter {
         // PÓS-PROCESSAMENTO (B.4/B.5): dedup de vértices + LODs (3 níveis)
         // B1: PosProcessamento mede dedup e LODs SEPARADAMENTE no cronômetro.
         // B2d: cancelamento checado DENTRO dos laços pesados (dedup/decimação).
-        val malhaFinal = PosProcessamento.aplicar(resultado.mesh, cronometro, cancelado)
+        val malha = opcoes.perfilTextura?.let { aplicarPerfilTextura(resultado, it) } ?: resultado.mesh
+        val malhaFinal = PosProcessamento.aplicar(malha, cronometro, cancelado)
         val texturasFinais = resultado.texturas
         medirPico()
 
@@ -352,6 +357,29 @@ object ModelImporter {
             contemEsqueleto = esqueleto,
             escalaSugerida = escalaSugerida,
             texturasExtraidas = texturasFinais
+        )
+    }
+
+    // Os importadores ainda fornecem caminhos por hash simples. Novas importações
+    // com perfil apontam para uma variante; .KERN antigos continuam a usar o caminho antigo.
+    private fun aplicarPerfilTextura(resultado: ImportResult, perfil: PerfilTexturaImportacao): KernMesh {
+        val mesh = resultado.mesh
+        if (mesh.materiais.isEmpty() || resultado.texturas.isEmpty()) return mesh
+        val caminhos = resultado.texturas.associate { textura ->
+            val hash = textura.sha1
+            "${AssetLayout.DIR_TEXTURAS}/$hash.kimg" to perfil.caminho(hash)
+        }
+        val materiais = mesh.materiais.map { m ->
+            KernMaterial(
+                m.nome, m.baseColorR, m.baseColorG, m.baseColorB, m.baseColorA, m.metallic, m.roughness,
+                m.temTexturaBase, m.temTexturaNormal, m.doubleSided,
+                caminhos[m.texturaBasePath] ?: m.texturaBasePath,
+                caminhos[m.texturaNormalPath] ?: m.texturaNormalPath
+            )
+        }
+        return KernMesh(
+            mesh.positions, mesh.normals, mesh.uvs, mesh.tangents, mesh.indices, mesh.boundsMin, mesh.boundsMax,
+            mesh.lods, mesh.boneIndices, mesh.boneWeights, mesh.bones, mesh.clusters, mesh.gruposMaterial, materiais
         )
     }
 

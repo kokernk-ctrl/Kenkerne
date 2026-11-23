@@ -74,7 +74,8 @@ class ImportResult(
 class TexturaImportada(
     val mimeType: String,
     val bytes: ByteArray,
-    val nomeOrigem: String
+    val nomeOrigem: String,
+    val sha1: String
 )
 
 /**
@@ -900,7 +901,7 @@ object GltfImporter {
         val sha1 = AssetLayout.sha1Hex(bytes)
         if (sha1 !in ctx.texturasPorHash) {
             ctx.texturasPorHash[sha1] = ctx.texturas.size
-            ctx.texturas.add(TexturaImportada(mimeType, bytes, img.optString("name", "$uso-$sha1")))
+            ctx.texturas.add(TexturaImportada(mimeType, bytes, img.optString("name", "$uso-$sha1"), sha1))
         }
         return "${AssetLayout.DIR_TEXTURAS}/$sha1.kimg"
     }

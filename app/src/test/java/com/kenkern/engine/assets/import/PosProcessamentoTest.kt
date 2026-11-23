@@ -1,5 +1,7 @@
 package com.kenkern.engine.assets.import
 
+import com.kenkern.engine.assets.image.Etc2
+import com.kenkern.engine.assets.image.PerfilTexturaImportacao
 import com.kenkern.engine.assets.mesh.KernFormat
 import com.kenkern.engine.assets.mesh.KernMaterial
 import com.kenkern.engine.assets.mesh.KernReader
@@ -17,6 +19,20 @@ import kotlin.math.sin
  * não pode piorar a geometria de LOD0).
  */
 class PosProcessamentoTest {
+
+    @Test
+    fun `reimportar GLB grava no KERN a referencia do perfil selecionado`() {
+        val glb = GltfAmostras.quadComMaterialGlb()
+        val perfilBaixo = PerfilTexturaImportacao.criar(512, 4096, Etc2.Qualidade.RAPIDA)
+        val perfilOriginal = PerfilTexturaImportacao.criar(PerfilTexturaImportacao.ORIGINAL, 4096, Etc2.Qualidade.RAPIDA)
+        for (perfil in listOf(null, perfilBaixo, perfilOriginal)) {
+            val resumo = ModelImporter.importarModelo("quad.glb", glb, ModelImporter.Opcoes(perfilTextura = perfil))
+            val hash = AssetLayout.sha1Hex(resumo.texturasExtraidas.single().bytes)
+            val caminho = perfil?.caminho(hash) ?: "${AssetLayout.DIR_TEXTURAS}/$hash.kimg"
+            assertEquals(caminho, KernReader.read(resumo.bytesKernData).materiais.single().texturaBasePath)
+            assertTrue(resumo.integridadeOk)
+        }
+    }
 
     private fun meshQuadDuplicada(): com.kenkern.engine.assets.mesh.KernMesh {
         // quad com CADA vértice duplicado 4× (12 vértices para 4 reais)

@@ -795,7 +795,7 @@ object FbxImporter {
                 temTexBase = true
                 texPath = "${AssetLayout.DIR_TEXTURAS}/$sha1.kimg"
                 // guarda os bytes para o ModelImporter coletar (acesso via nome)
-                texturasEmbutidas[sha1] = TexturaImportada("image/png", content, nome)
+                texturasEmbutidas[sha1] = TexturaImportada("image/png", content, nome, sha1)
             } else {
                 // HONESTIDADE (V3): além do Console, o aviso entra no ImportReport
                 // (textura procedural/externa sem embutido = cor sólida nesta fase).

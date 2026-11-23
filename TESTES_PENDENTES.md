@@ -1,5 +1,20 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## T0.4 — Resolução de texturas na importação (parcial; teste principal validado no aparelho)
+
+> O usuário aprovou o teste com o mesmo GLB em 512 e em Original e a
+> conferência das texturas após reabrir o projeto. O PBR completo segue pendente.
+
+1. Em paisagem, abrir **Importar modelo**. O diálogo oferece **Original**,
+   **512**, **1024** e **2048** (padrão inicial: 1024). As opções e o botão
+   de importação devem ficar acessíveis também num viewport baixo.
+2. Importar o mesmo GLB com uma textura de **1024×768**, primeiro em **512**
+   e depois em **Original**, num aparelho com suporte à resolução de origem.
+   O relatório deve mostrar **512×384** e **1024×768**, respetivamente.
+3. Confirmar que ambos os modelos continuam a mostrar a textura correta após
+   reabrir o projeto. Reimportar em **512** com a mesma qualidade ETC2:
+   a conversão deve indicar que usou o cache de **512×384**.
+
 ## Aceite v0.1.19 — G1–G3 — Release `v0.1.19-fase2-teste` — VALIDADO NO APARELHO
 
 > 3 bugs de layout corrigidos (paisagem 800×360, ~240dp de viewport útil).

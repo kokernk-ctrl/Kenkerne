@@ -91,6 +91,8 @@
     <string name="import_folder_note">A pasta inteira (modelo + .bin + texturas) é copiada para os assets do projeto.</string>
     <string name="import_adjust">Ajustar ao tamanho (~2 m)</string>
     <string name="import_res_limit">Limite de resolução de textura</string>
+    <string name="import_res_original">Original</string>
+    <string name="import_res_original_note">Mantém as dimensões de origem até o limite do aparelho. Texturas grandes podem exigir uma opção menor.</string>
     <string name="import_quality_etc2">Qualidade ETC2</string>
     <string name="import_fast">Rápida (padrão)</string>
     <string name="import_high">Alta qualidade (T/H)</string>

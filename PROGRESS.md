@@ -6,6 +6,9 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
+- **T0.4 parcial — resolução de texturas**: opção Original, redução proporcional
+  e cache por resolução efetiva e qualidade ETC2. O usuário aprovou no aparelho
+  a comparação 512 × Original e a reabertura do projeto. O PBR completo segue pendente.
 - **v0.1.19 — G1–G3 VALIDADOS NO APARELHO**: o usuário confirmou os
   sete testes de layout em `TESTES_PENDENTES.md` (TopBar, Adicionar Nick e
   controles de voo). O aceite é específico desta versão e não fecha a Fase 2.

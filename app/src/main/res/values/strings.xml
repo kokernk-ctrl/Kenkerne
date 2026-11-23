@@ -91,6 +91,8 @@
     <string name="import_folder_note">The whole folder (model + .bin + textures) is copied into the project assets.</string>
     <string name="import_adjust">Fit to size (~2 m)</string>
     <string name="import_res_limit">Texture resolution limit</string>
+    <string name="import_res_original">Original</string>
+    <string name="import_res_original_note">Keep source dimensions up to the device limit. Large textures may require a smaller preset.</string>
     <string name="import_quality_etc2">ETC2 quality</string>
     <string name="import_fast">Fast (default)</string>
     <string name="import_high">High quality (T/H)</string>

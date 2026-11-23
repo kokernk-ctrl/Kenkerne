@@ -7,7 +7,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
- * PIPELINE .KIMG (ETAPA C): RGBA8888 de origem → potência de 2 (se exceder o
+ * PIPELINE .KIMG (ETAPA C): RGBA8888 de origem → redução proporcional (se exceder o
  * limite do aparelho) → mipmaps (filtro de caixa) → compressão ETC2 (ou ASTC
  * externo/RGBA8 fallback) → bytes .KIMG + RELATÓRIO de compressão
  * (tamanho origem, tamanho .KIMG, razão, PSNR, tempo).
@@ -20,7 +20,7 @@ object KimgPipeline {
 
     /** Relatório de compressão de UMA textura (ETAPA C.6 + B1: origem/formato). */
     class RelatorioTextura(
-        val bytesOrigem: Int,
+        val bytesOrigem: Long,
         val bytesKimg: Int,
         val largura: Int,
         val altura: Int,
@@ -46,7 +46,7 @@ object KimgPipeline {
                 formato.rotulo,
                 bytesOrigem / 1024f, bytesKimg / 1024f, razao,
                 psnrDb, mipCount, tempoMs,
-                if (redimensionada) " · redimensionada para POT" else ""
+                if (redimensionada) " · redimensionada" else ""
             )
     }
 
@@ -71,7 +71,9 @@ object KimgPipeline {
         cronometro: CronometroImport? = null,
         rotuloTextura: String = "textura",
         mimeOrigem: String = "",
-        qualidadeEtc2: Etc2.Qualidade = Etc2.Qualidade.RAPIDA
+        qualidadeEtc2: Etc2.Qualidade = Etc2.Qualidade.RAPIDA,
+        larguraOrigem: Int = largura,
+        alturaOrigem: Int = altura
     ): Pair<ByteArray, RelatorioTextura> {
         val t0 = System.nanoTime()
         if (largura <= 0 || altura <= 0) {
@@ -83,17 +85,11 @@ object KimgPipeline {
             )
         }
 
-        // Redimensiona APENAS quando excede o limite do aparelho (C.2) — GLES3
-        // suporta NPOT com mipmap, então texturas dentro do limite entram 1:1.
-        var w = largura
-        var h = altura
-        var redimensionada = false
-        if (limiteTextura > 0 && (largura > limiteTextura || altura > limiteTextura)) {
-            w = potenciaDeDoisMenor(largura, limiteTextura)
-            h = potenciaDeDoisMenor(altura, limiteTextura)
-            redimensionada = true
-        }
-        val dados = if (redimensionada) {
+        // GLES3 suporta NPOT com mipmap. Calcula a proporção usando a imagem
+        // original, mesmo quando o Android já subamostrou durante o decode.
+        val w = dimensaoLimitada(larguraOrigem, alturaOrigem, limiteTextura)
+        val h = dimensaoLimitada(alturaOrigem, larguraOrigem, limiteTextura)
+        val dados = if (w != largura || h != altura) {
             cronometro?.medir("$rotuloTextura: redimensionamento", "$largura×$altura → ${w}×${h}") {
                 reescalar(rgba, largura, altura, w, h)
             } ?: reescalar(rgba, largura, altura, w, h)
@@ -171,7 +167,7 @@ object KimgPipeline {
         val bytes = KimgWriter.write(imagem, comprimirEmDisco = comprimirEmDisco)
         val tempoMs = (System.nanoTime() - t0) / 1_000_000L
         return bytes to RelatorioTextura(
-            bytesOrigem = largura * altura * 4,
+            bytesOrigem = larguraOrigem.toLong() * alturaOrigem * 4,
             bytesKimg = bytes.size,
             largura = w,
             altura = h,
@@ -179,9 +175,9 @@ object KimgPipeline {
             formato = formato,
             psnrDb = psnr,
             tempoMs = tempoMs,
-            redimensionada = redimensionada,
-            larguraOrigem = largura,
-            alturaOrigem = altura,
+            redimensionada = w != larguraOrigem || h != alturaOrigem,
+            larguraOrigem = larguraOrigem,
+            alturaOrigem = alturaOrigem,
             mimeOrigem = mimeOrigem
         )
     }
@@ -193,8 +189,8 @@ object KimgPipeline {
         comprimirEmDisco: Boolean = false
     ): Pair<ByteArray, RelatorioTextura> {
         val t0 = System.nanoTime()
-        val w = potenciaDeDoisMenor(largura, 0)
-        val h = potenciaDeDoisMenor(altura, 0)
+        val w = Integer.highestOneBit(largura.coerceAtLeast(1))
+        val h = Integer.highestOneBit(altura.coerceAtLeast(1))
         val dados = if (w != largura || h != altura) reescalar(rgba, largura, altura, w, h) else rgba
         val mips = ArrayList<KimgMip>(1)
         mips.add(KimgMip(w, h, 0, dados.copyOf()))
@@ -202,7 +198,7 @@ object KimgPipeline {
         val bytes = KimgWriter.write(imagem, comprimirEmDisco = comprimirEmDisco)
         val tempoMs = (System.nanoTime() - t0) / 1_000_000L
         return bytes to RelatorioTextura(
-            bytesOrigem = largura * altura * 4,
+            bytesOrigem = largura.toLong() * altura * 4,
             bytesKimg = bytes.size,
             largura = w,
             altura = h,
@@ -231,14 +227,11 @@ object KimgPipeline {
         return n
     }
 
-    /** Maior potência de 2 ≤ valor (e ≤ limite quando [limite] > 0). */
-    fun potenciaDeDoisMenor(valor: Int, limite: Int): Int {
-        var v = valor
-        if (limite > 0) v = min(v, limite)
-        if (v <= 1) return 1
-        var p = 1
-        while (p * 2 <= v) p *= 2
-        return p
+    /** Limita o maior lado sem alterar a proporção, salvo arredondamento de pixels. */
+    internal fun dimensaoLimitada(lado: Int, outroLado: Int, limite: Int): Int {
+        val maior = max(lado, outroLado)
+        if (limite <= 0 || maior <= limite) return lado
+        return ((lado.toLong() * limite + maior / 2) / maior).toInt().coerceAtLeast(1)
     }
 
     private fun dadosNivel(
@@ -274,7 +267,7 @@ object KimgPipeline {
         return out
     }
 
-    /** Reescala bilinear simples (só usada quando POT/limite exige). */
+    /** Reescala bilinear simples quando a textura excede o limite. */
     fun reescalar(src: ByteArray, sw: Int, sh: Int, dw: Int, dh: Int): ByteArray {
         val out = ByteArray(dw * dh * 4)
         for (y in 0 until dh) {

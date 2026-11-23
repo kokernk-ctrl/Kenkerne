@@ -289,17 +289,32 @@ class KimgTest {
     }
 
     @Test
-    fun `POT só quando excede o limite do aparelho`() {
+    fun `mantém dimensões originais até o limite do aparelho`() {
         // 6×6 dentro do limite: entra 1:1 (GLES3 suporta NPOT)
         val dentro = KimgPipeline.converter(gradiente(6, 6, alfaVariado = false), 6, 6, limiteTextura = 8)
         assertFalse(dentro.second.redimensionada)
         assertEquals(6, KimgReader.read(dentro.first).largura)
-        // 6×6 com limite 4: redimensiona para 4×4 (POT ≤ limite)
+        // 6×6 com limite 4: redimensiona para 4×4
         val fora = KimgPipeline.converter(gradiente(6, 6, alfaVariado = false), 6, 6, limiteTextura = 4)
         assertTrue(fora.second.redimensionada)
         val lida = KimgReader.read(fora.first)
         assertEquals(4, lida.largura)
         assertEquals(4, lida.altura)
+    }
+
+    @Test
+    fun `limite preserva proporcao apos subamostragem e registra tamanho original`() {
+        val (bytes, relatorio) = KimgPipeline.converter(
+            gradiente(10, 4, alfaVariado = false), 10, 4,
+            limiteTextura = 7, larguraOrigem = 21, alturaOrigem = 10
+        )
+        val imagem = KimgReader.read(bytes)
+        assertEquals(7, imagem.largura)
+        assertEquals(3, imagem.altura)
+        assertTrue(relatorio.redimensionada)
+        assertEquals(21, relatorio.larguraOrigem)
+        assertEquals(10, relatorio.alturaOrigem)
+        assertEquals(840L, relatorio.bytesOrigem)
     }
 
     @Test
