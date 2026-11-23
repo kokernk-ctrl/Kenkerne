@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="asset_browser_title">Assets do projeto</string>
+    <string name="asset_browser_back">Voltar aos arquivos</string>
+    <string name="asset_browser_refresh">Atualizar arquivos e referências</string>
+    <string name="asset_browser_close">Fechar navegador de assets</string>
+    <string name="asset_browser_search">Buscar arquivos</string>
+    <string name="asset_browser_filter">Filtrar arquivos</string>
+    <string name="asset_browser_all">Todos os arquivos</string>
+    <string name="asset_browser_mesh">Malhas</string>
+    <string name="asset_browser_texture">Texturas</string>
+    <string name="asset_browser_scene">Cenas e Nicks</string>
+    <string name="asset_browser_script">Scripts e shaders</string>
+    <string name="asset_browser_audio">Áudio</string>
+    <string name="asset_browser_other">Outros arquivos</string>
+    <string name="asset_browser_broken">Referências quebradas</string>
+    <string name="asset_browser_scanning">Lendo arquivos do projeto…</string>
+    <string name="asset_browser_scan_failed">Não foi possível ler o projeto. Tente atualizar.</string>
+    <string name="asset_browser_partial">Não foi possível verificar alguns arquivos ou referências do projeto.</string>
+    <string name="asset_browser_empty">Este projeto não tem arquivos para exibir.</string>
+    <string name="asset_browser_no_match">Nenhum arquivo ou referência corresponde ao filtro.</string>
+    <string name="asset_browser_select">Selecione um arquivo para ver os detalhes.</string>
+    <string name="asset_browser_file_info">%1$s · %2$d bytes</string>
+    <string name="asset_browser_broken_row">Referência quebrada · arquivo ausente ou caminho inválido</string>
+    <string name="asset_browser_referenced_by">Referenciado por estes Nicks na cena atual:</string>
+    <string name="asset_browser_image_dimensions">%1$d × %2$d px</string>
+    <string name="asset_browser_mesh_metadata">KERN versão %1$d\nVértices: %2$d\nTriângulos (nível base): %3$d\nEntradas de LOD: %4$d</string>
+    <string name="asset_browser_preview_loading">Lendo prévia…</string>
+    <string name="asset_browser_preview_unavailable">Este formato não oferece prévia.</string>
+    <string name="asset_browser_preview_too_large">Esta imagem é grande demais para uma prévia local.</string>
+    <string name="asset_browser_preview_error">Não foi possível ler a prévia. O arquivo pode estar danificado ou inacessível.</string>
+    <string name="asset_browser_preview_gone">Este arquivo não está mais disponível. Atualize a lista.</string>
+</resources>

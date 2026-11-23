@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Flight
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lightbulb
@@ -119,6 +120,7 @@ import com.kenkern.engine.render.KenkernSurfaceView
 import com.kenkern.engine.render.TransformGizmo
 import java.util.Locale
 import com.kenkern.engine.ui.panels.AddNickPanel
+import com.kenkern.engine.ui.panels.AssetBrowserDialog
 import com.kenkern.engine.ui.panels.DockedPanel
 import com.kenkern.engine.ui.panels.FloatingPanel
 import com.kenkern.engine.ui.panels.HierarchyPanel
@@ -219,6 +221,12 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
         addNickVisivel = true
     }
 
+    val projectRoot = vm.project.value?.root
+    var assetBrowserOpen by rememberSaveable(projectRoot?.path) { mutableStateOf(false) }
+    if (assetBrowserOpen && projectRoot != null) {
+        AssetBrowserDialog(projectRoot, vm.scene.value, onClose = { assetBrowserOpen = false })
+    }
+
     // ---------- Importação de modelo (ETAPA A): SAF + opções ----------
     var uriImportacaoPendente by remember { mutableStateOf<android.net.Uri?>(null) }
     var pastaImportacaoPendente by rememberSaveable { mutableStateOf(false) }
@@ -303,6 +311,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 onFocusClick = { surfaceView?.focusSelected() },
                 debugOverlay = debugOverlay,
                 onDebugToggle = { debugOverlay = !debugOverlay },
+                onOpenAssets = if (projectRoot == null) null else ({ assetBrowserOpen = true }),
                 onImportClick = onImportClick
             )
 
@@ -850,6 +859,7 @@ private fun EditorTopBar(
     onFocusClick: () -> Unit,
     debugOverlay: Boolean,
     onDebugToggle: () -> Unit,
+    onOpenAssets: (() -> Unit)?,
     onImportClick: (Boolean) -> Unit
 ) {
     Surface(
@@ -860,9 +870,12 @@ private fun EditorTopBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp)
         ) {
-            // ---------- INÍCIO FIXO: Voltar (sempre visível) ----------
+            // ---------- INÍCIO FIXO: Voltar e navegador de assets ----------
             TopBarIcon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.editor_back_hub)) {
                 onExit()
+            }
+            TopBarIcon(Icons.Filled.Folder, stringResource(R.string.asset_browser_title), enabled = onOpenAssets != null) {
+                onOpenAssets?.invoke()
             }
             TopBarSeparator()
 
