@@ -140,12 +140,25 @@ object LenteNickMatriz {
         val m = alvo.transform.worldMatrix.m
         val tx = m[12]; val ty = m[13]; val tz = m[14]
         outEye.set(tx, ty + v.altura, tz + v.distancia)
+        // M1.4 (v0.1.22): A CÂMERA NÃO ATRAVESSA O CHÃO — o olho fica sempre
+        // ACIMA do nível dos pés do alvo (+ 0,35 m de folga): configurações
+        // com altura negativa/pequena não enfiam a câmera no chão.
+        val meiaAltura = meiaAlturaDoAlvo(alvo)
+        val pe = ty - meiaAltura
+        if (outEye.y < pe + FOLGA_CHAO) outEye.y = pe + FOLGA_CHAO
         sCenter.set(tx, ty + AIM_HEIGHT, tz)
         outView.setLookAt(outEye, sCenter, sUp)
         return true
     }
 
-
+    /** Meia-altura do alvo (AABB local; cubo padrão = 0,5 m). */
+    private fun meiaAlturaDoAlvo(alvo: Nick): Float {
+        val mesh = alvo.findClassInstance(com.kenkern.engine.core.MalhaNick.CLASSE)
+            ?: return 0.5f
+        val minY = mesh.getFloat("aabbMinY", -0.5f)
+        val maxY = mesh.getFloat("aabbMaxY", 0.5f)
+        return kotlin.math.abs(maxY - minY) * 0.5f
+    }
 
     private val sEye = com.kenkern.engine.core.math.Vec3()
     private val sFwd = com.kenkern.engine.core.math.Vec3()
@@ -153,4 +166,7 @@ object LenteNickMatriz {
     private val sUp = com.kenkern.engine.core.math.Vec3(0f, 1f, 0f)
 
     private const val AIM_HEIGHT = 0.65f
+
+    /** M1.4: folga da câmera acima dos pés do alvo (m). */
+    const val FOLGA_CHAO = 0.35f
 }

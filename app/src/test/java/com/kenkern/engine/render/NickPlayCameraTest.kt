@@ -172,4 +172,24 @@ class NickPlayCameraTest {
         val game = NickPlayCamera(scene, null, null, basic)
         assertEquals("fov do Nick aplicado na OrbitCamera do jogo", 90f, game.camera.fovDegrees, 0.001f)
     }
+
+    @Test
+    fun `câmera seguidora não atravessa o chão M1_4`() {
+        // M1.4 (v0.1.22): o OLHO fica sempre acima dos pés do alvo (+0,35 m):
+        // altura negativa/pequena não enfia a câmera dentro do chão.
+        val scene = Scene()
+        val player = scene.createRootNick("Player")
+        player.transform.position.set(0f, 1f, 0f)
+        val follow = scene.createRootNick("Follow")
+        follow.kind = "camera.follow"
+        val inst = NickClassRegistry.createInstance(LenteNick.CLASSE)!!
+        inst.fields[LenteNick.CAMPO_ALTURA] = NickValue.FloatValue(-5f) // abaixo do chão!
+        follow.addClassInstance(inst)
+        scene.updateWorldTransforms()
+        val game = NickPlayCamera(scene, player, follow, null)
+        val eye = Vec3()
+        game.camera.eyePoint(eye)
+        val pe = 1f - 0.5f // pé do alvo (cubo 1 m)
+        assertTrue("olho acima dos pés + folga (${eye.y} ≥ ${pe + LenteNickMatriz.FOLGA_CHAO})", eye.y >= pe + LenteNickMatriz.FOLGA_CHAO - 1e-3f)
+    }
 }
