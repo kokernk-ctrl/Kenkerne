@@ -6,6 +6,9 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
+- **v0.1.19 — G1–G3 VALIDADOS NO APARELHO**: o usuário confirmou os
+  sete testes de layout em `TESTES_PENDENTES.md` (TopBar, Adicionar Nick e
+  controles de voo). O aceite é específico desta versão e não fecha a Fase 2.
 - **Ordem de execução (adendo v4, 2026-11-22)**: v0.1.17 FEITA → **T0.1–T0.3
   FEITAS + E1–E6 FEITAS (v0.1.18, campo do usuário)**: PARADA 1 respondida
   com 6 bugs corrigidos (E1 símbolos JNI do handler nativo + prova no CI com
@@ -24,8 +27,8 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 - **Fase**: 2 (Projeto & Assets) — **EM CURSO (ABERTA)**. Faltam F2.11
   streaming, F2.12 navegador, F2.13 pré-visualização, F2.14 prefabs e F2.15
   registro de assets. A tag `fase-2-ok` permanece REMOVIDA (não criar até
-  TODOS os itens + "aprovado" do usuário). Itens que dependem do aparelho
-  estão **COMPILADO**, não VALIDADO (TESTES_PENDENTES.md).
+  TODOS os itens + "aprovado" do usuário). Itens sem confirmação de teste
+  no aparelho permanecem **COMPILADO**, não VALIDADO (TESTES_PENDENTES.md).
 - **Tarefa concluída (v0.1.18)**: 6 bugs do aparelho E1–E6 (relatório por
   bug com causa raiz arquivo/linha no CHANGELOG.md). CI: 222 testes JVM,
   assembleRelease, **E1: llvm-nm confere TODA external fun × a .so do APK**,

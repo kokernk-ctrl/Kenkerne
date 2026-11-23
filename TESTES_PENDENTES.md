@@ -1,8 +1,10 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
-## Aceite v0.1.19 — G1–G3 — Release `v0.1.19-fase2-teste`
+## Aceite v0.1.19 — G1–G3 — Release `v0.1.19-fase2-teste` — VALIDADO NO APARELHO
 
 > 3 bugs de layout corrigidos (paisagem 800×360, ~240dp de viewport útil).
+> O usuário confirmou a aprovação dos sete testes abaixo no aparelho.
+> Este aceite cobre apenas G1–G3; não confirma os demais testes deste arquivo.
 > Fase 2 CONTINUA ABERTA; tag `fase-2-ok` NÃO criada.
 
 ### G1 — TopBar
