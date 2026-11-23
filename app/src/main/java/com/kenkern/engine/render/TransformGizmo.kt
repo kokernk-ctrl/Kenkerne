@@ -153,9 +153,9 @@ class TransformGizmo private constructor(buildMesh: Boolean) {
     }
 
     /** Escala do gizmo em unidades de mundo para tamanho CONSTANTE na tela (braço ≈ 18% da altura). */
-    fun screenScaleFor(camera: OrbitCamera, worldPos: Vec3): Float {
-        camera.eyePoint(sEye)
-        val d = sEye.distanceTo(worldPos).coerceAtLeast(0.5f)
+    fun screenScaleFor(camera: OrbitCamera, worldPos: Vec3, eyeScratch: Vec3 = sEye): Float {
+        camera.eyePoint(eyeScratch)
+        val d = eyeScratch.distanceTo(worldPos).coerceAtLeast(0.5f)
         val halfFovRad = Math.toRadians((camera.fovDegrees * 0.5f).toDouble())
         return (d * kotlin.math.tan(halfFovRad) * 2.0 * SCREEN_FRACTION).toFloat()
     }

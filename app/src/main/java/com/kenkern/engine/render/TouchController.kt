@@ -151,6 +151,10 @@ class TouchController(
                             prevX[p0] = x
                             prevY[p0] = y
                         }
+                        // Mantém a posição final também sob o slop; o UP pode
+                        // chegar sem um MOVE adicional e alimenta a telemetria.
+                        lastX = x
+                        lastY = y
                         debug?.publishMove(x, y, false, moved, event.eventTime - downTimeMs)
                         publishPinchDebug(1)
                     }
@@ -247,7 +251,18 @@ class TouchController(
                     return true
                 }
                 val elapsedMs = event.eventTime - downTimeMs
-                val movedPx = kotlin.math.sqrt(abs2(downX - lastX, downY - lastY))
+                val terminalX = if (
+                    event.actionMasked == MotionEvent.ACTION_UP && event.pointerCount > 0
+                ) event.getX(0) else lastX
+                val terminalY = if (
+                    event.actionMasked == MotionEvent.ACTION_UP && event.pointerCount > 0
+                ) event.getY(0) else lastY
+                val movedPx = kotlin.math.sqrt(abs2(downX - terminalX, downY - terminalY))
+                if (event.actionMasked == MotionEvent.ACTION_UP &&
+                    movedPx > tapSlopPx
+                ) {
+                    moved = true
+                }
                 // TAP DE SELEÇÃO: 1 dedo, movimento < slop (12dp) e gesto < 250 ms —
                 // arrasto nunca altera a seleção. Processado no UP, nunca no DOWN.
                 if (event.actionMasked == MotionEvent.ACTION_UP &&

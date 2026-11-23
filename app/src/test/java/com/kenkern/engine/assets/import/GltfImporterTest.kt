@@ -77,6 +77,21 @@ class GltfImporterTest {
     }
 
     @Test
+    fun acessores_integer_normalized_e_normais_com_escala_nao_uniforme() {
+        val r = GltfImporter.importar(GltfAmostras.acessoresNormalizadosComEscalaGlb())
+
+        // UBYTE normalized: 255 representa 1.0, não 255.
+        assertEquals(1f, r.mesh.uvs[2], 1e-4f)
+        assertEquals(1f, r.mesh.uvs[5], 1e-4f)
+
+        // A normal original (1,1,0) sob escala X=2 deve virar (1/2,1,0),
+        // e não o resultado incorreto da matriz direta (2,1,0).
+        assertEquals(0.4472f, r.mesh.normals[0], 0.02f)
+        assertEquals(0.8944f, r.mesh.normals[1], 0.02f)
+        assertEquals(0f, r.mesh.normals[2], 0.02f)
+    }
+
+    @Test
     fun meta_de_compressao_denso_gera_relatorio_e_kern_menor_que_origem() {
         val r = GltfImporter.importar(GltfAmostras.densoGlb(30000))
         assertEquals(30000, r.mesh.vertexCount)

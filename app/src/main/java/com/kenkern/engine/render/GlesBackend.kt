@@ -28,6 +28,8 @@ import java.nio.FloatBuffer
  */
 class GlesBackend : RenderBackend {
 
+    internal enum class MipmapPolicy { GENERATE, USE_PROVIDED, LINEAR }
+
     override val name: String = "OpenGL ES 3.0"
 
     override var viewportWidth: Int = 1
@@ -893,6 +895,8 @@ class GlesBackend : RenderBackend {
         }
         val internaEtc2Rgb = 0x9274 // GL_COMPRESSED_RGB8_ETC2
         val internaEtc2Rgba = 0x9278 // GL_COMPRESSED_RGBA8_ETC2_EAC
+        var usouFallbackRgba = false
+        var uploadedLevels = 0
         for ((i, mip) in imagem.mips.withIndex()) {
             val ok = if (usouEtc2) {
                 val interna = if (imagem.formato == com.kenkern.engine.assets.image.KimgFormato.ETC2_RGBA) internaEtc2Rgba else internaEtc2Rgb
@@ -915,6 +919,7 @@ class GlesBackend : RenderBackend {
                 false
             }
             if (!ok) falha = true
+            else if (i == uploadedLevels) uploadedLevels++
         }
         if (falha && usouEtc2) {
             // FALLBACK automático: decodifica ETC2 na CPU e sobe como RGBA8.
@@ -937,6 +942,14 @@ class GlesBackend : RenderBackend {
                 imagem.largura, imagem.altura, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE,
                 java.nio.ByteBuffer.wrap(rgba)
             )
+            usouFallbackRgba = true
+            uploadedLevels = 1
+        }
+        if (uploadedLevels == 0) {
+            KenkernLog.e(TAG, "nenhum nível .KIMG foi enviado à GPU (${imagem.formato.rotulo})")
+            drainGlErrors()
+            GLES30.glDeleteTextures(1, id, 0)
+            return 0
         }
         if (GLES30.glGetError() != GLES30.GL_NO_ERROR) {
             KenkernLog.e(TAG, "erro de GL ao subir a textura .KIMG (${imagem.formato.rotulo})")
@@ -944,8 +957,33 @@ class GlesBackend : RenderBackend {
             GLES30.glDeleteTextures(1, id, 0)
             return 0
         }
-        // filtragem trilinear + wrap + anisotropia quando disponível
-        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR_MIPMAP_LINEAR)
+        // Um min-filter mipmapped exige uma cadeia completa. O pipeline RAW
+        // permite um único nível e o fallback ETC2 acima só decodifica o mip 0;
+        // gere níveis para RGBA8 nesses casos. ETC2 parcial continua válido com
+        // filtragem linear (evita textura incompleta sem recomprimir o asset).
+        val mipPolicy = mipmapPolicy(
+            imagem.largura,
+            imagem.altura,
+            uploadedLevels,
+            formatoRgba8 = imagem.formato == com.kenkern.engine.assets.image.KimgFormato.RGBA8_RAW,
+            fallbackRgba8 = usouFallbackRgba
+        )
+        val minFilter = when (mipPolicy) {
+            MipmapPolicy.GENERATE -> {
+                GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D)
+                if (GLES30.glGetError() == GLES30.GL_NO_ERROR) {
+                    GLES30.GL_LINEAR_MIPMAP_LINEAR
+                } else {
+                    KenkernLog.w(TAG, "glGenerateMipmap falhou — usando filtragem sem mipmaps")
+                    drainGlErrors()
+                    GLES30.GL_LINEAR
+                }
+            }
+            MipmapPolicy.USE_PROVIDED -> GLES30.GL_LINEAR_MIPMAP_LINEAR
+            MipmapPolicy.LINEAR -> GLES30.GL_LINEAR
+        }
+        // filtragem + wrap + anisotropia quando disponível
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, minFilter)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_REPEAT)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_REPEAT)
@@ -1145,5 +1183,25 @@ class GlesBackend : RenderBackend {
     companion object {
         private const val TAG = "Kenkern/GlesBackend"
         private const val STRIDE = 32 // 3 pos + 3 normal + 2 uv (floats)
+
+        /** Quantidade de níveis necessária até 1×1, incluindo o nível base. */
+        internal fun mipCountCompleto(width: Int, height: Int): Int {
+            val maiorLado = maxOf(width, height).coerceAtLeast(1)
+            return Int.SIZE_BITS - Integer.numberOfLeadingZeros(maiorLado)
+        }
+
+        /** Política de completude da textura, pura para permitir regressão JVM. */
+        internal fun mipmapPolicy(
+            width: Int,
+            height: Int,
+            uploadedLevels: Int,
+            formatoRgba8: Boolean,
+            fallbackRgba8: Boolean
+        ): MipmapPolicy {
+            val complete = uploadedLevels >= mipCountCompleto(width, height)
+            if (mipCountCompleto(width, height) == 1 || complete) return MipmapPolicy.USE_PROVIDED
+            if (fallbackRgba8 || formatoRgba8) return MipmapPolicy.GENERATE
+            return MipmapPolicy.LINEAR
+        }
     }
 }

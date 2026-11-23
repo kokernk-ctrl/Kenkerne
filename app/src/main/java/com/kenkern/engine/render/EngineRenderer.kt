@@ -180,6 +180,13 @@ class EngineRenderer {
         cubeHandle = 0
         gizmoHandle = 0
         tgTrisMove = 0; tgTrisRotate = 0; tgTrisScale = 0
+        // O wireframe do collider é cacheado por seleção/parâmetros, mas seu
+        // handle pertence ao contexto GL. Invalide-o mesmo quando a chave não
+        // mudou: no primeiro frame após initialize ele será recriado.
+        if (colliderWireHandle != 0) backend.destroyLineBuffer(colliderWireHandle)
+        colliderWireHandle = 0
+        colliderWireCount = 0
+        colliderWireKey = ""
         tGizmo = transformGizmo
         kernRoundtripOk = false
         malhasDesenhadas = 0

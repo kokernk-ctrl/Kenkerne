@@ -999,6 +999,9 @@ class KenkernSurfaceView(
                 // Contexto novo = handles de GPU antigos inválidos: as malhas
                 // importadas voltam a subir pela fila pendente (nada de handle órfão).
                 AssetMeshLibrary.limpar()
+                // As texturas guardam handles opacos do backend, também inválidos
+                // após perda do contexto. Limpando a cache, o renderer as reenfileira.
+                TextureLibrary.limpar()
                 backend.destroy() // libera restos de contexto anterior
             }.onFailure { KenkernLog.w(TAG, "destroy() do backend anterior falhou", it) }
             runCatching {

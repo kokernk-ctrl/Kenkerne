@@ -41,6 +41,17 @@ MainActivity (sensorLandscape)
   do debug (só com overlay ON).
 - Comunicação UI→GL: flags `@Volatile` (pickPending/focusPending). GL→UI:
   `mainHandler.post` + campos `@Volatile` do `ViewportDebugState`.
+- **Cena do editor**: publicada via `sceneRef` volátil. A thread principal é a
+  única que altera a árvore, classes e TRS local; por isso o Compose pode ler
+  esses dados na própria thread. Comandos (incluindo undo/redo), arrasto do
+  gizmo e frames de edição usam o mesmo `Scene.withEditorAccess`: o GL só
+  escreve matrizes derivadas e mantém o monitor até terminar render, picking,
+  foco e diagnóstico do frame. Leituras da UI dessas matrizes também usam
+  o monitor. Não se deve suspender ou esperar outra thread nesse bloco.
+- **Play**: o GL captura a cena de edição sob o mesmo monitor uma vez por
+  sessão; parse, simulação e render de Play trabalham em uma cena privada.
+  Não há cópias da cena a cada frame ou movimento do gizmo. O trade-off é que
+  um frame de edição demorado pode atrasar um comando ou toque concorrente.
 
 ## Fluxos críticos
 
