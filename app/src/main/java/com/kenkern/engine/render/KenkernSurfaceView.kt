@@ -364,6 +364,12 @@ class KenkernSurfaceView(
         glRenderer.setPreviewCamera(id)
     }
 
+    /**
+     * M1.5: textos/contadores da UI DE JOGO escritos pelo Lua — lido pela UI
+     * ~2 Hz (nunca acopla o Compose ao thread GL).
+     */
+    fun snapshotUiJogo(): Map<String, String> = glRenderer.playScriptsSnapshotUi()
+
     /** True se o roundtrip .KERN (gravar/ler malha) passou nesta sessão de render. */
     fun isKernOk(): Boolean = glRenderer.isKernRoundtripOk()
 
@@ -1049,6 +1055,9 @@ class KenkernSurfaceView(
         fun setPreviewCamera(id: com.kenkern.engine.core.ReferenceId?) {
             previewLenteId = id
         }
+
+        fun playScriptsSnapshotUi(): Map<String, String> =
+            playScripts?.snapshotUiJogo() ?: emptyMap()
 
         fun clearPlaySession() {
             editorScene = null

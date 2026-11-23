@@ -46,7 +46,15 @@ class NickLuaScripts(private val scene: Scene) {
      */
     var estadoInput: EstadoInputJogo? = null
 
+    /**
+     * M1.5: INTERFACE DE JOGO mínima — textos/contadores escritos pelo Lua
+     * (ui.texto/ui.contador/ui.limpar) e lidos pelo overlay do editor.
+     * Sincronizado (escrita no thread GL, leitura na UI).
+     */
+    private val textosUi = LinkedHashMap<String, String>()
 
+    @Synchronized
+    fun snapshotUi(): Map<String, String> = LinkedHashMap(textosUi)
 
     class Instancia(
         val nick: Nick,
@@ -64,6 +72,10 @@ class NickLuaScripts(private val scene: Scene) {
     private var tempoSegundos = 0f
 
     val total: Int get() = instancias.size
+
+    /** M1.5: leitura do overlay (UI thread) — cópia barata e sincronizada. */
+    @Synchronized
+    fun snapshotUiJogo(): Map<String, String> = LinkedHashMap(textosUi)
 
     /** Instância pelo nome de exibição do Nick (testes e diagnóstico). */
     fun instanciaDe(nomeNick: String): Instancia? =
@@ -238,6 +250,34 @@ class NickLuaScripts(private val scene: Scene) {
             }
         })
         runtime.instalarTabela("input", input)
+
+        // ---------- ui (M1.5): texto e contador controlados por Lua ----------
+        val ui = LuaTable()
+        ui.set("texto", object : VarArgFunction() {
+            override fun invoke(args: Varargs): LuaValue {
+                val nome = args.arg1().optjstring("")
+                val texto = args.arg(2).optjstring("")
+                synchronized(textosUi) {
+                    if (texto.isEmpty()) textosUi.remove(nome) else textosUi[nome] = texto
+                }
+                return LuaValue.NIL
+            }
+        })
+        ui.set("contador", object : VarArgFunction() {
+            override fun invoke(args: Varargs): LuaValue {
+                val nome = args.arg1().optjstring("")
+                val valor = args.arg(2).optint(0)
+                synchronized(textosUi) { textosUi[nome] = valor.toString() }
+                return LuaValue.NIL
+            }
+        })
+        ui.set("limpar", object : LibFunction() {
+            override fun call(): LuaValue {
+                synchronized(textosUi) { textosUi.clear() }
+                return LuaValue.NIL
+            }
+        })
+        runtime.instalarTabela("ui", ui)
     }
 
     /**

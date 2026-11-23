@@ -158,6 +158,30 @@ class InputJogoTest {
     }
 
     @Test
+    fun `ui_texto e ui_contador do lua aparecem no snapshot`() {
+        val scene = Scene()
+        val nick = scene.createRootNick("ComScript")
+        val inst = NickClassRegistry.createInstance(NickLuaScripts.CLASSE_SCRIPT)!!
+        inst.fields[NickLuaScripts.CAMPO_FONTE] = NickValue.StringValue(
+            """
+            function on_start()
+              ui.texto("moedas", 3)
+              ui.contador("pontos", 120)
+            end
+            """.trimIndent()
+        )
+        nick.addClassInstance(inst)
+        val scripts = NickLuaScripts(scene).also { it.iniciarTodos() }
+        val ui = scripts.snapshotUiJogo()
+        assertEquals("3", ui["moedas"])
+        assertEquals("120", ui["pontos"])
+        // limpar
+        val globals = (scripts.instanciaDe("ComScript")?.runtime as? LuaJScriptRuntime)?.ambiente()
+        globals!!.get("ui").get("limpar").call()
+        assertTrue(scripts.snapshotUiJogo().isEmpty())
+    }
+
+    @Test
     fun `joystick nick fornece a configuracao`() {
         val scene = Scene()
         val joy = scene.createRootNick("Joy", kind = "ui.joystick")

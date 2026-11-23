@@ -522,6 +522,33 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 cfg = cfg,
                                 modifier = Modifier.fillMaxSize()
                             )
+                            // M1.5: UI DE JOGO mínima — textos/contadores do Lua
+                            // (ui.texto/ui.contador), lidos ~2 Hz (fpsTick).
+                            var uiJogo by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+                            LaunchedEffect(svForPlay, fpsTick) {
+                                uiJogo = svForPlay.snapshotUiJogo()
+                            }
+                            if (uiJogo.isNotEmpty()) {
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(10.dp)
+                                ) {
+                                    for ((nome, texto) in uiJogo) {
+                                        Text(
+                                            "$nome: $texto",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = KenkernTextHigh,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(KenkernSurface.copy(alpha = 0.7f))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
 
                         // Telas estreitas: painel "acoplado" vira overlay de lateral
