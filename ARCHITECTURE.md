@@ -22,12 +22,13 @@ MainActivity (sensorLandscape)
 |--------|-------|
 | `core` | `Nick`, `Scene`, `Transform` (quaternion), `NickClass`/`NickValue`/`NickClassRegistry`, `NickFunction` (Spin/Bob), `ReferenceId` |
 | `core.linkerf` | `LinkerfModel`: portas (EVENT_OUT/DATA_IN…) e links, serializado no .ck |
-| `core.serialization` | `CkFormat`: .ck texto CK1 (tolerante a linhas corruptas) |
+| `core.serialization` | `CkFormat`: .ck texto CK2, migração de CK1; o editor exige uma cópia completa antes de ativar a cena |
 | `core.math` | `Vec3`, `Mat4`, `Quaternion` |
+| `assets.import`, `assets.image` | glTF/GLB e FBX → KERN + KIMG, resolução/perfil, ETC2; `nativecore` encapsula JNI com fallback Kotlin |
 | `assets.mesh` | `.KERN` binário: `KernFormat` (quantização u16 + octaédrica 8:8), `KernReader`/`KernWriter`, `MeshData` (LODs, bones, clusters) |
 | `render` | GL: backend, renderer, câmera, gizmo, toque |
-| `engine` | `FixedStepLoop` (timestep fixo, PlayState) |
-| `projects` | `ProjectManager`: pastas, `project.kenkern` (format=1), autosave, atômico |
+| `engine` | `FixedStepLoop` (timestep fixo, PlayState), `PlayScene` e `NickPlayRuntime` (spawn, áreas, movimento e caixas) |
+| `projects` | `ProjectManager`: pastas, `project.kenkern` (format=1), recuperação; `Kernpack`: transporte portátil com SAF |
 | `editor` | `EditorViewModel` (estado, undo/redo por `commands.Command`), `PanelStateStore` |
 | `autosave` | `AutoSaveManager` (debounce 1,5 s) |
 | `diag` | `BootTrace` (6 etapas: application → primeiro frame) |
@@ -59,11 +60,10 @@ MainActivity (sensorLandscape)
   `pickNickAt` (raio × AABB das malhas, tolerância 24dp) → `onNickPicked`.
 - **Gizmo**: DOWN sobre alça (hit-test 28dp) captura o gesto até o UP; drags
   viram UM Command de undo no fim (`onGizmoDragEnd` com snapshot inicial).
-- **Persistência**: autosave com debounce; `loadScene` prefere autosave mais
-  novo que a cena principal; gravação sempre atômica (.tmp → rename).
+- **Persistência**: autosave com debounce; o editor testa primeiro a cópia mais nova e recorre à outra se estiver incompleta. Sem nenhuma cópia utilizável, não ativa a edição. A gravação sincroniza o temporário e o publica na mesma pasta sem apagar antecipadamente o original.
 
 ## Invariantes
 
-- Zero alocação por frame (arrays pré-alocados, pools; primitivos @Volatile).
-- Falha de GL nunca derruba o app (try/catch nos 3 callbacks + frame de clear).
-- Formatos versionados com migração por defaults (CK1, KERN v1, project format=1).
+- Objetivo de evitar alocação por frame (arrays pré-alocados, pools; primitivos @Volatile).
+- Contenção de exceções Kotlin no caminho de GL, não garantia contra falhas nativas do driver (try/catch nos 3 callbacks + frame de clear).
+- Formatos versionados com migração por defaults (CK1/CK2, KERN v1/v2, project format=1).
