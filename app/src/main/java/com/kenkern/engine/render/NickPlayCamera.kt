@@ -85,6 +85,14 @@ internal class NickPlayCamera(private val scene: Scene, player: Nick?, follow: N
         LenteNickMatriz.view(p, viewPropria)
     }
 
+    /** M1.4: meia-altura do alvo (AABB local; cubo padrão = 0,5 m). */
+    private fun meiaAlturaDoAlvo(alvo: Nick): Float {
+        val mesh = alvo.findClassInstance(com.kenkern.engine.core.MalhaNick.CLASSE) ?: return 0.5f
+        val minY = mesh.getFloat("aabbMinY", -0.5f)
+        val maxY = mesh.getFloat("aabbMaxY", 0.5f)
+        return kotlin.math.abs(maxY - minY) * 0.5f
+    }
+
     fun update() {
         val player = alvo
         if (player != null) {
@@ -93,6 +101,13 @@ internal class NickPlayCamera(private val scene: Scene, player: Nick?, follow: N
             val h = hypot(offset.x.toDouble(), offset.z.toDouble())
             camera.mode = CameraMode.FLIGHT
             camera.flightPosition.set(p[12] + offset.x, p[13] + offset.y, p[14] + offset.z)
+            // M1.4 (v0.1.22): A CÂMERA NÃO ATRAVESSA O CHÃO — o olho fica
+            // sempre ACIMA dos pés do alvo (+ 0,35 m de folga). A clamp do
+            // LenteNickMatriz.viewFollow cobre o preview; esta cobre o Play.
+            val pe = p[13] - meiaAlturaDoAlvo(player)
+            if (camera.flightPosition.y < pe + LenteNickMatriz.FOLGA_CHAO) {
+                camera.flightPosition.y = pe + LenteNickMatriz.FOLGA_CHAO
+            }
             camera.flightYawDegrees = Math.toDegrees(atan2(offset.x.toDouble(), offset.z.toDouble())).toFloat()
             camera.flightPitchDegrees = Math.toDegrees(atan2(y.toDouble(), h)).toFloat().coerceIn(-89f, 89f)
             // FOV do Nick da câmera (follow/fixa também têm a classe Lente):
