@@ -1,5 +1,90 @@
 # KENKERN — CHANGELOG
 
+## v0.1.19 — 3 BUGS DE LAYOUT (G1–G3): PAISAGEM 800×360, NENHUMA FUNCIONALIDADE NOVA
+
+> Tarefa: 3 bugs de layout da v0.1.18, edições pontuais, CI verde por etapa
+> (G1, G2, G3, F). Referência de tela do usuário: paisagem 800dp × 360dp —
+> viewport com ~240dp de altura útil (TopBar 48 + StatusBar 24 + barras do
+> sistema). TODO layout novo funciona com 240dp de altura útil.
+
+### G1 — TopBar estoura e o botão do Inspetor some
+
+- **Causa raiz**: a Row única da `EditorTopBar` (EditorScreen.kt:775-976,
+  v0.1.18) tinha `Spacer(Modifier.weight(1f))` entre as ferramentas e os
+  botões de painel — com botões de voo e auxiliares ativos o espaço que
+  sobrava ia a zero e a Row transbordava a largura: a Hierarquia ficava
+  espremida na borda e o Inspetor NÃO aparecia (~20 itens fixos > 800dp).
+- **Correção**: layout em TRÊS seções — [INÍCIO FIXO] Voltar + separador;
+  [ROLÁVEL] ferramentas (Undo/Redo · Play/Pause/Stop · Importar · Gizmo ·
+  Câmera · Auxiliares · Diagnóstico de toque · Resolução) em
+  `Row(horizontalScroll(rememberScrollState))` com FADE de 16dp nas bordas
+  quando há conteúdo fora da vista (`canScrollBackward`/`canScrollForward`,
+  `TopBarEdgeFade` novo); [FIM FIXO] separador + Hierarquia + Inspetor +
+  Resetar layout — FORA da rolagem, SEMPRE visíveis. Botões com tamanho FIXO
+  de 40dp (sem weight, sem encolher). Matemática pura em `TopBarLayout`
+  (novo, sem Compose): início fixo 49dp + fim fixo 129dp + padding 8dp =
+  186dp fixos; `larguraRolavelDp` nunca negativa.
+- **Provas**: (1) `TopBarLayoutTest` — 5 testes JVM: soma dos botões fixos
+  (4×40dp = 160dp) + separadores/padding (186dp) ≤ 800dp; rolável em 800dp =
+  614dp ≥ mínimo 120dp; retrato 360dp rolável 174dp suficiente; rolável nunca
+  negativa em telas estreitas; (2) checagem "layout" NOVA no Diagnóstico —
+  a matemática da TopBar contra a largura REAL do aparelho (displayMetrics),
+  APROVADO com tela×dp + fixa + rolável + orientação, FALHOU com cabe=/suficiente=
+  se abaixo do mínimo da engine; (3) 227 testes JVM verdes (222 + 5).
+
+### G2 — janela "Adicionar Nick" sem rolagem; só aparecem as 2 opções filho/raiz
+
+- **Causa raiz**: cabeçalho em 3 camadas empilhadas (Row título 44dp +
+  `OutlinedTextField` 64dp + `TabRow` 48dp) + rodapé com 2 `RadioButton` de
+  48dp cada consumiam os ~240dp de viewport útil em paisagem — o LazyColumn
+  de tipos ficava com altura ZERO e as abas do `TabRow` encolhiam para
+  "R…", "B…", "C…" (largura dividida igualmente entre 7 abas).
+- **Correção**: (1) CABEÇALHO FIXO de UMA linha de 48dp (título + busca
+  compacta em `BasicTextField` de 36dp + fechar 40dp); (2) TODO o resto em
+  UM único `LazyColumn` que rola junto: seletor filho/raiz = 2 CHIPS
+  compactos de 36dp (FilterChip; os RadioButtons gastavam 96dp), abas de
+  categoria = CHIPS em linha com rolagem horizontal e NOME COMPLETO, e os
+  cartões de tipo; (3) a janela é MODAL NA RAIZ do EditorScreen (fora da Row
+  central): usa a ALTURA TODA do viewport (TopBar e StatusBar continuam
+  visíveis) e pode PASSAR POR CIMA do Inspetor acoplado se o usuário quiser
+  — largura 60% da tela (era 40%, máx 640dp); (4) contentPadding inferior
+  COM INSETS (`WindowInsets.navigationBars` + base 16dp): o último tipo do
+  catálogo é alcançável com 240dp mesmo com barra de gestos; (5) BARREIRA DE
+  TOQUE mantida na raiz do painel — a rolagem da janela NUNCA move a câmera.
+- **Provas**: (1) `AddNickLayout` (novo) + `AddNickLayoutTest` — 5 testes
+  JVM: cabeçalho 48dp ≤ 20% da altura útil (exatamente 20% de 240dp); altura
+  mínima da lista (chips 36+8 ×2 + cartão 52 + padding 16 = 156dp) com
+  cabeçalho = 204dp ≤ 240dp; último tipo alcançável com inset 24dp
+  (228 ≤ 240); padding inferior 16+inset; chips de 36dp; (2) checagem
+  "layout" do Diagnóstico ESTENDIDA (G1+G2): cabeçalho ≤ 20% + lista mínima +
+  último tipo contra a altura útil REAL; (3) 232 testes JVM verdes (227 + 5).
+
+### G3 — controles de voo por cima do painel
+
+- **Causas raiz**: (1) o `FlightControls` (EditorScreen.kt:~389, v0.1.18)
+  era composto SEMPRE que `cameraMode == FLIGHT` — com a janela Adicionar
+  Nick aberta o joystick (108dp), os botões subir/descer (52dp) e o slider de
+  velocidade ficavam por BAIXO da janela modal, reagindo a toques que eram
+  para ela; (2) o Box raiz do FlightControls ignorava INSETS — o slider de
+  velocidade ficava cortado embaixo pela barra de gestos do sistema.
+- **Correção**: (1) condição `!addNickVisivel` — com a janela (painel modal)
+  aberta o FlightControls INTEIRO não existe; ao fechar, volta (modo FLIGHT
+  continua ativo, câmera não muda); (2) Box raiz com
+  `windowInsetsPadding(WindowInsets.safeDrawing)` (consumption-aware: os
+  insets já consumidos pela Column raiz entram como 0; barra de gestos/notch
+  são aplicados) — o controle de velocidade INTEIRO dentro da ÁREA SEGURA;
+  padding inferior do slider 12→16dp.
+- **Provas**: 232 testes JVM verdes (condição de composição não roda em JVM;
+  aceite no aparelho em TESTES_PENDENTES), check_i18n OK, lint SEM ERROS
+  NOVOS (os mesmos 2 pré-existentes: themes.xml NewApi + EditorScreen
+  RememberReturnType).
+
+### F — fechamento
+
+- Bump versionCode 20 / versionName **0.1.19-fase2**; CHANGELOG e
+  TESTES_PENDENTES atualizados; 232 testes verdes; lint sem erros novos;
+  Release de pré-lançamento **v0.1.19-fase2-teste** com o APK assinado.
+
 ## v0.1.18 — 6 BUGS DO APARELHO (E1–E6) + T0.3: CORREÇÕES DO TESTE DE CAMPO
 
 > Tarefa: 6 bugs do aparelho, edições pontuais, CI verde por etapa. Fase 2

@@ -1,5 +1,39 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## Aceite v0.1.19 — G1–G3 — Release `v0.1.19-fase2-teste`
+
+> 3 bugs de layout corrigidos (paisagem 800×360, ~240dp de viewport útil).
+> Fase 2 CONTINUA ABERTA; tag `fase-2-ok` NÃO criada.
+
+### G1 — TopBar
+
+1. Com TODAS as ferramentas ativas (voo + auxiliares + diagnóstico de toque):
+   a área de ferramentas ROLA na horizontal e tem FADE nas bordas; a
+   Hierarquia, o Inspetor e o Resetar layout ficam FIXOS no fim da barra,
+   SEMPRE visíveis e com 40dp de toque cada.
+2. Diagnóstico → checagem **"layout"**: APROVADO com tela×dp, largura fixa da
+   TopBar (186dp), largura rolável e orientação (paisagem/retrato).
+
+### G2 — janela "Adicionar Nick" (paisagem 800×360)
+
+3. Abrir pelo "+" da Hierarquia: a janela ocupa a ALTURA TODA do viewport
+   com 60% da largura da tela (pode passar por cima do Inspetor); cabeçalho
+   de UMA linha de 48dp com título + busca + fechar.
+4. As abas aparecem como chips com o NOME COMPLETO e rolam na horizontal; o
+   seletor "Como filho do selecionado / Na raiz" são 2 chips de 36dp; a lista
+   de tipos rola junto e o ÚLTIMO tipo do catálogo fica alcançável com
+   ~240dp (padding inferior com inset da barra de gestos).
+5. Rolar a janela e tocar nas áreas vazias do painel: A CÂMERA NÃO MEXE
+   (barreira de toque).
+
+### G3 — controles de voo
+
+6. Modo Voo com a janela Adicionar Nick aberta: joystick, subir/descer e o
+   controle de velocidade SOMEM; ao fechar a janela eles voltam (a câmera
+   continua no modo Voo, sem perder posição).
+7. Modo Voo sem nenhuma janela: o controle de velocidade fica INTEIRO dentro
+   da área segura — nada cortado pela barra de gestos (notch/bordas).
+
 ## Aceite v0.1.18 — E1–E6 — Release `v0.1.18-fase2-teste`
 
 > 6 bugs do aparelho corrigidos. Cada item abaixo cita o que o teste precisa
