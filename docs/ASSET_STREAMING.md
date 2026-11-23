@@ -13,3 +13,11 @@ A demanda de assets visíveis é limitada a 32 por renderer; um worker compartil
 3. Faça undo/redo de uma importação durante a carga e após a malha pronta; confirme que não há reaparição tardia, e que o redo recupera a malha. Remova/estrague uma cópia de teste de um KIMG: deve restar a cor do material e aparecer uma falha clara por chave no Console.
 4. Recrie a superfície/contexto (não basta pausar se EGL for preservado). Confirme que os assets voltam a aparecer, sem handles inválidos. Execute também `cena` e `tex-cena` no Diagnóstico para verificar desenho e pixel offscreen.
 5. Registre modelo/driver/aparelho e os piores frames do primeiro upload; não feche F2.11 só com a suíte JVM ou com o APK compilado.
+
+## Migração de código do editor
+
+Os antigos objetos globais `AssetMeshLibrary` e `TextureLibrary` não são mais a API de recursos: guardar um handle GL entre projetos/contextos era incorreto. Esta é uma mudança de fonte para quem mantém forks Kotlin do editor; não muda caminhos, referências .ck ou formatos de arquivos do usuário. O app não distribui um SDK de plugins.
+
+- Na abertura, `ProjectAssetBindings.attach(cenaEditavel, pastaDoProjeto)` publica a raiz; na saída, `detach(cenaEditavel)`. Nunca publique a cópia descartável de Play como dona do projeto.
+- Em código de render dentro do módulo, use o `ProjectAssetStream` daquele renderer e sua fila por frame para consultar `mesh(path)`/`texture(path)`. Zero/ausente significa pendente ou falha, não faça leitura síncrona alternativa. `abandonContext()` descarta a geração antiga. Não leve handles à UI.
+- Para exibir materiais na UI, observe `ProjectAssetBindings.of(cena)?.materialsFor(path)`. Comandos que alteram arquivos devem invalidar os caminhos após sucesso via `ProjectAssetBindings.invalidate(cena, paths)`.
