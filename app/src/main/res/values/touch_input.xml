@@ -1,0 +1,31 @@
+<resources>
+    <string name="touch_control_choice">%1$s: %2$s</string>
+    <string name="touch_input_restore_input_settings">Restore input settings</string>
+    <string name="touch_input_gameplay_input">Gameplay input</string>
+    <string name="touch_input_type">Type</string>
+    <string name="touch_input_fixed">Fixed</string>
+    <string name="touch_input_floating">Floating</string>
+    <string name="touch_input_dynamic">Dynamic</string>
+    <string name="touch_input_size_dp">Size (dp)</string>
+    <string name="touch_input_opacity_0_1">Opacity (0–1)</string>
+    <string name="touch_input_anchor">Anchor</string>
+    <string name="touch_input_bottom_left">Bottom left</string>
+    <string name="touch_input_bottom_right">Bottom right</string>
+    <string name="touch_input_top_left">Top left</string>
+    <string name="touch_input_top_right">Top right</string>
+    <string name="touch_input_follow_nick">Follow Nick</string>
+    <string name="touch_input_none">None</string>
+    <string name="touch_input_named_action">Named action</string>
+    <string name="touch_input_apply_action">Apply action</string>
+    <string name="touch_input_mover_moves_a_player_olhar_controls_the_game_camera">mover moves a Player; olhar controls the game camera.</string>
+    <string name="touch_input_dead_zone_0_0_95">Dead zone (0–0.95)</string>
+    <string name="touch_input_response_exponent">Response exponent</string>
+    <string name="touch_input_snap_to_8_directions">Snap to 8 directions</string>
+    <string name="touch_input_controls">Controls</string>
+    <string name="touch_input_first_active_player">First active Player</string>
+    <string name="touch_input_movement_space">Movement space</string>
+    <string name="touch_input_world">World</string>
+    <string name="touch_input_camera">Camera</string>
+    <string name="touch_input_speed_movement_m_s">Speed (movement m/s)</string>
+    <string name="touch_input_turn_toward_movement">Turn toward movement</string>
+</resources>

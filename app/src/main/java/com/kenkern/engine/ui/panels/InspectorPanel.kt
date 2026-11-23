@@ -49,6 +49,7 @@ import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.SpinFunction
+import com.kenkern.engine.core.input.TouchControlSchema
 import com.kenkern.engine.editor.EditorViewModel
 import com.kenkern.engine.ui.nickDisplayName
 import com.kenkern.engine.ui.nickKindIcon
@@ -157,6 +158,10 @@ fun InspectorPanel(vm: EditorViewModel) {
             Switch(checked = nick.visible, onCheckedChange = { vm.setNickVisible(nick.id, it) })
         }
 
+        if (scene != null && (nick.kind == TouchControlSchema.JOYSTICK || nick.kind == TouchControlSchema.BUTTON)) {
+            TouchControlInspector(vm, scene, nick)
+        }
+
         // ---------- TRANSFORM (seção recolhível) ----------
         CollapsibleSection(stringResource(R.string.inspector_transform)) {
             SectionTitle(stringResource(R.string.inspector_position))
@@ -242,6 +247,8 @@ fun InspectorPanel(vm: EditorViewModel) {
         CollapsibleSection(stringResource(R.string.inspector_classes)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (inst in nick.classes.toList()) {
+                    if ((nick.kind == TouchControlSchema.JOYSTICK && inst.typeName == TouchControlSchema.STICK_CLASS) ||
+                        (nick.kind == TouchControlSchema.BUTTON && inst.typeName == TouchControlSchema.BUTTON_CLASS)) continue
                     ClassCard(vm, nick.id, inst)
                 }
 

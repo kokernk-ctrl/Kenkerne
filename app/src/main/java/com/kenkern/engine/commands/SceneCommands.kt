@@ -9,6 +9,7 @@ import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
 import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.TransformSnapshot
+import com.kenkern.engine.core.input.TouchControlSchema
 
 /** Cria um Nick do TIPO (kind) informado (filho do pai informado ou raiz),
  *  aplicando as CLASSES PADRÃO do tipo (T0.3 — ex.: body.collider → Colisor). */
@@ -42,6 +43,7 @@ class CreateNickCommand(
         for (classe in classesPadrao) {
             NickClassRegistry.createInstance(classe)?.let { nick.addClassInstance(it) }
         }
+        for (port in TouchControlSchema.ports(nick)) scene.linkerf.addPort(port)
         created = nick
     }
 

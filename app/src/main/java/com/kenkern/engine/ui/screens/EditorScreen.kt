@@ -116,7 +116,6 @@ import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.engine.PlayState
-import com.kenkern.engine.core.Nick
 import com.kenkern.engine.render.CameraMode
 import com.kenkern.engine.render.GizmoHandle
 import com.kenkern.engine.render.GizmoMode
@@ -175,15 +174,6 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     // por instância da tela, sem gravar no BootTrace durante a composição.
     LaunchedEffect(Unit) { BootTrace.mark("EditorScreen composto") }
     var surfaceView by remember { mutableStateOf<KenkernSurfaceView?>(null) }
-    val sceneRevision = vm.revision.intValue
-    val hasActivePlayer = remember(vm.scene.value, sceneRevision) {
-        fun Nick.hasActivePlayerInSubtree(ancestorsActive: Boolean): Boolean {
-            val activePath = ancestorsActive && active
-            if (activePath && kind == "body.player") return true
-            return children.any { it.hasActivePlayerInSubtree(activePath) }
-        }
-        vm.scene.value?.roots?.any { it.hasActivePlayerInSubtree(true) } == true
-    }
     var resolutionScale by remember { mutableStateOf(1f) }
     var fpsTick by remember { mutableStateOf(0) }
     var hintVisible by remember { mutableStateOf(!ViewportSession.gestureHintDismissed) }
@@ -448,7 +438,6 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 (iShown && inspector.docked.value))
                         val svForPlay = surfaceView
                         if (vm.playState.value == PlayState.PLAYING &&
-                            hasActivePlayer &&
                             !addNickVisivel &&
                             !floatingPanelCoversViewport &&
                             !narrowDockCoversViewport &&
@@ -456,9 +445,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                         ) {
                             PlayJoystick(
                                 sv = svForPlay,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(start = 12.dp, bottom = 12.dp)
+                                modifier = Modifier.matchParentSize()
                             )
                         }
 

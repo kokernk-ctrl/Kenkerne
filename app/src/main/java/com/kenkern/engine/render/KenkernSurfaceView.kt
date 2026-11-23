@@ -22,6 +22,9 @@ import com.kenkern.engine.core.math.Quaternion
 import com.kenkern.engine.core.math.Vec3
 import com.kenkern.engine.engine.FixedStepLoop
 import com.kenkern.engine.engine.NickPlayRuntime
+import com.kenkern.engine.core.input.GameplayInput
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import com.kenkern.engine.engine.PlayState
 import javax.microedition.khronos.egl.EGL10
 import javax.microedition.khronos.egl.EGLConfig
@@ -302,18 +305,19 @@ class KenkernSurfaceView(
     )
 
     private val glRenderer = KenkernGLRenderer()
-    @Volatile private var playMovement: Long = 0L
+    private val playInputState = MutableStateFlow<GameplayInput?>(null)
+    internal val playInput = playInputState.asStateFlow()
     @Volatile private var requestedPlayState = PlayState.STOPPED
 
-    fun setPlayMovement(x: Float, z: Float) {
-        if (requestedPlayState != PlayState.PLAYING) return
-        playMovement = (x.toRawBits().toLong() shl 32) or (z.toRawBits().toLong() and 0xffffffffL)
+    override fun onPause() {
+        playInputState.value?.cancel()
+        super.onPause()
     }
 
     private val controls = object : EngineControls {
         override fun setPlayState(state: PlayState) {
             requestedPlayState = state
-            if (state != PlayState.PLAYING) playMovement = 0L
+            if (state != PlayState.PLAYING) playInputState.value?.cancel()
             queueEvent {
                 loop.requestPlayState(state)
                 if (state == PlayState.STOPPED) glRenderer.clearPlaySession()
@@ -1024,8 +1028,14 @@ class KenkernSurfaceView(
         private var playScene: Scene? = null
         private var playRuntime: NickPlayRuntime? = null
         private var playCamera: NickPlayCamera? = null
+        private val playLook = FloatArray(2)
+        private val playView = Mat4()
+        private val playProjection = Mat4()
+        private val playViewProjection = Mat4()
 
         fun clearPlaySession() {
+            playInputState.value?.cancel()
+            playInputState.value = null
             editorScene = null
             playScene = null
             playRuntime = null
@@ -1038,6 +1048,8 @@ class KenkernSurfaceView(
                 val copy = source.copyForPlay()
                 playScene = copy
                 playRuntime = copy?.let { NickPlayRuntime(it) }
+                playInputState.value?.cancel()
+                playInputState.value = playRuntime?.input
                 copy?.updateWorldTransforms()
                 playCamera = playRuntime?.let { NickPlayCamera(it.player, it.followCamera, it.basicCamera) }
                 editorScene = source
@@ -1076,13 +1088,20 @@ class KenkernSurfaceView(
             val updateStart = System.nanoTime()
             loop.tick(System.nanoTime()) { dt ->
                 playScene?.updateFunctions(dt, loop.engineTime)
-                val move = playMovement
-                playRuntime?.step(dt, Float.fromBits((move ushr 32).toInt()), Float.fromBits(move.toInt()))
+                val gameCamera = playCamera
+                val activeCamera = gameCamera?.camera?.takeIf { gameCamera.active } ?: camera
+                val yaw = if (activeCamera.mode == CameraMode.FLIGHT) activeCamera.flightYawDegrees else activeCamera.yawDegrees
+                playRuntime?.stepTouch(dt, yaw)
+                if (gameCamera?.active == true) {
+                    playRuntime?.readLook(playLook)
+                    gameCamera.look(playLook[0] * dt, playLook[1] * dt)
+                }
             }
             // Matrizes de mundo sempre atualizadas (mesmo pausado, o Inspetor edita transform).
             scene?.updateWorldTransforms()
             val gameCamera = playCamera
             gameCamera?.update()
+            val frameCamera = if (gameCamera?.active == true) gameCamera.camera else camera
             engineRenderer.reportUpdateMs((System.nanoTime() - updateStart) * 1e-6f)
             if (surfaceReady) {
                 // E5: estado dos AUXILIARES DE EDITOR lido por frame (thread GL):
@@ -1119,9 +1138,15 @@ class KenkernSurfaceView(
                     if (!engineRenderer.emJogo && s != null) runCatching { applyFocus(s) }
                         .onFailure { KenkernLog.w(TAG, "foco de câmera falhou", it) }
                 }
+                val input = playRuntime?.input
+                if (input?.hasProjection == true && backend.viewportWidth > 0 && backend.viewportHeight > 0) {
+                    frameCamera.projection(playProjection, backend.viewportWidth.toFloat() / backend.viewportHeight)
+                    frameCamera.view(playView)
+                    input.project(playViewProjection.multiply(playProjection, playView).m)
+                }
                 engineRenderer.renderFrame(
                     backend, scene,
-                    if (gameCamera?.active == true) gameCamera.camera else camera,
+                    frameCamera,
                     loop.engineTime, if (engineRenderer.emJogo) null else selectionProvider(), gizmoState
                 )
                 // Publicação de debug (overlay de toque): alças em px de

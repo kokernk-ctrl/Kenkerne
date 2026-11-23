@@ -13,6 +13,8 @@ internal class NickPlayCamera(player: Nick?, follow: Nick?, basic: Nick?) {
     private val target = if (follow != null || basic == null) player else null
     private val fixed = if (target == null) basic else null
     private val offset = Vec3(0f, 3f, 6f)
+    private var lookYaw = 0f
+    private var lookPitch = 0f
 
     val active: Boolean get() = target != null || fixed != null
 
@@ -29,6 +31,12 @@ internal class NickPlayCamera(player: Nick?, follow: Nick?, basic: Nick?) {
         update()
     }
 
+    /** Gameplay look never changes the editor camera. */
+    fun look(dxDegrees: Float, dyDegrees: Float) {
+        lookYaw = (lookYaw - dxDegrees) % 360f
+        lookPitch = (lookPitch - dyDegrees).coerceIn(-85f, 85f)
+    }
+
     fun update() {
         val player = target
         if (player != null) {
@@ -37,8 +45,8 @@ internal class NickPlayCamera(player: Nick?, follow: Nick?, basic: Nick?) {
             val h = hypot(offset.x.toDouble(), offset.z.toDouble())
             camera.mode = CameraMode.FLIGHT
             camera.flightPosition.set(p[12] + offset.x, p[13] + offset.y, p[14] + offset.z)
-            camera.flightYawDegrees = Math.toDegrees(atan2(offset.x.toDouble(), offset.z.toDouble())).toFloat()
-            camera.flightPitchDegrees = Math.toDegrees(atan2(y.toDouble(), h)).toFloat().coerceIn(-89f, 89f)
+            camera.flightYawDegrees = Math.toDegrees(atan2(offset.x.toDouble(), offset.z.toDouble())).toFloat() + lookYaw
+            camera.flightPitchDegrees = (Math.toDegrees(atan2(y.toDouble(), h)).toFloat() + lookPitch).coerceIn(-89f, 89f)
         } else if (fixed != null) {
             val m = fixed.transform.worldMatrix.m
             val x = -m[8].toDouble()
@@ -48,8 +56,8 @@ internal class NickPlayCamera(player: Nick?, follow: Nick?, basic: Nick?) {
             camera.mode = CameraMode.FLIGHT
             camera.flightPosition.set(m[12], m[13], m[14])
             if (h.isFinite() && y.isFinite() && (h > 1e-6 || abs(y) > 1e-6)) {
-                camera.flightYawDegrees = if (h > 1e-6) Math.toDegrees(atan2(-x, -z)).toFloat() else 0f
-                camera.flightPitchDegrees = Math.toDegrees(atan2(y, h)).toFloat().coerceIn(-89f, 89f)
+                camera.flightYawDegrees = (if (h > 1e-6) Math.toDegrees(atan2(-x, -z)).toFloat() else 0f) + lookYaw
+                camera.flightPitchDegrees = (Math.toDegrees(atan2(y, h)).toFloat() + lookPitch).coerceIn(-89f, 89f)
             }
         }
     }

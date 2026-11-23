@@ -1,5 +1,7 @@
 package com.kenkern.engine.core
 
+import com.kenkern.engine.core.input.TouchControlSchema
+
 /**
  * TIPO DE NICK = PRESET DE DADOS (T0.2, adendo v4 — DECISIONS #24):
  * cada tipo é um REGISTRO aqui (chave estável em inglês, rótulos en/pt,
@@ -238,6 +240,20 @@ object NickKindCatalog {
                 descEn = "Where players and objects spawn",
                 descPt = "Onde jogadores e objetos surgem",
                 group = NickKindGroup.AREAS, iconKey = "area.spawn"
+            )
+        )
+        NickKindRegistry.register(
+            NickKind(
+                TouchControlSchema.JOYSTICK, "UI Joystick Nick", "Nick de Joystick de UI",
+                "Configurable gameplay touch axes", "Eixos de toque configuráveis para o jogo",
+                NickKindGroup.UI, "ui.joystick", listOf(TouchControlSchema.STICK_CLASS)
+            )
+        )
+        NickKindRegistry.register(
+            NickKind(
+                TouchControlSchema.BUTTON, "UI Action Button Nick", "Nick de Botão de Ação de UI",
+                "Touch button mapped to a named action", "Botão de toque ligado a uma ação nomeada",
+                NickKindGroup.UI, "ui.button", listOf(TouchControlSchema.BUTTON_CLASS)
             )
         )
     }
