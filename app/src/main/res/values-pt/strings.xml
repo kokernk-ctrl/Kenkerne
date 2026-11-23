@@ -175,6 +175,13 @@
     <string name="collider_mesh">Malha</string>
 
 
+
+    <!-- ===================== Hub 2.5D + atalhos Sandbox (T0.5) ===================== -->
+    <string name="hub_shortcuts_label">Começar:</string>
+    <string name="hub_shortcut_modelar">Modelar</string>
+    <string name="hub_shortcut_animar">Animar</string>
+    <string name="hub_shortcut_texturizar">Texturizar</string>
+
     <!-- ===================== Luz do LUME (H2) ===================== -->
     <string name="light_section">Luz</string>
     <string name="light_on">Ligada</string>

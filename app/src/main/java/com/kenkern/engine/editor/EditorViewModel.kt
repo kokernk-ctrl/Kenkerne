@@ -136,6 +136,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** Cria um projeto novo (I/O em background) e abre o editor. Nunca crasha. */
+    /**
+     * T0.5 (v0.1.21): atalhos Modelar/Animar/Texturizar do Hub — abrem o
+     * projeto "Sandbox"; se ele NÃO existe, é criado automaticamente.
+     */
+    fun abrirOuCriarSandbox() {
+        val existente = projects.value.firstOrNull { it.name == "Sandbox" }
+        if (existente != null) openProject(existente) else createAndEnterProject("Sandbox")
+    }
+
     fun createAndEnterProject(rawName: String) {
         if (isLoading.value) return
         // Marcador de progresso: criar também abre o editor — mesma trilha de

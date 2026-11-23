@@ -50,10 +50,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +66,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +74,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kenkern.engine.R
 import com.kenkern.engine.projects.Kernpack
 import com.kenkern.engine.projects.ProjectHandle
@@ -115,11 +123,61 @@ fun HomeScreen(
     onAbrirDiagnostico: () -> Unit = {},
     onDuplicateProject: (ProjectHandle) -> Unit = {},
     onImportarKernpack: (android.net.Uri) -> Unit = {},
-    onExportarProjeto: (ProjectHandle, android.net.Uri) -> Unit = { _, _ -> }
+    onExportarProjeto: (ProjectHandle, android.net.Uri) -> Unit = { _, _ -> },
+    /** T0.5: atalhos Modelar/Animar/Texturizar — abre (ou cria) o "Sandbox". */
+    onAbrirSandbox: () -> Unit = {}
 ) {
     var showNewDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<ProjectHandle?>(null) }
     var pendingRename by remember { mutableStateOf<ProjectHandle?>(null) }
+
+    // ---------- T0.5 (v0.1.21): FUNDO 2.5D com paralaxe + buraco negro sutil ----------
+    // Canvas a 30 FPS; PAUSA quando o Hub não está visível (ciclo de vida) e
+    // CONGELA quando o sistema pede "reduzir animações" (escala de duração 0).
+    var tempoCena by remember { mutableFloatStateOf(0f) }
+    var hubVisivel by remember { mutableStateOf(true) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observador = LifecycleEventObserver { _, evento ->
+            hubVisivel = when (evento) {
+                Lifecycle.Event.ON_RESUME -> true
+                Lifecycle.Event.ON_PAUSE -> false
+                else -> hubVisivel
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observador)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observador) }
+    }
+    val context = LocalContext.current
+    val reduzirAnimacoes = remember {
+        val escala = android.provider.Settings.Global.getFloat(
+            context.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f
+        )
+        HubCena2D.animacoesReduzidas(escala)
+    }
+    LaunchedEffect(hubVisivel, reduzirAnimacoes) {
+        if (!hubVisivel || reduzirAnimacoes) return@LaunchedEffect // pausa: NADA roda
+        var ultimoNanos = 0L
+        var acumulado = 0L
+        while (true) {
+            withFrameNanos { agora ->
+                if (ultimoNanos == 0L) {
+                    ultimoNanos = agora
+                } else {
+                    acumulado += (agora - ultimoNanos).coerceAtLeast(0L)
+                    ultimoNanos = agora
+                }
+            }
+            // 30 FPS: só avança o tempo quando acumulou ≥ 1/30 s (o frame do
+            // sistema pode ser 60/90 Hz — o fundo pula frames de propósito).
+            if (acumulado >= HubCena2D.INTERVALO_NS) {
+                tempoCena += acumulado / 1_000_000_000f
+                acumulado = 0L
+            }
+        }
+    }
 
     // SAF (F2.6): importar .kernpack (abrir) e exportar (criar documento)
     val importarLauncher = rememberLauncherForActivityResult(
@@ -139,6 +197,11 @@ fun HomeScreen(
             .fillMaxSize()
             .background(KenkernBackground)
     ) {
+        // ---------- T0.5: FUNDO 2.5D (paralaxe + buraco negro SUTIL) ----------
+        // Atrás de TODO o conteúdo; Canvas puro (sem GL no Hub), 30 FPS via
+        // throttle no laço acima; com "reduzir animações" o tempo congela.
+        HubFundo2D(tempoCena)
+
         Column(
             Modifier
                 .fillMaxSize()
@@ -207,6 +270,44 @@ fun HomeScreen(
             }
 
             HorizontalDivider(thickness = 1.dp, color = KenkernOutlineSoft)
+
+            // ---------- T0.5: ATALHOS do fluxo do jogo ----------
+            // Modelar / Animar / Texturizar abrem um projeto "Sandbox" criado
+            // automaticamente (se já existe, ABREM o existente).
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    stringResource(R.string.hub_shortcuts_label),
+                    fontSize = 12.sp,
+                    color = KenkernTextMid
+                )
+                for (atalho in listOf(
+                    R.string.hub_shortcut_modelar,
+                    R.string.hub_shortcut_animar,
+                    R.string.hub_shortcut_texturizar
+                )) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = KenkernSurface,
+                        border = BorderStroke(1.dp, KenkernOutlineSoft),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onAbrirSandbox() }
+                    ) {
+                        Text(
+                            stringResource(atalho),
+                            fontSize = 12.sp,
+                            color = KenkernTextHigh,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+            }
 
             // ---------- Grade de recentes (2 colunas em paisagem/largo) ----------
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
@@ -692,4 +793,76 @@ private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) 
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.hub_cancel), color = KenkernTextMid) }
         }
     )
+}
+
+/**
+ * T0.5 (v0.1.21): FUNDO 2.5D do Hub — paralaxe de estrelas (3 camadas de
+ * profundidades diferentes) + BURACO NEGRO sutil (disco escuro + anel de
+ * acreção em Canvas com pulso lento). Desenha em [tempoSegundos] — o laço de
+ * 30 FPS fica no HomeScreen e PAUSA quando o Hub não está visível; com
+ * "reduzir animações" o tempo congela (fundo estático). Atrás do conteúdo,
+ * sutil: brilho baixo, movimento lento, legibilidade do Hub intacta.
+ */
+@Composable
+private fun HubFundo2D(tempoSegundos: Float) {
+    Canvas(Modifier.fillMaxSize()) {
+        val w = size.width
+        val h = size.height
+        // camadas de estrelas: 3 profundidades, posições determinísticas
+        // (sem aleatoriedade por frame — nada de cintilar errático)
+        val deslocamento = FloatArray(1)
+        val orbita = FloatArray(2)
+        for (camada in 0..2) {
+            val profundidade = listOf(0.25f, 0.55f, 1f)[camada]
+            val raio = listOf(1f, 1.4f, 1.9f)[camada]
+            val alpha = listOf(0.16f, 0.24f, 0.34f)[camada]
+            HubCena2D.deslocamentoCamada(tempoSegundos, profundidade, deslocamento)
+            val desl = deslocamento[0] % w
+            val passo = w / 9f
+            var i = 0
+            var x = (camada * passo * 0.37f + desl) % w
+            while (x < w + passo) {
+                val y = h * (0.08f + 0.74f * ((i * 2654435761L ushr 8) % 97L) / 97f)
+                drawCircle(Color.White.copy(alpha = alpha), radius = raio, center = Offset(x, y))
+                i++
+                x += passo * (1f + camada * 0.13f)
+            }
+        }
+        // BURACO NEGRO sutil no canto superior direito (fora do caminho do dedo):
+        val centro = Offset(w * 0.86f, h * 0.16f)
+        val raioDisco = minOf(w, h) * 0.09f
+        val pulso = HubCena2D.pulsoAcrecao(tempoSegundos)
+        // halo fraco em volta
+        drawCircle(
+            Brush.radialGradient(
+                listOf(
+                    Color(0xFF9C7BE8).copy(alpha = 0.10f * pulso),
+                    Color.Transparent
+                ),
+                center = centro,
+                radius = raioDisco * 2.6f
+            ),
+            radius = raioDisco * 2.6f,
+            center = centro
+        )
+        // disco escuro (o "horizonte")
+        drawCircle(Color(0xFF120D1F), radius = raioDisco, center = centro)
+        // anel de acreção: 2 arcos girando (órbita lenta) + traço fino
+        for (faseIdx in 0..2) {
+            HubCena2D.pontoOrbita(tempoSegundos, faseIdx * 2.094f, 1.6f, orbita)
+            val px = centro.x + orbita[0] * raioDisco
+            val py = centro.y + orbita[1] * raioDisco
+            drawCircle(
+                Color(0xFFB79CFF).copy(alpha = 0.5f * pulso),
+                radius = raioDisco * 0.10f,
+                center = Offset(px, py)
+            )
+        }
+        drawCircle(
+            Color(0xFFB79CFF).copy(alpha = 0.30f * pulso),
+            radius = raioDisco * 1.45f,
+            center = centro,
+            style = Stroke(width = raioDisco * 0.10f)
+        )
+    }
 }
