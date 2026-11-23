@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -82,6 +83,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -741,7 +743,22 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
 
 // ============================== TopBar (48dp) ==============================
 
-/** Voltar | Undo | Redo | sep | Play/Stop | sep | Mover/Girar/Escalar | Local/Global | Snap | sep | Orbital/Voo | Focar | sep | Auxiliares | sep | resolução | painéis | Resetar layout. */
+/**
+ * G1 (v0.1.19): layout em TRÊS seções —
+ *   [INÍCIO FIXO] Voltar + separador
+ *   [ROLÁVEL]     Undo/Redo · Play/Pause/Stop · Importar · Gizmo (Mover/Girar/
+ *                 Escalar, Local/Global, Snap) · Câmera (Voo, Focar) ·
+ *                 Auxiliares · Diagnóstico de toque · Resolução
+ *   [FIM FIXO]    separador + Hierarquia + Inspetor + Resetar layout
+ *
+ * Botões com tamanho FIXO (40dp, sem weight, sem encolher). A área rolável usa
+ * horizontalScroll(rememberScrollState) com FADE nas bordas quando há mais
+ * conteúdo fora da vista. Os botões de painel (Hierarquia, Inspetor) e
+ * "Resetar layout" ficam FORA da área rolável, fixos no fim da barra, SEMPRE
+ * visíveis — o bug era a Row única com Spacer(weight): com todas as
+ * ferramentas ativas a barra estourava e o Inspetor saía da tela. As larguras
+ * das seções fixas vêm de TopBarLayout (testado na JVM em TopBarLayoutTest).
+ */
 @Composable
 private fun EditorTopBar(
     vm: EditorViewModel,
@@ -776,176 +793,200 @@ private fun EditorTopBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp)
         ) {
+            // ---------- INÍCIO FIXO: Voltar (sempre visível) ----------
             TopBarIcon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.editor_back_hub)) {
                 onExit()
             }
-            TopBarIcon(
-                Icons.AutoMirrored.Filled.Undo, stringResource(R.string.editor_undo),
-                enabled = vm.canUndo
-            ) { vm.undo() }
-            TopBarIcon(
-                Icons.AutoMirrored.Filled.Redo, stringResource(R.string.editor_redo),
-                enabled = vm.canRedo
-            ) { vm.redo() }
-
             TopBarSeparator()
 
-            val playing = vm.playState.value == PlayState.PLAYING
-            TopBarIcon(
-                if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                if (playing) stringResource(R.string.editor_pause) else stringResource(R.string.editor_play),
-                active = playing
-            ) {
-                vm.setPlayState(if (playing) PlayState.PAUSED else PlayState.PLAYING)
-            }
-            TopBarIcon(Icons.Filled.Stop, stringResource(R.string.editor_stop)) {
-                vm.setPlayState(PlayState.STOPPED)
-            }
-
-            TopBarSeparator()
-
-            // IMPORTAR MODELO (ETAPA A): menu com Arquivo e Pasta (SAF).
-            var importMenu by remember { mutableStateOf(false) }
-            Box {
-                TopBarIcon(Icons.Filled.SaveAlt, stringResource(R.string.editor_import_model)) { importMenu = true }
-                DropdownMenu(
-                    expanded = importMenu,
-                    onDismissRequest = { importMenu = false },
-                    containerColor = KenkernSurfaceOverlay
+            // ---------- ÁREA ROLÁVEL: ferramentas ----------
+            val rolagemTopBar = rememberScrollState()
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxHeight().horizontalScroll(rolagemTopBar)
                 ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.editor_import_file), fontSize = 12.sp, color = KenkernTextHigh) },
-                        onClick = { importMenu = false; onImportClick(false) }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.editor_import_folder), fontSize = 12.sp, color = KenkernTextHigh) },
-                        onClick = { importMenu = false; onImportClick(true) }
-                    )
-                }
-            }
+                    TopBarIcon(
+                        Icons.AutoMirrored.Filled.Undo, stringResource(R.string.editor_undo),
+                        enabled = vm.canUndo
+                    ) { vm.undo() }
+                    TopBarIcon(
+                        Icons.AutoMirrored.Filled.Redo, stringResource(R.string.editor_redo),
+                        enabled = vm.canRedo
+                    ) { vm.redo() }
 
-            TopBarSeparator()
+                    TopBarSeparator()
 
-            // Modo de transformação: Mover / Girar / Escalar
-            TopBarIcon(
-                Icons.Filled.OpenWith, stringResource(R.string.editor_move),
-                active = gizmoMode == GizmoMode.MOVE
-            ) { onGizmoModeChange(GizmoMode.MOVE) }
-            TopBarIcon(
-                Icons.Filled.RotateRight, stringResource(R.string.editor_rotate),
-                active = gizmoMode == GizmoMode.ROTATE
-            ) { onGizmoModeChange(GizmoMode.ROTATE) }
-            TopBarIcon(
-                Icons.Filled.OpenInFull, stringResource(R.string.editor_scale),
-                active = gizmoMode == GizmoMode.SCALE
-            ) { onGizmoModeChange(GizmoMode.SCALE) }
+                    val playing = vm.playState.value == PlayState.PLAYING
+                    TopBarIcon(
+                        if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        if (playing) stringResource(R.string.editor_pause) else stringResource(R.string.editor_play),
+                        active = playing
+                    ) {
+                        vm.setPlayState(if (playing) PlayState.PAUSED else PlayState.PLAYING)
+                    }
+                    TopBarIcon(Icons.Filled.Stop, stringResource(R.string.editor_stop)) {
+                        vm.setPlayState(PlayState.STOPPED)
+                    }
 
-            // Local/Global
-            TextButton(
-                onClick = {
-                    onGizmoSpaceChange(
-                        if (gizmoSpace == GizmoSpace.GLOBAL) GizmoSpace.LOCAL else GizmoSpace.GLOBAL
-                    )
-                },
-                modifier = Modifier.height(40.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) {
-                Text(
-                    if (gizmoSpace == GizmoSpace.GLOBAL) stringResource(R.string.editor_global)
-                    else stringResource(R.string.editor_local),
-                    fontSize = 12.sp,
-                    color = KenkernTextHigh
-                )
-            }
+                    TopBarSeparator()
 
-            // Snap (0,25 m / 15° / 0,1)
-            TopBarIcon(
-                Icons.Filled.GridOn, stringResource(R.string.editor_snap),
-                active = snapEnabled
-            ) { onSnapChange(!snapEnabled) }
+                    // IMPORTAR MODELO (ETAPA A): menu com Arquivo e Pasta (SAF).
+                    var importMenu by remember { mutableStateOf(false) }
+                    Box {
+                        TopBarIcon(Icons.Filled.SaveAlt, stringResource(R.string.editor_import_model)) { importMenu = true }
+                        DropdownMenu(
+                            expanded = importMenu,
+                            onDismissRequest = { importMenu = false },
+                            containerColor = KenkernSurfaceOverlay
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.editor_import_file), fontSize = 12.sp, color = KenkernTextHigh) },
+                                onClick = { importMenu = false; onImportClick(false) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.editor_import_folder), fontSize = 12.sp, color = KenkernTextHigh) },
+                                onClick = { importMenu = false; onImportClick(true) }
+                            )
+                        }
+                    }
 
-            TopBarSeparator()
+                    TopBarSeparator()
 
-            // Câmera: Orbital <-> Voo
-            TopBarIcon(
-                Icons.Filled.Flight,
-                if (cameraMode == CameraMode.FLIGHT) stringResource(R.string.editor_orbit_back)
-                else stringResource(R.string.editor_flight),
-                active = cameraMode == CameraMode.FLIGHT
-            ) {
-                onCameraModeChange(
-                    if (cameraMode == CameraMode.FLIGHT) CameraMode.ORBITAL else CameraMode.FLIGHT
-                )
-            }
+                    // Modo de transformação: Mover / Girar / Escalar
+                    TopBarIcon(
+                        Icons.Filled.OpenWith, stringResource(R.string.editor_move),
+                        active = gizmoMode == GizmoMode.MOVE
+                    ) { onGizmoModeChange(GizmoMode.MOVE) }
+                    TopBarIcon(
+                        Icons.Filled.RotateRight, stringResource(R.string.editor_rotate),
+                        active = gizmoMode == GizmoMode.ROTATE
+                    ) { onGizmoModeChange(GizmoMode.ROTATE) }
+                    TopBarIcon(
+                        Icons.Filled.OpenInFull, stringResource(R.string.editor_scale),
+                        active = gizmoMode == GizmoMode.SCALE
+                    ) { onGizmoModeChange(GizmoMode.SCALE) }
 
-            // FOCAR (F): enquadra o Nick selecionado (duplo toque no vazio = cena toda)
-            TopBarIcon(Icons.Filled.CenterFocusStrong, stringResource(R.string.editor_focus)) { onFocusClick() }
-
-            TopBarSeparator()
-
-            // E5: Mostrar auxiliares de editor (ícones de luz/câmera/área no
-            // viewport; padrão LIGADO; em Play eles somem de todo jeito).
-            TopBarIcon(
-                Icons.Filled.Lightbulb,
-                stringResource(R.string.editor_show_helpers),
-                active = mostrarAuxiliares
-            ) { onMostrarAuxiliaresChange(!mostrarAuxiliares) }
-
-            // Diagnóstico de toque: overlay ao vivo (ponto vermelho = toque,
-            // círculos verdes = alças) para ver por que seleção/gizmo não respondem.
-            TopBarIcon(
-                Icons.Filled.BugReport,
-                stringResource(R.string.editor_touch_diag),
-                active = debugOverlay
-            ) { onDebugToggle() }
-
-            Spacer(Modifier.weight(1f))
-
-            // Resolução de render (dropdown)
-            var resolutionMenu by remember { mutableStateOf(false) }
-            Box {
-                TextButton(
-                    onClick = { resolutionMenu = true },
-                    modifier = Modifier.height(40.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp)
-                ) {
-                    Text(
-                        "${(resolutionScale * 100).toInt()}%",
-                        fontSize = 12.sp,
-                        color = KenkernTextMid
-                    )
-                }
-                DropdownMenu(
-                    expanded = resolutionMenu,
-                    onDismissRequest = { resolutionMenu = false },
-                    containerColor = KenkernSurfaceOverlay
-                ) {
-                    for (option in listOf(1f, 0.75f, 0.5f)) {
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    stringResource(R.string.editor_resolution, (option * 100).toInt()),
-                                    fontSize = 12.sp,
-                                    color = if (option == resolutionScale) KenkernAmber else KenkernTextMid
-                                )
-                            },
-                            trailingIcon = {
-                                if (option == resolutionScale) {
-                                    Icon(
-                                        Icons.Filled.Check, contentDescription = null,
-                                        tint = KenkernAmber, modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            },
-                            onClick = {
-                                onResolutionChange(option)
-                                resolutionMenu = false
-                            }
+                    // Local/Global
+                    TextButton(
+                        onClick = {
+                            onGizmoSpaceChange(
+                                if (gizmoSpace == GizmoSpace.GLOBAL) GizmoSpace.LOCAL else GizmoSpace.GLOBAL
+                            )
+                        },
+                        modifier = Modifier.height(40.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Text(
+                            if (gizmoSpace == GizmoSpace.GLOBAL) stringResource(R.string.editor_global)
+                            else stringResource(R.string.editor_local),
+                            fontSize = 12.sp,
+                            color = KenkernTextHigh
                         )
                     }
+
+                    // Snap (0,25 m / 15° / 0,1)
+                    TopBarIcon(
+                        Icons.Filled.GridOn, stringResource(R.string.editor_snap),
+                        active = snapEnabled
+                    ) { onSnapChange(!snapEnabled) }
+
+                    TopBarSeparator()
+
+                    // Câmera: Orbital <-> Voo
+                    TopBarIcon(
+                        Icons.Filled.Flight,
+                        if (cameraMode == CameraMode.FLIGHT) stringResource(R.string.editor_orbit_back)
+                        else stringResource(R.string.editor_flight),
+                        active = cameraMode == CameraMode.FLIGHT
+                    ) {
+                        onCameraModeChange(
+                            if (cameraMode == CameraMode.FLIGHT) CameraMode.ORBITAL else CameraMode.FLIGHT
+                        )
+                    }
+
+                    // FOCAR (F): enquadra o Nick selecionado (duplo toque no vazio = cena toda)
+                    TopBarIcon(Icons.Filled.CenterFocusStrong, stringResource(R.string.editor_focus)) { onFocusClick() }
+
+                    TopBarSeparator()
+
+                    // E5: Mostrar auxiliares de editor (ícones de luz/câmera/área no
+                    // viewport; padrão LIGADO; em Play eles somem de todo jeito).
+                    TopBarIcon(
+                        Icons.Filled.Lightbulb,
+                        stringResource(R.string.editor_show_helpers),
+                        active = mostrarAuxiliares
+                    ) { onMostrarAuxiliaresChange(!mostrarAuxiliares) }
+
+                    // Diagnóstico de toque: overlay ao vivo (ponto vermelho = toque,
+                    // círculos verdes = alças) para ver por que seleção/gizmo não respondem.
+                    TopBarIcon(
+                        Icons.Filled.BugReport,
+                        stringResource(R.string.editor_touch_diag),
+                        active = debugOverlay
+                    ) { onDebugToggle() }
+
+                    TopBarSeparator()
+
+                    // Resolução de render (dropdown) — DENTRO da área rolável (G1):
+                    // os botões fixos do fim são só Hierarquia/Inspetor/Resetar.
+                    var resolutionMenu by remember { mutableStateOf(false) }
+                    Box {
+                        TextButton(
+                            onClick = { resolutionMenu = true },
+                            modifier = Modifier.height(40.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp)
+                        ) {
+                            Text(
+                                "${(resolutionScale * 100).toInt()}%",
+                                fontSize = 12.sp,
+                                color = KenkernTextMid
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = resolutionMenu,
+                            onDismissRequest = { resolutionMenu = false },
+                            containerColor = KenkernSurfaceOverlay
+                        ) {
+                            for (option in listOf(1f, 0.75f, 0.5f)) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(R.string.editor_resolution, (option * 100).toInt()),
+                                            fontSize = 12.sp,
+                                            color = if (option == resolutionScale) KenkernAmber else KenkernTextMid
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        if (option == resolutionScale) {
+                                            Icon(
+                                                Icons.Filled.Check, contentDescription = null,
+                                                tint = KenkernAmber, modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        onResolutionChange(option)
+                                        resolutionMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // G1: fade nas bordas quando há conteúdo fora da vista.
+                if (rolagemTopBar.canScrollBackward) {
+                    TopBarEdgeFade(inicio = true, modifier = Modifier.align(Alignment.CenterStart))
+                }
+                if (rolagemTopBar.canScrollForward) {
+                    TopBarEdgeFade(inicio = false, modifier = Modifier.align(Alignment.CenterEnd))
                 }
             }
 
+            // ---------- FIM FIXO: painéis + Resetar layout (SEMPRE visíveis) ----------
+            // Fora da área rolável: o bug G1 espremia a Hierarquia e o Inspetor
+            // nem aparecia quando as ferramentas de voo/auxiliares lotavam a barra.
             TopBarSeparator()
 
             TopBarIcon(
@@ -975,6 +1016,27 @@ private fun EditorTopBar(
             ) { onResetarLayout() }
         }
     }
+}
+
+/**
+ * G1: faixa de FADE de 16dp na borda da área rolável da TopBar — indica que há
+ * mais conteúdo fora da vista. Só é composta quando a rolagem tem conteúdo
+ * escondido (canScrollBackward/canScrollForward).
+ */
+@Composable
+private fun TopBarEdgeFade(inicio: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .fillMaxHeight()
+            .width(16.dp)
+            .background(
+                if (inicio) {
+                    Brush.horizontalGradient(listOf(KenkernSurface, Color.Transparent))
+                } else {
+                    Brush.horizontalGradient(listOf(Color.Transparent, KenkernSurface))
+                }
+            )
+    )
 }
 
 /**

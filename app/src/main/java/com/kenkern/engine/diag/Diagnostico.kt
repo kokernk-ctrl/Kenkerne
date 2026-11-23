@@ -28,6 +28,8 @@ import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickKindRegistry
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.Scene
+import com.kenkern.engine.editor.TopBarLayout
+import kotlin.math.roundToInt
 import com.kenkern.engine.core.linkerf.LinkerfLink
 import com.kenkern.engine.core.linkerf.LinkerfPort
 import com.kenkern.engine.core.linkerf.LinkerfPortKind
@@ -145,7 +147,8 @@ class Diagnostico(private val appContext: Context) {
         Checagem("buffers", "Alocação de buffers (VBO/VAO)"),
         Checagem("glcaps", "Capacidades GL (versão/extensões/compute)"),
         Checagem("memoria", "Limites de memória do aparelho"),
-        Checagem("release", "Release minificado — classes críticas + operações mínimas")
+        Checagem("release", "Release minificado — classes críticas + operações mínimas"),
+        Checagem("layout", "Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável")
     )
 
     /**
@@ -171,7 +174,7 @@ class Diagnostico(private val appContext: Context) {
      */
     suspend fun executar(onAtualiza: (Checagem) -> Unit) {
         cancelado = false
-        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release")
+        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout")
         val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "astc")
         // E2: ids já FINALIZADAS nesta rodada — no cancel, só o que NÃO rodou vira
         // CANCELADA (aprovadas/falhas anteriores permanecem com o resultado delas).
@@ -281,6 +284,7 @@ class Diagnostico(private val appContext: Context) {
                             "astc" -> checarAstc(c)
                             "memoria" -> checarMemoria(c)
                             "release" -> checarRelease(c)
+                            "layout" -> checarLayoutTopBar(c)
                         }
                     }.onFailure {
                         c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
@@ -1580,6 +1584,39 @@ class Diagnostico(private val appContext: Context) {
         } else {
             // NÃO SUPORTADO não é falha (ETC2 é o formato base obrigatório no GLES 3.0)
             c.aprovado("ASTC NÃO SUPORTADO neste aparelho — sem problema: ETC2 é o formato base da engine")
+        }
+    }
+
+    // ---------------------------------------------------------------- layout
+
+    /**
+     * Checagem "layout" (G1, v0.1.19) — MATEMÁTICA PURA do layout: a TopBar tem
+     * seções FIXAS (Voltar no início; Hierarquia/Inspetor/Resetar no fim) com
+     * larguras conhecidas (TopBarLayout); a soma delas tem que caber na largura
+     * real do aparelho, sobrando área rolável utilizável. Se não couber, o
+     * aparelho está abaixo do mínimo da engine (800dp × 360dp de referência) e
+     * o resultado diz isso explicitamente — nunca "layout quebrado sem motivo".
+     */
+    private fun checarLayoutTopBar(c: Checagem) {
+        val dm = appContext.resources.displayMetrics
+        val larguraTelaDp = dm.widthPixels / dm.density
+        val alturaTelaDp = dm.heightPixels / dm.density
+        val fixa = TopBarLayout.larguraTotalFixaDp()
+        val rolavel = TopBarLayout.larguraRolavelDp(larguraTelaDp)
+        val cabe = TopBarLayout.cabemSecoesFixas(larguraTelaDp)
+        val suficiente = TopBarLayout.rolavelSuficiente(larguraTelaDp)
+        val orientacao = if (alturaTelaDp >= larguraTelaDp) "retrato" else "paisagem"
+        if (cabe && suficiente) {
+            c.aprovado(
+                "tela ${larguraTelaDp.roundToInt()}×${alturaTelaDp.roundToInt()}dp ($orientacao) · " +
+                    "TopBar fixa ${fixa.roundToInt()}dp → rolável ${rolavel.roundToInt()}dp ✓ · " +
+                    "Hierarquia/Inspetor/Resetar sempre visíveis ✓"
+            )
+        } else {
+            c.falhou(
+                "tela ${larguraTelaDp.roundToInt()}×${alturaTelaDp.roundToInt()}dp ($orientacao) · " +
+                    "TopBar fixa ${fixa.roundToInt()}dp cabe=$cabe · rolável ${rolavel.roundToInt()}dp suficiente=$suficiente"
+            )
         }
     }
 
