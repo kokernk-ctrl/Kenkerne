@@ -43,6 +43,9 @@ object ProjectManager {
     /** FONTE ÚNICA: a versão da engine é a versão do app (BuildConfig). */
     const val ENGINE_VERSION: String = BuildConfig.VERSION_NAME
     const val FORMAT_VERSION = 1
+    // Not a possible path for a user-created, duplicated, or imported project.
+    private const val SANDBOX_FOLDER = ".workspace-sandbox"
+    private const val SANDBOX_NAME = "Sandbox"
 
     val FOLDERS = listOf(
         "assets", "scenes", "nicks", "scripts", "audio", "animations", "build", "shaders",
@@ -78,24 +81,40 @@ object ProjectManager {
      * Cria um projeto novo com a estrutura padrão de pastas e o project.kenkern.
      * Retorna null em caso de falha (mensagem em [lastError]) — NUNCA lança exceção.
      */
-    fun createProject(context: Context, projectName: String): ProjectHandle? = runCatching {
+    fun createProject(context: Context, projectName: String): ProjectHandle? =
+        createProject(projectName) { novaPastaUnica(projectsRoot(context), sanitize(projectName)) }
+
+    /** The three shortcuts share the project even after its display name is changed. */
+    @Synchronized
+    fun openOrCreateSandbox(context: Context): ProjectHandle? = runCatching {
+        clearError()
+        val root = File(projectsRoot(context), SANDBOX_FOLDER)
+        if (root.exists()) {
+            // Never recover by replacing a possibly valuable scene with a default.
+            return@runCatching openProject(context, root)
+        }
+        createProject(SANDBOX_NAME) {
+            if (!root.mkdir()) throw IOException("Não foi possível reservar o Sandbox")
+            root
+        }
+    }.onFailure { reportError("openOrCreateSandbox", it) }.getOrNull()
+
+    private fun createProject(projectName: String, reserveRoot: () -> File): ProjectHandle? = runCatching {
         clearError()
         val clean = sanitize(projectName)
         if (clean.isBlank()) {
             lastError = "Nome de projeto inválido"
             return null
         }
-        val root = novaPastaUnica(projectsRoot(context), clean)
-        if (!ensureDir(root)) {
-            lastError = "Não foi possível criar a pasta do projeto"
-            return null
-        }
-        for (folder in FOLDERS) {
-            if (!ensureDir(File(root, folder))) {
-                lastError = "Falha ao criar pasta '$folder'"
-                return null
+        val root = reserveRoot()
+        var published = false
+        try {
+            for (folder in FOLDERS) {
+                if (!ensureDir(File(root, folder))) {
+                    lastError = "Falha ao criar pasta '$folder'"
+                    return null
+                }
             }
-        }
         val created = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(Date())
         val meta = buildString {
             appendLine("KENKERN_PROJECT")
@@ -123,12 +142,18 @@ object ProjectManager {
         if (!writeFileAtomic(File(root, "scenes/cena.ck"), CkFormat.writeToString(scene)) ||
             !writeFileAtomic(File(root, PROJECT_FILE), meta)) {
             lastError = "Falha ao inicializar a cena ou os metadados do projeto"
-            root.deleteRecursively() // diretório reservado exclusivamente por esta criação
             return null
         }
+        published = true
         writeFileAtomic(File(root, "nicks/README.txt"), "Nicks salvos individualmente (.ck) ficam nesta pasta.\n")
         writeFileAtomic(File(root, "assets/README.txt"), "Assets do projeto (malhas .kern, texturas, fontes).\n")
         ProjectHandle(root, projectName.trim(), created)
+        } finally {
+            // Undo only a directory reserved by this creation; never an existing project.
+            if (!published && !root.deleteRecursively()) {
+                KenkernLog.w(TAG, "Não foi possível limpar a criação incompleta: ${root.name}")
+            }
+        }
     }.onFailure { reportError("createProject", it) }.getOrNull()
 
     /** Lista os projetos existentes; nunca lança, retorna lista (possivelmente vazia). */
@@ -269,7 +294,9 @@ object ProjectManager {
     fun loadScene(handle: ProjectHandle): Scene = loadSceneForEditing(handle)?.scene ?: Scene(handle.name)
 
     fun hasAutosave(handle: ProjectHandle): Boolean = handle.autosaveFile.isFile &&
-        (!handle.mainSceneFile.isFile || handle.autosaveFile.lastModified() > handle.mainSceneFile.lastModified())
+        (!handle.mainSceneFile.isFile || runCatching {
+            Files.getLastModifiedTime(handle.autosaveFile.toPath()) > Files.getLastModifiedTime(handle.mainSceneFile.toPath())
+        }.getOrElse { handle.autosaveFile.lastModified() > handle.mainSceneFile.lastModified() })
 
     /** O destino nunca é apagado/truncado antes da publicação do temporário no mesmo volume. */
     fun writeFileAtomic(target: File, content: String): Boolean {
