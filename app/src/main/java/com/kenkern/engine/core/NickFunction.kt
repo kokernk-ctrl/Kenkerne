@@ -130,6 +130,25 @@ object KenkernBuiltInClasses {
                 categoria = "geometria"
             )
         )
+        // H2 (v0.1.20): classe LUZ dos Nicks de luz do LUME — cor/intensidade/
+        // alcance (pontual e spot)/ângulo interno e externo (spot)/ligado. Os
+        // 3 tipos light.* ganham a instância padrão; Nicks antigos sem a classe
+        // usam os defaults de LuzNick (nada quebra, nada crasha).
+        NickClassRegistry.register(
+            NickClassDefinition(
+                "Luz",
+                "Luz do LUME (cor, intensidade, alcance, ângulos, ligado)",
+                listOf(
+                    NickFieldDefinition("cor", "VEC3", NickValue.Vec3Value(1f, 1f, 1f)),
+                    NickFieldDefinition("intensidade", "FLOAT", NickValue.FloatValue(1f)),
+                    NickFieldDefinition("alcance", "FLOAT", NickValue.FloatValue(8f)),
+                    NickFieldDefinition("anguloInterno", "FLOAT", NickValue.FloatValue(25f)),
+                    NickFieldDefinition("anguloExterno", "FLOAT", NickValue.FloatValue(40f)),
+                    NickFieldDefinition("ligado", "BOOL", NickValue.BoolValue(true))
+                ),
+                categoria = "iluminacao"
+            )
+        )
         NickFunctionRegistry.register(SpinFunction)
         NickFunctionRegistry.register(BobFunction)
     }

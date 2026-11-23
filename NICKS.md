@@ -71,15 +71,21 @@ M1/FORJA darem forma própria. Auxiliares NÃO contam como malha na StatusBar
 
 | Chave | Inglês | Português | Papel do tipo (previsto) | Grupo | Status | Entra em |
 |-------|--------|-----------|-------------------------|-------|--------|----------|
-| light.directional | Directional Light Nick | Nick de Luz Direcional | Fonte de luz paralela, como sol; direção, sem posição efetiva. | Luz | IMPLEMENTADO (T0.2; auxiliar de editor SETA no E5) | T0.2 |
-| light.point | Point Light Nick | Nick de Luz Pontual | Fonte luminosa pontual com alcance ao redor da posição. | Luz | IMPLEMENTADO (T0.2; auxiliar de editor ESFERA no E5) | T0.2 |
-| light.spot | Spot Light Nick | Nick de Luz de Foco | Fonte pontual que projeta um cone de luz orientado. | Luz | IMPLEMENTADO (T0.2; auxiliar de editor CONE no E5) | T0.2 |
+| light.directional | Directional Light Nick | Nick de Luz Direcional | Fonte de luz paralela, como sol; direção, sem posição efetiva. | Luz | IMPLEMENTADO (T0.2; auxiliar SETA no E5; **H2 v0.1.20: ILUMINA — substitui o sol fixo; Inspetor cor/intensidade/ligado**) | T0.2 |
+| light.point | Point Light Nick | Nick de Luz Pontual | Fonte luminosa pontual com alcance ao redor da posição. | Luz | IMPLEMENTADO (T0.2; auxiliar ESFERA no E5; **H2 v0.1.20: ILUMINA — até 4/frame por contribuição, atenuação suave, esfera de alcance REAL; Inspetor cor/intensidade/alcance/ligado**) | T0.2 |
+| light.spot | Spot Light Nick | Nick de Luz de Foco | Fonte pontual que projeta um cone de luz orientado. | Luz | IMPLEMENTADO (T0.2; auxiliar CONE no E5; **H2 v0.1.20: ILUMINA — cone com ângulo interno/externo e alcance REAIS; Inspetor cor/intensidade/alcance/ângulos/ligado**) | T0.2 |
 
-**Ainda NÃO ilumina:** luz Nick ainda não afeta a cena — o
-`DefaultLightingPipeline` tem o sol fixo (sol + ambiente); a iluminação por
-Nick de luz entra no LUME (Fase 3), com as classes de luz (cor, intensidade,
-alcance). O que existe hoje é o AUXILIAR DE EDITOR (E5): seta/esfera/cone
-visíveis e selecionáveis no editor, sem efeito de render.
+**H2 (v0.1.20) — a luz Nick AGORA ilumina a cena (LUME, editor e Play):**
+classe "Luz" no Nick (cor VEC3, intensidade, alcance, ângulo interno/externo,
+ligado — Inspetor en/pt; Nick antigo sem a classe usa os defaults do tipo).
+A DIRECIONAL ativa e ligada SUBSTITUI o sol fixo (`DefaultLightingPipeline`
+só entra sem nenhuma na cena); PONTUAL/SPOT: até **4 luzes ativas por frame**
+(maior contribuição para a câmera = intensidade/(1+d²)), atenuação suave
+(janela (1−(d/alcance)⁴)² × 1/(1+d²)), arrays primitivos reaproveitados
+(LumeCena.Frame) e atualização NO MESMO frame. Sem sombras nesta fase.
+Auxiliares de editor agora mostram alcance/ângulo REAIS (esfera de raio =
+alcance; cone com a abertura externa real e altura = alcance). Checagem
+"luz" no Diagnóstico (quad branco + luz vermelha offscreen: o pixel muda).
 | light.probe | Light Probe Nick | Nick de Sonda de Luz | Amostra iluminação ambiente local para iluminar objetos próximos. | Luz | PLANEJADO | KELU |
 
 ## CÂMERA (LENTE; modos como propriedade: primeira/segunda/terceira pessoa, perspectiva, ortogonal, topo)

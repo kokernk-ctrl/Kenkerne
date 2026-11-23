@@ -114,6 +114,22 @@ object EditorHelpers {
         return d.toFloatArray()
     }
 
+    /**
+     * H2 (v0.1.20) — ESFERA do ALCANCE REAL da luz pontual: raio = alcance
+     * (m) em escala de MUNDO (o renderer NÃO aplica escala de tela constante
+     * nesta forma — o que se vê é o raio de influência de verdade). Anel
+     * externo em 60% da cor para não competir com o ícone.
+     */
+    fun buildEsferaAlcance(cor: FloatArray, alcance: Float): FloatArray {
+        val raio = alcance.coerceAtLeast(0.01f)
+        val d = ArrayList<Float>(24 * 4 * 6)
+        val (r, g, b) = Triple(cor[0], cor[1], cor[2])
+        circulo(d, r, g, b, 0f, 0f, 0f, raio, "xy")
+        circulo(d, r, g, b, 0f, 0f, 0f, raio, "xz")
+        circulo(d, r, g, b, 0f, 0f, 0f, raio, "yz")
+        return d.toFloatArray()
+    }
+
     /** CONE da luz de foco: ápice no Nick, abrindo para −Z. */
     fun buildCone(cor: FloatArray): FloatArray {
         val d = ArrayList<Float>((24 + 4) * 6)
@@ -122,6 +138,25 @@ object EditorHelpers {
         val z = -0.8f
         circulo(d, r, g, b, 0f, 0f, z, raio, "xy", 20)
         // 4 geratrizes (a cada 90°)
+        for (i in 0 until 4) {
+            val a = (i.toFloat() / 4) * (2.0 * Math.PI).toFloat()
+            linha(d, r, g, b, 0f, 0f, 0f, cos(a) * raio, sin(a) * raio, z)
+        }
+        return d.toFloatArray()
+    }
+
+    /**
+     * H2 (v0.1.20) — CONE do ÂNGULO E ALCANCE REAIS da luz de foco: ápice no
+     * Nick, abrindo para −Z com a meia-abertura = ângulo EXTERNO/2 e altura =
+     * alcance (m), em escala de MUNDO. O anel da boca fica em 60% da cor.
+     */
+    fun buildConeAlcance(cor: FloatArray, anguloExternoGraus: Float, alcance: Float): FloatArray {
+        val altura = alcance.coerceAtLeast(0.01f)
+        val raio = altura * tan(Math.toRadians((anguloExternoGraus.coerceIn(1f, 179f) * 0.5f).toDouble())).toFloat()
+        val d = ArrayList<Float>((20 + 4) * 6)
+        val (r, g, b) = Triple(cor[0], cor[1], cor[2])
+        val z = -altura
+        circulo(d, r * 0.6f, g * 0.6f, b * 0.6f, 0f, 0f, z, raio, "xy", 20)
         for (i in 0 until 4) {
             val a = (i.toFloat() / 4) * (2.0 * Math.PI).toFloat()
             linha(d, r, g, b, 0f, 0f, 0f, cos(a) * raio, sin(a) * raio, z)

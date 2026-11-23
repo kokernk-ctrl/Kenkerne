@@ -61,6 +61,14 @@ class GlesBackend : RenderBackend {
     private var uHasTex = 0
     private var uTex = 0
 
+    // H2 (v0.1.20): LUME — luzes dinâmicas pontuais/spot dos Nicks (≤ 4/frame)
+    private var uLsCount = 0
+    private var uLsPos = 0
+    private var uLsCor = 0
+    private var uLsAlcance = 0
+    private var uLsDir = 0
+    private var uLsCone = 0
+
     // Uniforms do céu
     private var uSkyFwd = 0
     private var uSkyRight = 0
@@ -141,26 +149,51 @@ class GlesBackend : RenderBackend {
         uniform mat4 uModel;
         out vec3 vNormal;
         out vec2 vUV;
+        out vec3 vWorld;
         void main() {
             vNormal = mat3(uModel) * aNormal;
             vUV = aUV;
+            vWorld = (uModel * vec4(aPos, 1.0)).xyz;
             gl_Position = uMVP * vec4(aPos, 1.0);
         }
     """.trimIndent()
 
-    /** Lambert + ambiente hemisférico (céu em cima, chão embaixo); sem topo estourado. */
+    /**
+     * Lambert + ambiente hemisférico (céu em cima, chão embaixo) + LUME (H2,
+     * v0.1.20): até 4 luzes PONTUAIS/SPOT dos Nicks de luz com atenuação suave
+     * por alcance (janela (1 − (d/alcance)⁴)² × 1/(1+d²), zero contínuo no
+     * alcance) e falloff de cone smoothstep(cosExterno, cosInterno) no spot.
+     * A luz DIRECIONAL continua entrando por uLightDir/uLightColor (substitui
+     * o sol quando há light.directional ligado na cena). Sem ramificação cara:
+     * laço constante de 4 com saída antecipada por contagem.
+     */
     private val fragmentShader = """
         #version 300 es
         precision mediump float;
         in vec3 vNormal;
         in vec2 vUV;
+        in vec3 vWorld;
         uniform vec4 uColor;
         uniform vec3 uLightDir;
         uniform vec3 uLightColor;
         uniform float uLightIntensity;
+        uniform int uLsCount;
+        uniform vec3 uLsPos[4];
+        uniform vec3 uLsCor[4];
+        uniform float uLsAlcance[4];
+        uniform vec3 uLsDir[4];
+        uniform vec2 uLsCone[4];
         uniform sampler2D uTex;
         uniform int uHasTex;
         out vec4 fragColor;
+
+        float atenuacaoSuave(float d, float alcance) {
+            if (d >= alcance) return 0.0;
+            float t = d / max(alcance, 1e-4);
+            float janela = 1.0 - t * t * t * t;
+            return (janela * janela) / (1.0 + d * d);
+        }
+
         void main() {
             vec3 n = normalize(vNormal);
             float diff = max(dot(n, normalize(-uLightDir)), 0.0);
@@ -169,6 +202,21 @@ class GlesBackend : RenderBackend {
                 ? texture(uTex, vUV).rgb * uColor.rgb
                 : uColor.rgb;
             vec3 rgb = albedo * (hemi + uLightColor * diff * uLightIntensity);
+            for (int i = 0; i < 4; i++) {
+                if (i >= uLsCount) break;
+                vec3 delta = uLsPos[i] - vWorld;
+                float d = length(delta);
+                float atenua = atenuacaoSuave(d, uLsAlcance[i]);
+                if (atenua <= 0.0) continue;
+                vec3 paraLuz = d > 1e-5 ? -delta / d : vec3(0.0, 1.0, 0.0);
+                float lambert = max(dot(n, paraLuz), 0.0);
+                float spot = 1.0;
+                if (uLsCone[i].y > -1.5) {
+                    float cosT = dot(-paraLuz, uLsDir[i]);
+                    spot = smoothstep(uLsCone[i].y, uLsCone[i].x, cosT);
+                }
+                rgb += albedo * (uLsCor[i] * (atenua * lambert * spot));
+            }
             fragColor = vec4(min(rgb, vec3(1.0)), uColor.a);
         }
     """.trimIndent()
@@ -431,6 +479,12 @@ class GlesBackend : RenderBackend {
         uLightIntensity = GLES30.glGetUniformLocation(program, "uLightIntensity")
         uHasTex = GLES30.glGetUniformLocation(program, "uHasTex")
         uTex = GLES30.glGetUniformLocation(program, "uTex")
+        uLsCount = GLES30.glGetUniformLocation(program, "uLsCount")
+        uLsPos = GLES30.glGetUniformLocation(program, "uLsPos")
+        uLsCor = GLES30.glGetUniformLocation(program, "uLsCor")
+        uLsAlcance = GLES30.glGetUniformLocation(program, "uLsAlcance")
+        uLsDir = GLES30.glGetUniformLocation(program, "uLsDir")
+        uLsCone = GLES30.glGetUniformLocation(program, "uLsCone")
 
         // Programas visuais: cada um é independente; se falhar, o recurso é desativado.
         runCatching {
@@ -614,6 +668,29 @@ class GlesBackend : RenderBackend {
         uniformScratch[0] = fin(lightR); uniformScratch[1] = fin(lightG); uniformScratch[2] = fin(lightB)
         GLES30.glUniform3fv(uLightColor, 1, uniformScratch, 0)
         GLES30.glUniform1f(uLightIntensity, fin(intensity))
+    }
+
+    /**
+     * H2 (v0.1.20): LUME — luzes PONTUAIS/SPOT dos Nicks (≤ 4 por frame;
+     * arrays primitivos REAPROVEITADOS, nada é copiado para a GPU além dos
+     * próprios uniforms, uma vez por frame — atualização no MESMO frame).
+     * [posArr]/[corArr] com 12 floats (4×3); [alcanceArr] 4; [dirArr] 12
+     * (direção de VIAGEM unitária); [coneArr] 8 = [cosInterno, cosExterno]
+     * por luz (cosExterno ≤ -1.5 = pontual). Chamado ANTES do flush.
+     */
+    override fun setDynamicLights(
+        count: Int,
+        posArr: FloatArray, corArr: FloatArray, alcanceArr: FloatArray,
+        dirArr: FloatArray, coneArr: FloatArray
+    ) {
+        if (program == 0 || uLsCount < 0) return
+        useProgram(program)
+        GLES30.glUniform1i(uLsCount, count.coerceIn(0, 4))
+        GLES30.glUniform3fv(uLsPos, 4, posArr, 0)
+        GLES30.glUniform3fv(uLsCor, 4, corArr, 0)
+        GLES30.glUniform1fv(uLsAlcance, 4, alcanceArr, 0)
+        GLES30.glUniform3fv(uLsDir, 4, dirArr, 0)
+        GLES30.glUniform2fv(uLsCone, 4, coneArr, 0)
     }
 
     override fun createMesh(mesh: MeshData): Int {

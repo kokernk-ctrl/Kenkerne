@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kenkern.engine.R
+import com.kenkern.engine.core.LuzNick
 import com.kenkern.engine.core.MalhaNick
 import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
@@ -237,6 +238,82 @@ fun InspectorPanel(vm: EditorViewModel) {
             }
         }
 
+        // ---------- H2 (v0.1.20): LUZ DO LUME — Inspetor en/pt ----------
+        // cor, intensidade, alcance (pontual/spot), ângulo interno e externo
+        // (spot), ligado. Nick ANTIGO sem a classe "Luz": valores do default
+        // + botão para aplicar a classe (um Command, entra no undo/redo).
+        if (nick.kind.startsWith("light.")) {
+            val instLuz = nick.findClassInstance(LuzNick.CLASSE)
+            CollapsibleSection(stringResource(R.string.light_section)) {
+                if (instLuz == null) {
+                    Text(stringResource(R.string.light_missing), fontSize = 12.sp, color = KenkernTextMid)
+                    TextButton(onClick = { vm.addClassToSelected(LuzNick.CLASSE) }) {
+                        Text(stringResource(R.string.light_apply), color = KenkernAmber, fontSize = 12.sp)
+                    }
+                } else {
+                    val luz = remember(nick.id, vm.revision.intValue) {
+                        LuzNick.Valores().also { LuzNick.ler(nick, it) }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.light_on), fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = luz.ligado,
+                            onCheckedChange = {
+                                vm.setClassField(nick.id, LuzNick.CLASSE, LuzNick.CAMPO_LIGADO, NickValue.BoolValue(it))
+                            }
+                        )
+                    }
+                    SectionTitle(stringResource(R.string.light_color))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        AxisNumberField(
+                            "R", KenkernAxisX, luz.corX,
+                            { v -> vm.setClassField(nick.id, LuzNick.CLASSE, LuzNick.CAMPO_COR, NickValue.Vec3Value(v, luz.corY, luz.corZ)) },
+                            Modifier.weight(1f)
+                        )
+                        AxisNumberField(
+                            "G", KenkernAxisY, luz.corY,
+                            { v -> vm.setClassField(nick.id, LuzNick.CLASSE, LuzNick.CAMPO_COR, NickValue.Vec3Value(luz.corX, v, luz.corZ)) },
+                            Modifier.weight(1f)
+                        )
+                        AxisNumberField(
+                            "B", KenkernAxisZ, luz.corZ,
+                            { v -> vm.setClassField(nick.id, LuzNick.CLASSE, LuzNick.CAMPO_COR, NickValue.Vec3Value(luz.corX, luz.corY, v)) },
+                            Modifier.weight(1f)
+                        )
+                    }
+                    FloatField(
+                        stringResource(R.string.light_intensity), luz.intensidade,
+                        { v -> vm.setClassField(nick.id, LuzNick.CLASSE, LuzNick.CAMPO_INTENSIDADE, NickValue.FloatValue(v)) },
+                        Modifier.fillMaxWidth()
+                    )
+                    // Alcance só existe na pontual e no spot (a direcional é infinita).
+                    if (nick.kind != "light.directional") {
+                        FloatField(
+                            stringResource(R.string.light_range), luz.alcance,
+                            { v -> vm.setClassField(nick.id, LuzNick.CLASSE, LuzNick.CAMPO_ALCANCE, NickValue.FloatValue(v)) },
+                            Modifier.fillMaxWidth()
+                        )
+                    }
+                    // Ângulos só no spot (cone de luz).
+                    if (nick.kind == "light.spot") {
+                        FloatField(
+                            stringResource(R.string.light_inner_angle), luz.anguloInterno,
+                            { v -> vm.setClassField(nick.id, LuzNick.CLASSE, LuzNick.CAMPO_ANGULO_INTERNO, NickValue.FloatValue(v)) },
+                            Modifier.fillMaxWidth()
+                        )
+                        FloatField(
+                            stringResource(R.string.light_outer_angle), luz.anguloExterno,
+                            { v -> vm.setClassField(nick.id, LuzNick.CLASSE, LuzNick.CAMPO_ANGULO_EXTERNO, NickValue.FloatValue(v)) },
+                            Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+
         // ---------- CLASSES (seção recolhível) ----------
         CollapsibleSection(stringResource(R.string.inspector_classes)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -318,6 +395,7 @@ private fun categoriaLocalizada(categoria: String): String = stringResource(
         "movimento" -> R.string.class_cat_movimento
         "geometria" -> R.string.class_cat_geometria
         "fisica" -> R.string.class_cat_fisica
+        "iluminacao" -> R.string.class_cat_iluminacao
         else -> R.string.class_cat_geral
     }
 )

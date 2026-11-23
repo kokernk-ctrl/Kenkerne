@@ -152,6 +152,7 @@
     <string name="class_cat_geometria">Geometria</string>
     <string name="class_cat_fisica">Física</string>
     <string name="class_cat_geral">Geral</string>
+    <string name="class_cat_iluminacao">Iluminação</string>
 
     <!-- ===================== Janela Adicionar Nick (T0.3) ===================== -->
     <string name="addnick_title">Adicionar Nick</string>
@@ -172,6 +173,18 @@
     <string name="collider_cylinder">Cilindro</string>
     <string name="collider_convex">Convexo</string>
     <string name="collider_mesh">Malha</string>
+
+
+    <!-- ===================== Luz do LUME (H2) ===================== -->
+    <string name="light_section">Luz</string>
+    <string name="light_on">Ligada</string>
+    <string name="light_color">Cor (R, G, B)</string>
+    <string name="light_intensity">Intensidade</string>
+    <string name="light_range">Alcance (m)</string>
+    <string name="light_inner_angle">Ângulo interno (graus)</string>
+    <string name="light_outer_angle">Ângulo externo (graus)</string>
+    <string name="light_missing">Esta luz é anterior ao LUME — aplique a classe Luz para editar.</string>
+    <string name="light_apply">Aplicar classe Luz</string>
 
     <!-- ===================== Panels (docked/floating) ===================== -->
     <string name="panel_options">Opções do painel %1$s</string>

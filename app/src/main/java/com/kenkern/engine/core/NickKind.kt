@@ -120,7 +120,8 @@ object NickKindCatalog {
                 key = "light.directional", labelEn = "Directional Light Nick", labelPt = "Nick de Luz Direcional",
                 descEn = "Sun-like light from a direction (LUME)",
                 descPt = "Luz tipo sol vinda de uma direção (LUME)",
-                group = NickKindGroup.LUZ, iconKey = "light.directional"
+                group = NickKindGroup.LUZ, iconKey = "light.directional",
+                defaultClasses = listOf("Luz")
             )
         )
         NickKindRegistry.register(
@@ -128,7 +129,8 @@ object NickKindCatalog {
                 key = "light.point", labelEn = "Point Light Nick", labelPt = "Nick de Luz Pontual",
                 descEn = "Light from a point with reach (LUME)",
                 descPt = "Luz de um ponto com alcance (LUME)",
-                group = NickKindGroup.LUZ, iconKey = "light.point"
+                group = NickKindGroup.LUZ, iconKey = "light.point",
+                defaultClasses = listOf("Luz")
             )
         )
         NickKindRegistry.register(
@@ -136,7 +138,8 @@ object NickKindCatalog {
                 key = "light.spot", labelEn = "Spot Light Nick", labelPt = "Nick de Luz de Foco",
                 descEn = "Cone of light pointed at a target (LUME)",
                 descPt = "Cone de luz apontado a um alvo (LUME)",
-                group = NickKindGroup.LUZ, iconKey = "light.spot"
+                group = NickKindGroup.LUZ, iconKey = "light.spot",
+                defaultClasses = listOf("Luz")
             )
         )
         // ---------------- CÂMERA (LENTE) ----------------

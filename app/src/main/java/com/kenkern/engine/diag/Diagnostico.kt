@@ -23,8 +23,10 @@ import com.kenkern.engine.commands.ImportModelCommand
 import com.kenkern.engine.assets.mesh.KernReader
 import com.kenkern.engine.assets.mesh.KernWriter
 import com.kenkern.engine.assets.mesh.MeshData
+import com.kenkern.engine.core.LuzNick
 import com.kenkern.engine.core.MalhaNick
 import com.kenkern.engine.core.NickClassInstance
+import com.kenkern.engine.core.NickClassRegistry
 import com.kenkern.engine.core.NickKindRegistry
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.Scene
@@ -141,6 +143,7 @@ class Diagnostico(private val appContext: Context) {
         Checagem("etc2", "ETC2 — upload e leitura de pixel (GL offscreen)"),
         Checagem("tex-cena", "Textura na cena — quad com .KIMG (pixel não-preto)"),
         Checagem("cena", "Cena = tela — viewport desenha só Nicks; M malhas medido"),
+        Checagem("luz", "Luz do LUME — quad branco + luz vermelha (o pixel muda)"),
         Checagem("astc", "ASTC — extensão do aparelho (informativo)"),
         Checagem("picking", "Matemática de picking (raio de tela)"),
         Checagem("toque", "Toque no cubo — API real do TouchController"),
@@ -176,7 +179,7 @@ class Diagnostico(private val appContext: Context) {
     suspend fun executar(onAtualiza: (Checagem) -> Unit) {
         cancelado = false
         val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout")
-        val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "astc")
+        val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "luz", "astc")
         // E2: ids já FINALIZADAS nesta rodada — no cancel, só o que NÃO rodou vira
         // CANCELADA (aprovadas/falhas anteriores permanecem com o resultado delas).
         val finalizadas = HashSet<String>()
@@ -282,6 +285,7 @@ class Diagnostico(private val appContext: Context) {
                             "etc2" -> checarEtc2(c, egl)
                             "tex-cena" -> checarTexCena(c, egl)
                             "cena" -> checarCenaTela(c, egl)
+                            "luz" -> checarLuz(c, egl)
                             "astc" -> checarAstc(c)
                             "memoria" -> checarMemoria(c)
                             "release" -> checarRelease(c)
@@ -1278,6 +1282,111 @@ class Diagnostico(private val appContext: Context) {
             }
         }
         return saida
+    }
+
+    /**
+     * Checagem "luz" (H2, v0.1.20) — A LUZ DO LUME ILUMINA A CENA (GL offscreen):
+     *  (a) PONTUAL: quad BRANCO (cubo do tipo nick.mesh) + luz PONTUAL VERMELHA
+     *      perto dele — com a luz LIGADA o pixel central é dominado pelo
+     *      VERMELHO (r > g e r > b) e MUDA vs o MESMO render com a luz
+     *      DESLIGADA (a luz entra e sai no mesmo frame, sem recriar nada);
+     *  (b) DIRECIONAL: light.directional vermelha SUBSTITUI o sol fixo —
+     *      comparada com o MESMO quad com ela desligada (sol padrão), o pixel
+     *      muda e fica dominado pelo vermelho.
+     * Auxiliares de editor DESLIGADOS no render para isolar a LUZ (sem as
+     * linhas vermelhas do auxiliar da pontual poluirem a comparação).
+     */
+    private fun checarLuz(c: Checagem, egl: EglDiag?) {
+        if (egl == null) {
+            c.falhou("contexto EGL pbuffer não disponível")
+            return
+        }
+        val backend = GlesBackend()
+        val renderer = EngineRenderer()
+        renderer.mostrarAuxiliares = false // isola a LUZ (sem auxiliares vermelhos)
+        try {
+            if (!backend.initialize(registrarBootTrace = false)) {
+                c.falhou("backend GLES não inicializou no contexto offscreen")
+                return
+            }
+            backend.resize(64, 64)
+            renderer.initialize(backend, null, registrarBootTrace = false)
+            if (!renderer.isInitialized()) {
+                c.falhou("renderer não inicializou no contexto offscreen")
+                return
+            }
+            val camera = OrbitCamera()
+
+            // ---------- (a) pontual vermelha sobre quad branco ----------
+            val scene = Scene("luz")
+            val mundo = scene.createRootNick("Mundo")
+            val quad = scene.createNick("Quad", mundo, kind = NickKindRegistry.NICK_MESH)
+            quad.transform.setLocalPosition(0f, 0.5f, 0f)
+            val luz = scene.createNick("Luz Vermelha", mundo, kind = "light.point")
+            luz.transform.setLocalPosition(0.9f, 1.4f, 1.1f)
+            val instLuz = NickClassRegistry.createInstance(LuzNick.CLASSE)
+            if (instLuz == null) {
+                c.falhou("classe Luz não registrada (KenkernBuiltInClasses)")
+                return
+            }
+            instLuz.fields[LuzNick.CAMPO_COR] = NickValue.Vec3Value(1f, 0f, 0f)
+            instLuz.fields[LuzNick.CAMPO_ALCANCE] = NickValue.FloatValue(6f)
+            instLuz.fields[LuzNick.CAMPO_INTENSIDADE] = NickValue.FloatValue(3f)
+            luz.addClassInstance(instLuz)
+            scene.updateWorldTransforms()
+            renderer.renderFrame(backend, scene, camera, 0f, null, null)
+            val regiaoLigada = lerRegiao(32, 34, 5)
+            val pixelLigado = lerPixel(32, 32)
+            instLuz.fields[LuzNick.CAMPO_LIGADO] = NickValue.BoolValue(false)
+            renderer.renderFrame(backend, scene, camera, 0f, null, null)
+            val regiaoDesligada = lerRegiao(32, 34, 5)
+            val pixelDesligado = lerPixel(32, 32)
+            val mudou = regiaoLigada != null && regiaoDesligada != null && regiaoLigada != regiaoDesligada
+            val vermelhoDominante = pixelLigado != null &&
+                pixelLigado[0] > pixelLigado[1] && pixelLigado[0] > pixelLigado[2]
+
+            // ---------- (b) direcional substitui o sol ----------
+            val cenaDir = Scene("luz-dir")
+            val mundoDir = cenaDir.createRootNick("Mundo")
+            val quadDir = cenaDir.createNick("Quad", mundoDir, kind = NickKindRegistry.NICK_MESH)
+            quadDir.transform.setLocalPosition(0f, 0.5f, 0f)
+            val sol = cenaDir.createNick("Sol Vermelho", mundoDir, kind = "light.directional")
+            val instSol = NickClassRegistry.createInstance(LuzNick.CLASSE)
+            if (instSol == null) {
+                c.falhou("classe Luz não registrada (KenkernBuiltInClasses)")
+                return
+            }
+            instSol.fields[LuzNick.CAMPO_COR] = NickValue.Vec3Value(1f, 0f, 0f)
+            instSol.fields[LuzNick.CAMPO_INTENSIDADE] = NickValue.FloatValue(2f)
+            sol.addClassInstance(instSol)
+            cenaDir.updateWorldTransforms()
+            renderer.renderFrame(backend, cenaDir, camera, 0f, null, null)
+            val comSolNick = lerPixel(32, 32)
+            instSol.fields[LuzNick.CAMPO_LIGADO] = NickValue.BoolValue(false)
+            renderer.renderFrame(backend, cenaDir, camera, 0f, null, null)
+            val comSolPadrao = lerPixel(32, 32)
+            val direcionalSubstitui = comSolNick != null && comSolPadrao != null &&
+                comSolNick.toList() != comSolPadrao.toList() &&
+                comSolNick[0] > comSolNick[1] && comSolNick[0] > comSolNick[2]
+
+            // ---------- veredito ----------
+            val problemas = ArrayList<String>(3)
+            if (!mudou) problemas.add("pixel da região central não mudou com a pontual ligada × desligada")
+            if (!vermelhoDominante) problemas.add("pixel com a pontual ligada não é dominado pelo vermelho (${fmtCor(pixelLigado)})")
+            if (!direcionalSubstitui) problemas.add(
+                "light.directional não substituiu o sol (${fmtCor(comSolNick)} × sol padrão ${fmtCor(comSolPadrao)})"
+            )
+            if (problemas.isEmpty()) {
+                c.aprovado(
+                    "pontual vermelha ilumina e sai no mesmo frame (ligada ${fmtCor(pixelLigado)} × desligada ${fmtCor(pixelDesligado)}) · " +
+                        "direcional substitui o sol (${fmtCor(comSolNick)}) · ≤4 pontuais/spot por frame (LumeCena)"
+                )
+            } else {
+                c.falhou(problemas.joinToString("; "))
+            }
+        } finally {
+            backend.destroy()
+        }
     }
 
     /**

@@ -76,6 +76,21 @@ class EngineRenderer {
     private val auxNicks = arrayOfNulls<Nick>(256)
     private var auxCount = 0
 
+    /** H2: valores de UMA luz lidos por frame no draw dos auxiliares (reuso). */
+    private val luzValoresAux = com.kenkern.engine.core.LuzNick.Valores()
+
+    /**
+     * H2: cache de buffers de linhas dos auxiliares com ALCANCE/ÂNGULO REAIS
+     * (esfera de alcance da pontual, cone real do spot) — reconstruído SÓ
+     * quando a chave (alcance/ângulo) muda; limite pequeno com evicção FIFO.
+     * Handles destruídos no initialize (contexto GL novo).
+     */
+    private class ParLuzAux(val normal: Int, val sel: Int, val nNormal: Int, val nSel: Int)
+    private val luzAuxCache = LinkedHashMap<String, ParLuzAux>()
+
+    /** H2: conjunto de iluminação do frame (pré-alocado, reaproveitado). */
+    private val luzFrame = LumeCena.Frame()
+
     /** E5: botão 'Mostrar auxiliares' da TopBar (padrão LIGADO). */
     @Volatile
     var mostrarAuxiliares: Boolean = true
@@ -190,6 +205,11 @@ class EngineRenderer {
         }
         helperPiramideKey = ""
         auxCount = 0
+        for (par in luzAuxCache.values) {
+            if (par.normal != 0) backend.destroyLineBuffer(par.normal)
+            if (par.sel != 0) backend.destroyLineBuffer(par.sel)
+        }
+        luzAuxCache.clear()
         outlineInflation.setIdentity()
         outlineInflation.m[0] = 1.06f; outlineInflation.m[5] = 1.06f; outlineInflation.m[10] = 1.06f
         gizmoScale.setIdentity()
@@ -395,10 +415,25 @@ class EngineRenderer {
         // Olho correto nos DOIS modos (orbital e voo).
         camera.eyePoint(camEye)
 
+        // H2 (v0.1.20): luzes dos NICKS coletadas ANTES do céu — a direcional
+        // substitui o sol (o disco do céu segue a direção do Nick) e as
+        // pontuais/spot entram por contribuição para a câmera. Arrays do
+        // [LumeCena.Frame] reaproveitados; atualização no MESMO frame.
+        LumeCena.coletar(scene, camEye.x, camEye.y, camEye.z, luzFrame)
+
         // Sol = direção PARA a luz (oposta ao sentido de viagem da luz direcional).
-        lighting.fillDirectional(scratchDir)
+        // H2: com light.directional ATIVA e LIGADA na cena, ELA substitui o sol
+        // fixo; sem nenhuma (ou desligada), mantém o sol padrão do editor.
+        val intensity: Float
+        if (luzFrame.temDirecional) {
+            scratchDir[0] = luzFrame.dir[0]; scratchDir[1] = luzFrame.dir[1]; scratchDir[2] = luzFrame.dir[2]
+            scratchLightColor[0] = luzFrame.cor[0]; scratchLightColor[1] = luzFrame.cor[1]; scratchLightColor[2] = luzFrame.cor[2]
+            intensity = luzFrame.intensidadeDirecional
+        } else {
+            lighting.fillDirectional(scratchDir)
+            intensity = lighting.fillLightColor(scratchLightColor)
+        }
         lighting.fillAmbient(scratchAmbient)
-        val intensity = lighting.fillLightColor(scratchLightColor)
         sunDir.set(-scratchDir[0], -scratchDir[1], -scratchDir[2]).normalize()
 
         // Céu (1 draw call): gradiente zênite→horizonte + sol discreto.
@@ -418,6 +453,14 @@ class EngineRenderer {
             scratchAmbient[0], scratchAmbient[1], scratchAmbient[2],
             scratchLightColor[0], scratchLightColor[1], scratchLightColor[2],
             intensity
+        )
+
+        // H2 (v0.1.20): luzes PONTUAIS/SPOT do LUME no MESMO frame (antes do
+        // flush — os draws das malhas consomem estes uniforms). ≤ 4 por frame,
+        // arrays primitivos do Frame, zero alocação.
+        backend.setDynamicLights(
+            luzFrame.nPontuais, luzFrame.pos, luzFrame.corLs,
+            luzFrame.alcance, luzFrame.dirLs, luzFrame.cone
         )
 
         // NICKS DA CENA (regra "cena = tela"): travessia indexada (Iterator de
@@ -611,6 +654,59 @@ class EngineRenderer {
                 helperMvp.multiply(viewProj, helperModel)
                 backend.drawWorldLines(handle, helperVertexCount[forma], helperMvp)
                 helperDc++
+
+                // H2 (v0.1.20): pontual/spot também desenham a visualização com
+                // ALCANCE e ÂNGULO REAIS em escala de MUNDO (sem escala de tela
+                // constante): esfera de raio = alcance (pontual) e cone com a
+                // abertura externa real e altura = alcance (spot). Buffer por
+                // chave, reconstruído só quando alcance/ângulo mudam (cache FIFO).
+                val ehPontual = nick.kind == "light.point"
+                val ehSpot = nick.kind == "light.spot"
+                if (ehPontual || ehSpot) {
+                    com.kenkern.engine.core.LuzNick.ler(nick, luzValoresAux)
+                    val chave = if (ehPontual) "E|${luzValoresAux.alcance}"
+                        else "C|${luzValoresAux.anguloExterno}|${luzValoresAux.alcance}"
+                    var par = luzAuxCache[chave]
+                    if (par == null) {
+                        if (luzAuxCache.size >= LUZ_AUX_CACHE_MAX) {
+                            var primeira: Map.Entry<String, ParLuzAux>? = null
+                            for (e in luzAuxCache.entries) { primeira = e; break }
+                            if (primeira != null) {
+                                luzAuxCache.remove(primeira.key)
+                                if (primeira.value.normal != 0) backend.destroyLineBuffer(primeira.value.normal)
+                                if (primeira.value.sel != 0) backend.destroyLineBuffer(primeira.value.sel)
+                            }
+                        }
+                        EditorHelpers.corDoGrupo(nick.kind, helperCor)
+                        val ambar = floatArrayOf(outlineR, outlineG, outlineB)
+                        val dN: FloatArray
+                        val dS: FloatArray
+                        if (ehPontual) {
+                            dN = EditorHelpers.buildEsferaAlcance(helperCor, luzValoresAux.alcance)
+                            dS = EditorHelpers.buildEsferaAlcance(ambar, luzValoresAux.alcance)
+                        } else {
+                            dN = EditorHelpers.buildConeAlcance(helperCor, luzValoresAux.anguloExterno, luzValoresAux.alcance)
+                            dS = EditorHelpers.buildConeAlcance(ambar, luzValoresAux.anguloExterno, luzValoresAux.alcance)
+                        }
+                        par = ParLuzAux(
+                            backend.createColoredLineBuffer(dN), backend.createColoredLineBuffer(dS),
+                            dN.size / 6, dS.size / 6
+                        )
+                        luzAuxCache[chave] = par
+                    }
+                    val handleReal = if (selecionado) par.sel else par.normal
+                    val contagemReal = if (selecionado) par.nSel else par.nNormal
+                    if (handleReal != 0 && contagemReal > 0) {
+                        // Escala de MUNDO (1,1,1): o raio do alcance é o real.
+                        helperPos.set(wm.m[12], wm.m[13], wm.m[14])
+                        extractWorldRotationTo(wm, helperRot, helperRotExtractor)
+                        helperScaleVec.set(1f, 1f, 1f)
+                        helperModel.setTRS(helperPos, helperRot, helperScaleVec)
+                        helperMvp.multiply(viewProj, helperModel)
+                        backend.drawWorldLines(handleReal, contagemReal, helperMvp)
+                        helperDc++
+                    }
+                }
             }
         }
 
@@ -876,6 +972,9 @@ class EngineRenderer {
 
     companion object {
         private const val TAG = "Kenkern/EngineRenderer"
+
+        /** H2: limite do cache de auxiliares reais de luz (evicção FIFO). */
+        private const val LUZ_AUX_CACHE_MAX = 8
         private val CUBE_POSITIONS = floatArrayOf(
             -0.5f, -0.5f, 0.5f, 0.5f, -0.5f, 0.5f, 0.5f, 0.5f, 0.5f, -0.5f, 0.5f, 0.5f,
             -0.5f, -0.5f, -0.5f, -0.5f, 0.5f, -0.5f, 0.5f, 0.5f, -0.5f, 0.5f, -0.5f, -0.5f,

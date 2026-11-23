@@ -92,4 +92,31 @@ class EditorHelpersTest {
         assertTrue("vértice no canto (+0,5,+0,5,+0,5) presente", c.tem(0.5f))
         assertTrue("vértice no canto (−0,5) presente", c.tem(-0.5f))
     }
+
+    // ---------------- H2 (v0.1.20): alcance e ângulo REAIS ----------------
+
+    @Test
+    fun esferaAlcanceUsaORaioReal() {
+        val c = EditorHelpers.buildEsferaAlcance(floatArrayOf(1f, 1f, 1f), 3f)
+        assertTrue("pares de vértices (6 floats)", c.size % 6 == 0 && c.size >= 6)
+        val maxAbs = (0 until c.size / 6).maxOf {
+            maxOf(kotlin.math.abs(c[it * 6]), kotlin.math.abs(c[it * 6 + 1]), kotlin.math.abs(c[it * 6 + 2]))
+        }
+        assertEquals("maior |coord| = alcance 3 m", 3f, maxAbs, 1e-3f)
+    }
+
+    @Test
+    fun coneAlcanceUsaAnguloEAlturaReais() {
+        val altura = 5f
+        val externo = 40f
+        val c = EditorHelpers.buildConeAlcance(floatArrayOf(1f, 1f, 1f), externo, altura)
+        assertTrue(c.size % 6 == 0 && c.size >= 6)
+        val maxZ = (0 until c.size / 6).maxOf { kotlin.math.abs(c[it * 6 + 2]) }
+        assertEquals("boca do cone a −altura (−5)", altura, maxZ, 1e-3f)
+        val raioEsperado = altura * kotlin.math.tan(Math.toRadians((externo * 0.5f).toDouble())).toFloat()
+        val maxXY = (0 until c.size / 6).maxOf {
+            maxOf(kotlin.math.abs(c[it * 6]), kotlin.math.abs(c[it * 6 + 1]))
+        }
+        assertEquals("raio da boca = altura × tan(externo/2)", raioEsperado, maxXY, 1e-3f)
+    }
 }

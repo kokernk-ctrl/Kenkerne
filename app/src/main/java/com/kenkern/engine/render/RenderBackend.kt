@@ -38,6 +38,19 @@ interface RenderBackend {
         intensity: Float
     )
 
+    /**
+     * H2 (v0.1.20) — LUME: luzes PONTUAIS/SPOT dos Nicks de luz, ≤ 4 por frame
+     * (maior contribuição para a câmera), atenuação suave por alcance e cone
+     * smoothstep no spot. Arrays primitivos REAPROVEITADOS (12/12/4/12/8
+     * floats) — o backend só lê; atualização no MESMO frame (antes do flush).
+     * coneArr = [cosInterno, cosExterno] por luz (cosExterno ≤ -1.5 = pontual).
+     */
+    fun setDynamicLights(
+        count: Int,
+        posArr: FloatArray, corArr: FloatArray, alcanceArr: FloatArray,
+        dirArr: FloatArray, coneArr: FloatArray
+    ) = Unit
+
     /** Cria/upload de malha; retorna handle opaco (0 = falha). */
     fun createMesh(mesh: MeshData): Int
 
