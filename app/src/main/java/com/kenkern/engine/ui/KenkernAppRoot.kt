@@ -12,7 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kenkern.engine.editor.EditorViewModel
-import com.kenkern.engine.projects.ProjectHandle
+
 import com.kenkern.engine.ui.screens.CrashReportDialog
 import com.kenkern.engine.ui.screens.DiagnosticoScreen
 import com.kenkern.engine.ui.screens.EditorScreen
@@ -51,6 +51,7 @@ fun KenkernAppRoot() {
         } else {
             HomeScreen(
                 projects = vm.projects.value,
+                projectsLoaded = vm.projectsLoaded.value,
                 isLoading = vm.isLoading.value,
                 statusMessage = vm.statusMessage.value,
                 onConsumeStatus = { vm.consumeStatus() },
@@ -59,6 +60,7 @@ fun KenkernAppRoot() {
                 onRenameProject = { handle, name -> vm.renameProject(handle, name) },
                 onDeleteProject = { handle -> vm.deleteProject(handle) },
                 onAbrirDiagnostico = { showDiagnostico = true },
+                onOpenWorkspace = { vm.openSandbox(it) },
                 onDuplicateProject = { handle -> vm.duplicateProject(handle) },
                 onImportarKernpack = { uri -> vm.importarKernpack(uri) },
                 onExportarProjeto = { handle, uri -> vm.exportarProjetoPara(handle, uri) }

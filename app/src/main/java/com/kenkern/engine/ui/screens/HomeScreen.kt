@@ -1,8 +1,5 @@
 package com.kenkern.engine.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -19,10 +16,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -32,10 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -73,7 +66,6 @@ import com.kenkern.engine.R
 import com.kenkern.engine.projects.Kernpack
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
-import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.ui.AppLanguage
 import com.kenkern.engine.ui.theme.KenkernAmber
 import com.kenkern.engine.ui.theme.KenkernBackground
@@ -84,27 +76,36 @@ import com.kenkern.engine.ui.theme.KenkernSurfaceHigh
 import com.kenkern.engine.ui.theme.KenkernTextHigh
 import com.kenkern.engine.ui.theme.KenkernTextLow
 import com.kenkern.engine.ui.theme.KenkernTextMid
-import java.text.SimpleDateFormat
+import java.io.File
 import java.util.Date
-import java.util.Locale
+import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import com.kenkern.engine.editor.EditorWorkspace
+import com.kenkern.engine.projects.RecentProject
+import com.kenkern.engine.ui.hub.HubLayout
+import com.kenkern.engine.ui.hub.HubSpace
+import com.kenkern.engine.ui.hub.icon
+import com.kenkern.engine.ui.hub.label
+import java.text.DateFormat
 
-/**
- * HUB da KENKERN (ETAPA B):
- *  - Marca: wordmark "Kenkern" (semibold, sem tracking) + versão discreta.
- *  - "Novo projeto" compacto (40dp) no cabeçalho, à direita; sem "+" redundante.
- *  - Cartões de recentes: miniatura 16:9 (placeholder céu + cubo), nome,
- *    data relativa e menu de três pontos (Abrir, Renomear, Apagar).
- *  - Paisagem: grade de 2 colunas (LazyVerticalGrid).
- *  - Estado vazio: mensagem curta + um único botão de criar.
- *  - Fundo plano #1E1E1E, sem gradientes decorativos.
- *
- * T0.1 (idiomas): TODAS as strings vêm de recursos (strings.xml/values-pt);
- *  - seletor de idioma (Português / English / idioma do aparelho) no
- *    cabeçalho — troca imediata via AppLanguage.apply (recreate da Activity).
- */
+private const val HERO_KEY = "hub.hero"
+
 @Composable
 fun HomeScreen(
-    projects: List<ProjectHandle>,
+    projects: List<RecentProject>,
+    projectsLoaded: Boolean,
     isLoading: Boolean,
     statusMessage: String?,
     onConsumeStatus: () -> Unit,
@@ -112,12 +113,13 @@ fun HomeScreen(
     onOpenProject: (ProjectHandle) -> Unit,
     onRenameProject: (ProjectHandle, String) -> Unit,
     onDeleteProject: (ProjectHandle) -> Unit,
-    onAbrirDiagnostico: () -> Unit = {},
-    onDuplicateProject: (ProjectHandle) -> Unit = {},
-    onImportarKernpack: (android.net.Uri) -> Unit = {},
-    onExportarProjeto: (ProjectHandle, android.net.Uri) -> Unit = { _, _ -> }
+    onAbrirDiagnostico: () -> Unit,
+    onOpenWorkspace: (EditorWorkspace) -> Unit,
+    onDuplicateProject: (ProjectHandle) -> Unit,
+    onImportarKernpack: (android.net.Uri) -> Unit,
+    onExportarProjeto: (ProjectHandle, android.net.Uri) -> Unit
 ) {
-    var showNewDialog by remember { mutableStateOf(false) }
+    var showNewDialog by rememberSaveable { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<ProjectHandle?>(null) }
     var pendingRename by remember { mutableStateOf<ProjectHandle?>(null) }
 
@@ -125,140 +127,126 @@ fun HomeScreen(
     val importarLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) onImportarKernpack(uri) }
-    var exportando by remember { mutableStateOf<ProjectHandle?>(null) }
+    var exportando by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
     val exportarLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
-        val alvo = exportando
+        val alvo = exportando?.let { (path, name, created) -> ProjectHandle(File(path), name, created) }
         exportando = null
         if (uri != null && alvo != null) onExportarProjeto(alvo, uri)
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(KenkernBackground)
-    ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-        ) {
-            // ---------- Cabeçalho (56dp): wordmark + versão + ação compacta ----------
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .padding(horizontal = 16.dp)
-            ) {
-                Column {
-                    Text(
-                        "Kenkern",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = KenkernTextHigh
-                    )
-                    Text(
-                        "v${ProjectManager.ENGINE_VERSION}",
-                        fontSize = 12.sp,
-                        color = KenkernTextLow
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                // T0.1: SELETOR DE IDIOMA (en/pt/padrão do aparelho; troca imediata)
-                LanguageSelector()
-                // Importar .kernpack (SAF OPEN_DOCUMENT)
-                IconButton(
-                    onClick = { importarLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.Folder,
-                        contentDescription = stringResource(R.string.hub_import_cd),
-                        tint = KenkernTextMid
-                    )
-                }
-                // Diagnóstico: checagens da engine no aparelho (tela da Fase 2)
-                IconButton(
-                    onClick = onAbrirDiagnostico,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.BugReport,
-                        contentDescription = stringResource(R.string.hub_diagnostico_cd),
-                        tint = KenkernTextMid
-                    )
-                }
-                Button(
-                    onClick = { showNewDialog = true },
-                    enabled = !isLoading,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = KenkernAmber,
-                        contentColor = Color(0xFF1E1E1E)
-                    ),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                    modifier = Modifier.height(40.dp)
-                ) {
-                    Text(stringResource(R.string.hub_new_project), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
+    Box(Modifier.fillMaxSize().background(KenkernBackground).windowInsetsPadding(WindowInsets.safeDrawing)) {
+        BoxWithConstraints(Modifier.widthIn(max = 1120.dp).fillMaxSize().align(Alignment.TopCenter)) {
+            val layout = HubLayout.forBounds(maxWidth.value, maxHeight.value, LocalDensity.current.fontScale)
+            val showProjectArt = (maxWidth.value - 32f) / layout.columns /
+                LocalDensity.current.fontScale.coerceAtLeast(1f) >= 275f
+            val gridState = rememberLazyGridState()
+            val heroVisible by remember(gridState) {
+                derivedStateOf { gridState.layoutInfo.visibleItemsInfo.any { it.key == HERO_KEY } }
             }
-
-            HorizontalDivider(thickness = 1.dp, color = KenkernOutlineSoft)
-
-            // ---------- Grade de recentes (2 colunas em paisagem/largo) ----------
-            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-                val columns = if (maxWidth >= 600.dp) 2 else 1
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(columns),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(16.dp, 12.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Text(
-                            stringResource(R.string.hub_recent_projects),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = KenkernTextMid
-                        )
+            val newProject = { showNewDialog = true }
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(layout.columns),
+                state = gridState,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp,
+                    bottom = if (statusMessage != null) 92.dp else 20.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                item(key = HERO_KEY, span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        Modifier.fillMaxWidth().heightIn(min = layout.heroHeightDp.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                    ) {
+                        HubSpace(visible = heroVisible, modifier = Modifier.matchParentSize())
+                        Column(Modifier.align(Alignment.CenterStart).padding(20.dp)) {
+                            Text(stringResource(R.string.hub_brand), fontSize = 30.sp,
+                                fontWeight = FontWeight.SemiBold, color = KenkernTextHigh,
+                                modifier = Modifier.semantics { heading() })
+                            Text(stringResource(R.string.hub_version, ProjectManager.ENGINE_VERSION),
+                                fontSize = 12.sp, color = KenkernTextMid)
+                        }
                     }
-
-                    if (projects.isEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            EmptyProjectsState(isLoading, onCreate = { showNewDialog = true })
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    val utilities: @Composable () -> Unit = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            LanguageSelector()
+                            IconButton(
+                                onClick = { importarLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                                enabled = !isLoading,
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(Icons.Filled.Folder, stringResource(R.string.hub_import_cd), tint = KenkernTextMid)
+                            }
+                            IconButton(onClick = onAbrirDiagnostico, modifier = Modifier.size(48.dp)) {
+                                Icon(Icons.Filled.BugReport, stringResource(R.string.hub_diagnostico_cd), tint = KenkernTextMid)
+                            }
+                        }
+                    }
+                    if (layout.shortcutRow) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            utilities()
+                            Spacer(Modifier.weight(1f).widthIn(min = 4.dp))
+                            NewProjectButton(isLoading, newProject)
                         }
                     } else {
-                        items(projects, key = { it.root.absolutePath }) { project ->
-                            ProjectCard(
-                                project = project,
-                                onOpen = { onOpenProject(project) },
-                                onRename = { pendingRename = project },
-                                onDelete = { pendingDelete = project },
-                                onDuplicate = { onDuplicateProject(project) },
-                                onExportar = {
-                                    exportando = project
-                                    exportarLauncher.launch("${project.name}${Kernpack.EXTENSAO}")
-                                }
-                            )
+                        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                            utilities()
+                            NewProjectButton(isLoading, newProject)
                         }
+                    }
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    HubSectionTitle(R.string.hub_workspaces)
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    if (layout.shortcutRow) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            EditorWorkspace.entries.forEach { target ->
+                                WorkspaceShortcut(target, !isLoading, { onOpenWorkspace(target) }, Modifier.weight(1f))
+                            }
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            EditorWorkspace.entries.forEach { target ->
+                                WorkspaceShortcut(target, !isLoading, { onOpenWorkspace(target) }, Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    HubSectionTitle(R.string.hub_recent_projects)
+                }
+                if (projects.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        EmptyProjectsState(isLoading || !projectsLoaded)
+                    }
+                } else {
+                    items(projects, key = { it.project.root.absolutePath }) { recent ->
+                        val project = recent.project
+                        ProjectCard(
+                            recent = recent,
+                            showArt = showProjectArt,
+                            enabled = !isLoading,
+                            onOpen = { onOpenProject(project) },
+                            onRename = { pendingRename = project },
+                            onDelete = { pendingDelete = project },
+                            onDuplicate = { onDuplicateProject(project) },
+                            onExportar = {
+                                exportando = arrayListOf(project.root.absolutePath, project.name, project.createdAt)
+                                exportarLauncher.launch("${project.name}${Kernpack.EXTENSAO}")
+                            }
+                        )
                     }
                 }
             }
         }
-
-        // ---------- Status/erro ----------
-        AnimatedVisibility(
-            visible = statusMessage != null,
-            enter = fadeIn() + slideInVertically { it },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(16.dp)
-        ) {
+        statusMessage?.let { message ->
             Snackbar(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).widthIn(max = 560.dp),
                 containerColor = KenkernSurfaceHigh,
                 contentColor = KenkernTextHigh,
                 action = {
@@ -266,23 +254,7 @@ fun HomeScreen(
                         Text(stringResource(R.string.hub_ok), color = KenkernAmber)
                     }
                 }
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.WarningAmber,
-                        contentDescription = null,
-                        tint = KenkernError,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        statusMessage ?: "",
-                        fontSize = 12.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+            ) { Text(message, maxLines = 3, overflow = TextOverflow.Ellipsis) }
         }
     }
 
@@ -390,61 +362,64 @@ private fun LanguageSelector() {
     }
 }
 
-/**
- * Data relativa curta localizada: "agora", "há 2 min", "ontem", "há 3 dias",
- * dd/MM/yy (a data absoluta usa o formato curto do locale corrente).
- */
 @Composable
-private fun relativeDate(created: String): String {
-    val parsed = remember(created) {
-        runCatching {
-            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).parse(created)?.time
-        }.onFailure { KenkernLog.w("Kenkern/HomeScreen", "data de criação do projeto ilegível — mostrando texto cru", it) }
-            .getOrNull()
+private fun HubSectionTitle(@StringRes title: Int) {
+    Text(stringResource(title), color = KenkernTextHigh, fontSize = 15.sp,
+        fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+}
+
+@Composable
+private fun NewProjectButton(isLoading: Boolean, onCreate: () -> Unit) {
+    Button(
+        onClick = onCreate,
+        enabled = !isLoading,
+        shape = RoundedCornerShape(8.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = KenkernAmber, contentColor = Color(0xFF1E1E1E)),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.heightIn(min = 40.dp)
+    ) {
+        Text(stringResource(R.string.hub_new_project), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
-    if (parsed == null) return created
-    val diffMinutes = (System.currentTimeMillis() - parsed) / 60000L
-    return when {
-        diffMinutes < 1L -> stringResource(R.string.hub_time_now)
-        diffMinutes < 60L -> stringResource(R.string.hub_time_min, diffMinutes)
-        diffMinutes < 60L * 24L -> stringResource(R.string.hub_time_hour, diffMinutes / 60L)
-        diffMinutes < 60L * 48L -> stringResource(R.string.hub_time_yesterday)
-        diffMinutes < 60L * 24L * 7L -> stringResource(R.string.hub_time_days, diffMinutes / (60L * 24L))
-        else -> remember(parsed) {
-            SimpleDateFormat.getDateInstance(java.text.SimpleDateFormat.SHORT, Locale.getDefault()).format(Date(parsed))
+}
+
+@Composable
+private fun WorkspaceShortcut(workspace: EditorWorkspace, enabled: Boolean, open: () -> Unit, modifier: Modifier) {
+    Surface(
+        onClick = open,
+        enabled = enabled,
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, KenkernOutlineSoft),
+        color = KenkernSurface,
+        modifier = modifier.heightIn(min = 52.dp)
+    ) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            val alpha = if (enabled) 1f else 0.55f
+            Icon(workspace.icon, null, tint = KenkernAmber.copy(alpha = alpha), modifier = Modifier.size(18.dp))
+            Text(stringResource(workspace.label), color = KenkernTextHigh.copy(alpha = alpha), fontSize = 13.sp)
         }
     }
 }
 
-/** Estado vazio: mensagem curta + um único botão de criar. */
 @Composable
-private fun EmptyProjectsState(isLoading: Boolean, onCreate: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 32.dp)
-    ) {
-        Text(
-            if (isLoading) stringResource(R.string.hub_loading) else stringResource(R.string.hub_no_projects),
-            fontSize = 13.sp,
-            color = KenkernTextMid
-        )
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = onCreate,
-            enabled = !isLoading,
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = KenkernAmber,
-                contentColor = Color(0xFF1E1E1E)
-            ),
-            contentPadding = PaddingValues(horizontal = 12.dp),
-            modifier = Modifier.height(40.dp)
-        ) {
-            Text(stringResource(R.string.hub_create_project), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-        }
-    }
+private fun EmptyProjectsState(isLoading: Boolean) {
+    Text(
+        stringResource(if (isLoading) R.string.hub_loading else R.string.hub_no_projects),
+        fontSize = 13.sp,
+        color = KenkernTextMid,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(20.dp)
+    )
+}
+
+@Composable
+private fun activityLabel(recent: RecentProject): String {
+    val opened = recent.lastOpenedAt > 0L
+    val instant = if (opened) recent.lastOpenedAt else recent.addedAt
+    if (instant <= 0L) return recent.project.createdAt
+    val locale = LocalConfiguration.current.locales[0]
+    val date = remember(instant, locale) { DateFormat.getDateInstance(DateFormat.MEDIUM, locale).format(Date(instant)) }
+    return stringResource(if (opened) R.string.hub_last_opened else R.string.hub_added, date)
 }
 
 /**
@@ -454,13 +429,16 @@ private fun EmptyProjectsState(isLoading: Boolean, onCreate: () -> Unit) {
  */
 @Composable
 private fun ProjectCard(
-    project: ProjectHandle,
+    recent: RecentProject,
+    showArt: Boolean,
+    enabled: Boolean,
     onOpen: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onDuplicate: () -> Unit,
     onExportar: () -> Unit
 ) {
+    val project = recent.project
     var menuOpen by remember { mutableStateOf(false) }
 
     Surface(
@@ -470,7 +448,7 @@ private fun ProjectCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onOpen)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onOpen)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -479,20 +457,21 @@ private fun ProjectCard(
                 .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = 4.dp)
         ) {
             // Miniatura 16:9 (placeholder até haver captura real)
-            Box(
-                Modifier
-                    .size(width = 96.dp, height = 54.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xFF3A5A8C), Color(0xFFB8C9DC))
+            if (showArt) {
+                Box(
+                    Modifier
+                        .size(width = 96.dp, height = 54.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF3A5A8C), Color(0xFFB8C9DC))
+                            )
                         )
-                    )
-            ) {
-                Canvas(Modifier.fillMaxSize()) { drawCubeSilhouette(size.width, size.height) }
+                ) {
+                    Canvas(Modifier.fillMaxSize()) { drawCubeSilhouette(size.width, size.height) }
+                }
+                Spacer(Modifier.width(12.dp))
             }
-
-            Spacer(Modifier.width(12.dp))
 
             Column(Modifier.weight(1f)) {
                 Text(
@@ -505,7 +484,7 @@ private fun ProjectCard(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    relativeDate(project.createdAt),
+                    activityLabel(recent),
                     fontSize = 12.sp,
                     color = KenkernTextLow,
                     maxLines = 1,
@@ -514,7 +493,7 @@ private fun ProjectCard(
             }
 
             Box {
-                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { menuOpen = true }, enabled = enabled, modifier = Modifier.size(48.dp)) {
                     Icon(
                         Icons.Filled.MoreVert,
                         contentDescription = stringResource(R.string.hub_menu_of, project.name),
@@ -634,7 +613,7 @@ private fun RenameProjectDialog(
 
 @Composable
 private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
-    var name by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
     val valid = name.trim().length >= 2
     AlertDialog(
         onDismissRequest = onDismiss,

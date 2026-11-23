@@ -107,6 +107,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kenkern.engine.editor.EditorViewModel
+import com.kenkern.engine.editor.EditorWorkspace
+import com.kenkern.engine.ui.hub.EditorWorkspaceSelector
+import com.kenkern.engine.ui.hub.label
+import com.kenkern.engine.ui.hub.TextureWorkspacePanel
+import com.kenkern.engine.ui.panels.AnimationWorkspacePanel
 import com.kenkern.engine.editor.PanelUiState
 import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.diag.KenkernLog
@@ -263,18 +268,29 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
         }
     }
 
-    val hierarchy = remember(orientacao) {
-        vm.panelStore.get("hierarchy", orientacao, "Hierarquia", 200f, 140f, 320f, 280f, 340f)
+    val workspace by vm.workspace
+    val inspectorTitle = stringResource(if (workspace == EditorWorkspace.MODEL) R.string.hub_inspector else workspace.label)
+    val hierarchyTitle = stringResource(R.string.hub_hierarchy)
+    val hierarchy = remember(orientacao, workspace, hierarchyTitle) {
+        vm.panelStore.get(workspace.panelKey("hierarchy"), orientacao, hierarchyTitle, 200f, 140f, 320f, 280f, 340f,
+            defaultVisible = workspace.hierarchyByDefault)
     }
-    val inspector = remember(orientacao) {
-        vm.panelStore.get("inspector", orientacao, "Inspetor", 240f, 180f, 360f, 300f, 400f)
+    val inspector = remember(orientacao, workspace, inspectorTitle) {
+        vm.panelStore.get(workspace.panelKey("inspector"), orientacao, inspectorTitle, 240f, 180f, 360f, 300f, 400f)
     }
-    val persistHierarchy = remember { { vm.panelStore.persist(hierarchy) } }
-    val persistInspector = remember { { vm.panelStore.persist(inspector) } }
+    val persistHierarchy = remember(hierarchy) { { vm.panelStore.persist(hierarchy) } }
+    val persistInspector = remember(inspector) { { vm.panelStore.persist(inspector) } }
+    val workspaceInspector: @Composable () -> Unit = {
+        when (workspace) {
+            EditorWorkspace.MODEL -> InspectorPanel(vm)
+            EditorWorkspace.ANIMATE -> AnimationWorkspacePanel(vm)
+            EditorWorkspace.TEXTURE -> TextureWorkspacePanel(vm, onImportClick)
+        }
+    }
 
     // E4: quem está na frente — tocar em um painel flutuante o traz para o
     // primeiro plano (zIndex); Resetar layout devolve o padrão profissional.
-    var painelFoco by remember { mutableStateOf<String?>(null) }
+    var painelFoco by remember(workspace) { mutableStateOf<String?>(null) }
     val resetarLayout = {
         vm.panelStore.resetar(hierarchy)
         vm.panelStore.resetar(inspector)
@@ -487,7 +503,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     inspector.visible.value = false
                                     persistInspector()
                                 }
-                            ) { InspectorPanel(vm) }
+                            ) { workspaceInspector() }
                         }
 
                         // Modo flutuante (exceção): contido no viewport
@@ -525,7 +541,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     inspector.visible.value = false
                                     persistInspector()
                                 }
-                            ) { InspectorPanel(vm) }
+                            ) { workspaceInspector() }
                         }
                     }
 
@@ -551,7 +567,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 inspector.visible.value = false
                                 persistInspector()
                             }
-                        ) { InspectorPanel(vm) }
+                        ) { workspaceInspector() }
                     }
                 }
             }
@@ -886,6 +902,8 @@ private fun EditorTopBar(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxHeight().horizontalScroll(rolagemTopBar)
                 ) {
+                    EditorWorkspaceSelector(vm.workspace.value) { vm.workspace.value = it }
+                    TopBarSeparator()
                     TopBarIcon(
                         Icons.AutoMirrored.Filled.Undo, stringResource(R.string.editor_undo),
                         enabled = vm.canUndo

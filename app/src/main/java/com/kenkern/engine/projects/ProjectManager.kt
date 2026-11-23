@@ -115,39 +115,39 @@ object ProjectManager {
                     return null
                 }
             }
-        val created = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(Date())
-        val meta = buildString {
-            appendLine("KENKERN_PROJECT")
-            appendLine("format=$FORMAT_VERSION")
-            appendLine("engine=$ENGINE_VERSION")
-            appendLine("name=${CkFormat.quote(projectName.trim())}")
-            appendLine("folder=${CkFormat.quote(root.name)}")
-            appendLine("created=${CkFormat.quote(created)}")
-            appendLine("scene=scenes/cena.ck")
-        }
-        // Cena padrão (T0.2, adendo v4): TIPOS com name NULO — a Hierarquia
-        // exibe o RÓTULO do tipo no idioma do app ("Group Nick"/"Nick de Grupo"
-        // + "Mesh Nick"/"Nick de Malha"); o usuário renomeia se quiser. O cubo
-        // mantém a classe Spin (mostra o loop de funções em Play).
-        val scene = Scene(projectName.trim())
-        val world = scene.createRootNick(
-            null, kind = NickKindRegistry.NICK_GROUP
-        )
-        val cube = scene.createNick(
-            null, world, kind = NickKindRegistry.NICK_MESH
-        )
-        cube.transform.setLocalPosition(0f, 0.5f, 0f)
-        NickClassRegistry.createInstance("Spin")?.let { cube.addClassInstance(it) }
-        // Publica o marcador que torna o projeto visível ao Hub somente após a cena.
-        if (!writeFileAtomic(File(root, "scenes/cena.ck"), CkFormat.writeToString(scene)) ||
-            !writeFileAtomic(File(root, PROJECT_FILE), meta)) {
-            lastError = "Falha ao inicializar a cena ou os metadados do projeto"
-            return null
-        }
-        published = true
-        writeFileAtomic(File(root, "nicks/README.txt"), "Nicks salvos individualmente (.ck) ficam nesta pasta.\n")
-        writeFileAtomic(File(root, "assets/README.txt"), "Assets do projeto (malhas .kern, texturas, fontes).\n")
-        ProjectHandle(root, projectName.trim(), created)
+            val created = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(Date())
+            val meta = buildString {
+                appendLine("KENKERN_PROJECT")
+                appendLine("format=$FORMAT_VERSION")
+                appendLine("engine=$ENGINE_VERSION")
+                appendLine("name=${CkFormat.quote(projectName.trim())}")
+                appendLine("folder=${CkFormat.quote(root.name)}")
+                appendLine("created=${CkFormat.quote(created)}")
+                appendLine("scene=scenes/cena.ck")
+            }
+            // Cena padrão (T0.2, adendo v4): TIPOS com name NULO — a Hierarquia
+            // exibe o RÓTULO do tipo no idioma do app ("Group Nick"/"Nick de Grupo"
+            // + "Mesh Nick"/"Nick de Malha"); o usuário renomeia se quiser. O cubo
+            // mantém a classe Spin (mostra o loop de funções em Play).
+            val scene = Scene(projectName.trim())
+            val world = scene.createRootNick(
+                null, kind = NickKindRegistry.NICK_GROUP
+            )
+            val cube = scene.createNick(
+                null, world, kind = NickKindRegistry.NICK_MESH
+            )
+            cube.transform.setLocalPosition(0f, 0.5f, 0f)
+            NickClassRegistry.createInstance("Spin")?.let { cube.addClassInstance(it) }
+            // Publica o marcador que torna o projeto visível ao Hub somente após a cena.
+            if (!writeFileAtomic(File(root, "scenes/cena.ck"), CkFormat.writeToString(scene)) ||
+                !writeFileAtomic(File(root, PROJECT_FILE), meta)) {
+                lastError = "Falha ao inicializar a cena ou os metadados do projeto"
+                return null
+            }
+            published = true
+            writeFileAtomic(File(root, "nicks/README.txt"), "Nicks salvos individualmente (.ck) ficam nesta pasta.\n")
+            writeFileAtomic(File(root, "assets/README.txt"), "Assets do projeto (malhas .kern, texturas, fontes).\n")
+            ProjectHandle(root, projectName.trim(), created)
         } finally {
             // Undo only a directory reserved by this creation; never an existing project.
             if (!published && !root.deleteRecursively()) {

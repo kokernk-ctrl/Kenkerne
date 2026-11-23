@@ -48,6 +48,7 @@ import com.kenkern.engine.core.MalhaNick
 import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
+import com.kenkern.engine.core.SpinFunction
 import com.kenkern.engine.editor.EditorViewModel
 import com.kenkern.engine.ui.nickDisplayName
 import com.kenkern.engine.ui.nickKindIcon
@@ -310,6 +311,30 @@ private fun formaLocalizada(forma: String): String = stringResource(
         else -> R.string.collider_box
     }
 )
+
+/** Focused inspector for the motion tool implemented today; no timeline placeholders. */
+@Composable
+internal fun AnimationWorkspacePanel(vm: EditorViewModel) {
+    vm.revision.intValue
+    val nick = vm.selection.value?.let { vm.scene.value?.findNick(it) }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(stringResource(R.string.hub_animation_tools), fontSize = 13.sp, color = KenkernTextMid)
+        if (nick != null) {
+            Text(nickDisplayName(nick), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            val spin = nick.findClassInstance(SpinFunction.className)
+            if (spin != null) {
+                ClassCard(vm, nick.id, spin)
+            } else {
+                TextButton(onClick = { vm.addClassToSelected(SpinFunction.className) }) {
+                    Text(stringResource(R.string.hub_add_spin))
+                }
+            }
+        }
+    }
+}
 
 /** Rótulo localizado da CATEGORIA de classes (chave estável → texto do idioma). */
 @Composable
