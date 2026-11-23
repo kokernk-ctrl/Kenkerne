@@ -82,7 +82,7 @@ LOD0, índices u16 com remap por parte, manter JPEG de origem em disco (Sponza
 
 ## MARCO JOGÁVEL (M1) — com os Nicks reais (adendo v4)
 
-M1.1–M1.6 entregues (PARADA B v0.1.21 + PARADA C v0.1.22 — COMPILADO+CI; ver CHANGELOG):
+M1.1–M1.8 entregues (PARADAS B/C/D, v0.1.21–v0.1.23 — COMPILADO+CI; ver CHANGELOG). MARCO M1 FECHADO:
 M1.1 Lua ligado aos Nicks (classe Script + params + nick/scene/engine +
 eventos + limite de instruções + prova no "release"); M1.2 Colliders
 (caixa/esfera/cápsula param pela AABB da forma — sem solver completo),

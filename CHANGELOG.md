@@ -1,5 +1,50 @@
 # KENKERN — CHANGELOG
 
+## v0.1.23 — PARADA D: EXPORTAR O JOGO (M1.7 + M1.8) — MARCO M1 FECHADO
+
+> 2 tarefas, um commit por ID (M1.7, M1.8), CI verde em cada uma.
+
+### M1.7 — Template "Coletar moedas" selecionável ao criar projeto
+
+- O projeto nasce JOGÁVEL: Chão (body.static), Herói (body.player), Ponto de
+  Surgimento, Câmera Seguidora e 3 moedas (area.volume com classe Script:
+  `on_trigger` soma `ui.contagem("moedas", 1)` e se destrói via
+  `nick.destroy()`). Player Body + Static Body + Area + Lua + input + câmera
+  seguidora FUNCIONANDO JUNTOS (M1.1–M1.6 fechando o ciclo no template).
+- **ui.contagem(nome, delta)** (novo no Lua M1.5): contador ACUMULATIVO
+  compartilhado por todos os scripts da sessão — aparece no overlay.
+- **UI**: seletor de template no diálogo de Novo projeto ("Vazio" /
+  "Coletar moedas") → `ProjectManager.createProject(name, template)`.
+- **Provas**: `TemplateColetarMoedasTest` (2 — conteúdo do template; o JOGO
+  de verdade: coleta das moedas 1 e 2 soma o contador compartilhado, as
+  moedas se destroem e a 3ª permanece). 312 testes verdes (310 + 2). OBS: o
+  commit do M1.7 saiu com o teste vermelho (comentário `//` que o Lua não
+  compila) e foi corrigido no commit seguinte — registrado.
+
+### M1.8 — Exportar APK do jogo por botão
+
+- Botão **"Exportar jogo"** na TopBar → diálogo: repositório (dono/repo),
+  arquivo do workflow, branch e **token de acesso pessoal (escopo workflow)**
+  em campo de SENHA — o token fica SÓ EM MEMÓRIA (nunca no repo, nunca em
+  log; só o código HTTP é registrado no Console).
+- `ExportadorJogo` (novo): montagem PURA da requisição (URL do
+  workflow_dispatch, corpo JSON com o nome do projeto nos inputs, validação
+  do token ANTES da rede, repositório malformado = erro claro) + POST via
+  HttpURLConnection — o GitHub devolve 204 = dispatch aceito e o **APK
+  assinado sai como ARTIFACT do workflow** (Actions → artifacts).
+- `docs/EXPORTAR_JOGO.md`: workflow de exemplo (workflow_dispatch com input
+  "projeto"), credenciais necessárias e os passos.
+- **Provas**: `ExportadorJogoTest` (4 — URL do dispatch, URL colada de pasta,
+  workflow padrão, repositório malformado, escape de aspas, token
+  ausente/curto recusado antes da rede). 316 testes verdes (312 + 4).
+
+### Fechamento da PARADA D (F) — META FINAL DO M1 ALCANÇADA
+
+- O usuário CRIA o projeto "Coletar moedas" (template), JOGA no editor com
+  Play (joystick/pulo/contador/câmera) e EXPORTA o APK do jogo por botão.
+- Versão 0.1.23-fase2 (versionCode 24); docs atualizados; lint sem erros
+  novos; Release `v0.1.23-fase2-teste` com APK assinado.
+
 ## v0.1.22 — PARADA C: JOGÁVEL NO EDITOR (M1.3–M1.6)
 
 > 4 tarefas, um commit por ID (M1.3, M1.4, M1.5, M1.6), CI verde em cada uma.
@@ -522,6 +567,51 @@
   463 KB com etcpak+meshoptimizer+handler). 184 testes JVM verdes.
 
 # KENKERN — CHANGELOG
+
+## v0.1.23 — PARADA D: EXPORTAR O JOGO (M1.7 + M1.8) — MARCO M1 FECHADO
+
+> 2 tarefas, um commit por ID (M1.7, M1.8), CI verde em cada uma.
+
+### M1.7 — Template "Coletar moedas" selecionável ao criar projeto
+
+- O projeto nasce JOGÁVEL: Chão (body.static), Herói (body.player), Ponto de
+  Surgimento, Câmera Seguidora e 3 moedas (area.volume com classe Script:
+  `on_trigger` soma `ui.contagem("moedas", 1)` e se destrói via
+  `nick.destroy()`). Player Body + Static Body + Area + Lua + input + câmera
+  seguidora FUNCIONANDO JUNTOS (M1.1–M1.6 fechando o ciclo no template).
+- **ui.contagem(nome, delta)** (novo no Lua M1.5): contador ACUMULATIVO
+  compartilhado por todos os scripts da sessão — aparece no overlay.
+- **UI**: seletor de template no diálogo de Novo projeto ("Vazio" /
+  "Coletar moedas") → `ProjectManager.createProject(name, template)`.
+- **Provas**: `TemplateColetarMoedasTest` (2 — conteúdo do template; o JOGO
+  de verdade: coleta das moedas 1 e 2 soma o contador compartilhado, as
+  moedas se destroem e a 3ª permanece). 312 testes verdes (310 + 2). OBS: o
+  commit do M1.7 saiu com o teste vermelho (comentário `//` que o Lua não
+  compila) e foi corrigido no commit seguinte — registrado.
+
+### M1.8 — Exportar APK do jogo por botão
+
+- Botão **"Exportar jogo"** na TopBar → diálogo: repositório (dono/repo),
+  arquivo do workflow, branch e **token de acesso pessoal (escopo workflow)**
+  em campo de SENHA — o token fica SÓ EM MEMÓRIA (nunca no repo, nunca em
+  log; só o código HTTP é registrado no Console).
+- `ExportadorJogo` (novo): montagem PURA da requisição (URL do
+  workflow_dispatch, corpo JSON com o nome do projeto nos inputs, validação
+  do token ANTES da rede, repositório malformado = erro claro) + POST via
+  HttpURLConnection — o GitHub devolve 204 = dispatch aceito e o **APK
+  assinado sai como ARTIFACT do workflow** (Actions → artifacts).
+- `docs/EXPORTAR_JOGO.md`: workflow de exemplo (workflow_dispatch com input
+  "projeto"), credenciais necessárias e os passos.
+- **Provas**: `ExportadorJogoTest` (4 — URL do dispatch, URL colada de pasta,
+  workflow padrão, repositório malformado, escape de aspas, token
+  ausente/curto recusado antes da rede). 316 testes verdes (312 + 4).
+
+### Fechamento da PARADA D (F) — META FINAL DO M1 ALCANÇADA
+
+- O usuário CRIA o projeto "Coletar moedas" (template), JOGA no editor com
+  Play (joystick/pulo/contador/câmera) e EXPORTA o APK do jogo por botão.
+- Versão 0.1.23-fase2 (versionCode 24); docs atualizados; lint sem erros
+  novos; Release `v0.1.23-fase2-teste` com APK assinado.
 
 ## v0.1.22 — PARADA C: JOGÁVEL NO EDITOR (M1.3–M1.6)
 

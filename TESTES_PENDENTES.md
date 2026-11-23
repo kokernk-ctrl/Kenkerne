@@ -1,5 +1,29 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## PARADA D — v0.1.23: exportar o jogo (M1.7 + M1.8) — MARCO M1 FECHADO
+
+> 2 tarefas COMPILADO+CI (316 testes JVM verdes). Aceite curto.
+
+### M1.7 — template "Coletar moedas"
+
+1. Hub → "Novo projeto" → chip **"Coletar moedas"** → criar: a cena abre com
+   Chão, Herói, Ponto de Surgimento, Câmera Seguidora e 3 moedas.
+2. Play: mover o Herói com o joystick até cada moeda — a moeda DESAPARECE ao
+   ser tocada e o contador "moedas: N" sobe no canto (1, 2, 3).
+
+### M1.8 — exportar o jogo
+
+3. Editor → botão "Exportar jogo": diálogo com repositório, workflow, branch
+   e token (campo de senha). Com um PAT de escopo `workflow` e o
+   `exportar-jogo.yml` no repositório (docs/EXPORTAR_JOGO.md): "Disparar
+   exportação" → "OK — dispatch aceito"; o APK assinado do jogo aparece como
+   artifact em Actions. Erros mostram o código HTTP e o que conferir.
+
+### Meta final do M1 (fechamento do marco)
+
+4. O ciclo completo: CRIAR o projeto pelo template → JOGAR no editor (Play)
+   → EXPORTAR o APK por botão → instalar o APK do jogo no aparelho.
+
 ## PARADA C — v0.1.22: jogável no editor (M1.3–M1.6)
 
 > 4 tarefas COMPILADO+CI (310 testes JVM verdes). Aceite curto.
