@@ -6,9 +6,7 @@ import com.kenkern.engine.assets.image.KimgMip
 import com.kenkern.engine.assets.image.KimgWriter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.mockito.Mockito
 import java.io.File
 
 class TextureLibraryContextLossTest {
@@ -36,19 +34,16 @@ class TextureLibraryContextLossTest {
 
             TextureLibrary.limpar()
             TextureLibrary.baseDir = root
-            val firstBackend = Mockito.mock(RenderBackend::class.java)
-            Mockito.`when`(firstBackend.createTextureFromKimg(Mockito.any(ByteArray::class.java)))
-                .thenReturn(17)
+            val firstBackend = RenderBackendTestDouble().apply { nextTextureHandle = 17 }
             TextureLibrary.marcarNecessario(relativePath)
             assertEquals(1, TextureLibrary.processarPendentes(firstBackend))
             assertEquals(17, TextureLibrary.handleDe(relativePath))
+            assertEquals(1, firstBackend.textureUploads)
 
             // Equivale à invalidação dos handles ao criar um novo contexto EGL.
             TextureLibrary.limpar()
             assertEquals(0, TextureLibrary.handleDe(relativePath))
-            val newBackend = Mockito.mock(RenderBackend::class.java)
-            Mockito.`when`(newBackend.createTextureFromKimg(Mockito.any(ByteArray::class.java)))
-                .thenReturn(29)
+            val newBackend = RenderBackendTestDouble().apply { nextTextureHandle = 29 }
             TextureLibrary.marcarNecessario(relativePath)
             assertEquals(1, TextureLibrary.processarPendentes(newBackend))
             assertEquals(29, TextureLibrary.handleDe(relativePath))
@@ -57,7 +52,7 @@ class TextureLibraryContextLossTest {
                 17,
                 TextureLibrary.handleDe(relativePath)
             )
-            Mockito.verify(newBackend).createTextureFromKimg(Mockito.any(ByteArray::class.java))
+            assertEquals(1, newBackend.textureUploads)
         } finally {
             TextureLibrary.limpar()
             TextureLibrary.baseDir = null
