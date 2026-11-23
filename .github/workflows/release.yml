@@ -76,6 +76,7 @@ jobs:
       - name: Validar símbolos JNI da .so do APK
         run: |
           APK="$(ls app/build/outputs/apk/release/*.apk)"
+          python3 scripts/check_android_apk.py "$APK"
           mkdir -p "$RUNNER_TEMP/apk-jni"
           unzip -q "$APK" -d "$RUNNER_TEMP/apk-jni"
           NM="$ANDROID_HOME/ndk/27.3.13750724/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
