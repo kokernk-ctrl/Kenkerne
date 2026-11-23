@@ -75,6 +75,8 @@ M1/FORJA darem forma própria. Auxiliares NÃO contam como malha na StatusBar
 | light.point | Point Light Nick | Nick de Luz Pontual | Fonte luminosa pontual com alcance ao redor da posição. | Luz | IMPLEMENTADO (T0.2; auxiliar ESFERA no E5; **H2 v0.1.20: ILUMINA — até 4/frame por contribuição, atenuação suave, esfera de alcance REAL; Inspetor cor/intensidade/alcance/ligado**) | T0.2 |
 | light.spot | Spot Light Nick | Nick de Luz de Foco | Fonte pontual que projeta um cone de luz orientado. | Luz | IMPLEMENTADO (T0.2; auxiliar CONE no E5; **H2 v0.1.20: ILUMINA — cone com ângulo interno/externo e alcance REAIS; Inspetor cor/intensidade/alcance/ângulos/ligado**) | T0.2 |
 
+**M1.2 (v0.1.21) — Área FUNCIONA como gatilho:** a area.volume dispara `on_trigger(nome)` UMA VEZ na ENTRADA do jogador em Play (sair e voltar dispara de novo); volume = Colisor da área (se houver) ou cubo de 1 m.
+
 **H2 (v0.1.20) — a luz Nick AGORA ilumina a cena (LUME, editor e Play):**
 classe "Luz" no Nick (cor VEC3, intensidade, alcance, ângulo interno/externo,
 ligado — Inspetor en/pt; Nick antigo sem a classe usa os defaults do tipo).

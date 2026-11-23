@@ -35,3 +35,20 @@ if spin then spin.speed = 90.0 end
 Regras: script nunca derruba o app (erro de runtime vira log + desativa o
 script do Nick); orçamento de tempo por tick; zero alocação na ponte de
 chamada frequente.
+
+## Subconjunto IMPLEMENTADO (M1.1, v0.1.21)
+
+O M1.1 entregou a API MÍNIMA ligada aos Nicks (o contrato completo acima
+continua planejado até a Fase 5):
+
+- Script = CLASSE do Nick ("Script"; campo `fonte`); os demais campos da
+  classe são VARIÁVEIS PÚBLICAS (`params.<nome>`; editáveis no Inspetor).
+- `nick`: set_position(x,y,z) · position() → {x,y,z} · set_scale(x,y,z) ·
+  set_active(bool) · name() · destroy()
+- `scene`: find(nome) → handle (mesmas funções) · destroy(handle) ·
+  spawn(x,y,z) → cubo de 1 m (prefab simples) · log(msg) · emit(evento,valor) ·
+  on(evento,fn)
+- `engine.time()` (segundos desde o início do Play) · on_update(dt)
+- Eventos do M1.2: on_collision(nomeDoCorpo) · on_trigger(nomeDaArea)
+- Limites: orçamento de tempo (4 ms/tick) + LIMITE DE INSTRUÇÕES
+  (8 M/chamada, hook do LuaJ) — estourou = script desativado, jogo continua.

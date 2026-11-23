@@ -18,10 +18,20 @@ de tarefas do BACKLOG sem refazer o que está pronto.
   clara no ImportReport/Console, checagem "materiais"). 277 testes JVM verdes.
   **Release `v0.1.20-fase2-teste` publicada — aguardando aceite no aparelho**
   (16 itens no TESTES_PENDENTES.md).
-- **Prioridade seguinte — PARADA B (v0.1.21)**: T0.5 Hub novo (2.5D com
-  paralaxe) + M1.1 Lua ligado aos Nicks + M1.2 Colliders. Depois PARADA C
-  (v0.1.22: input/câmera 3ª pessoa/UI de jogo/Play-Stop reais) e PARADA D
-  (v0.1.23: template "Coletar moedas" + exportar APK do jogo).
+- **v0.1.21 — PARADA B (T0.5 + M1.1 + M1.2) COMPILADO**: T0.5 Hub novo
+  (fundo 2.5D com paralaxe + buraco negro sutil a 30 FPS, pausa quando
+  invisível, "reduzir animações", atalhos Modelar/Animar/Texturizar →
+  projeto "Sandbox"); M1.1 Lua ligado aos Nicks (classe Script + variáveis
+  públicas params + nick/scene/engine + eventos + LIMITE DE INSTRUÇÕES
+  provado no "release"); M1.2 Colliders (todas as formas param pela AABB da
+  forma — sem solver completo), gatilhos on_trigger na borda e
+  on_collision; gravidade básica. 297 testes JVM verdes. **Release
+  `v0.1.21-fase2-teste` publicada — aguardando aceite no aparelho.**
+- **Prioridade seguinte — PARADA C (v0.1.22)**: M1.3 input de jogo
+  (Joystick Nick + botões de ação + ações nomeadas), M1.4 câmera de jogador
+  3ª pessoa que não atravessa o chão, M1.5 UI de jogo mínima (Lua), M1.6
+  Play/Stop reais com snapshot completo. Depois PARADA D (v0.1.23: template
+  "Coletar moedas" + exportar APK do jogo).
 - **T0.4 parcial — resolução de texturas**: opção Original, redução proporcional
   e cache por resolução efetiva e qualidade ETC2. O usuário aprovou no aparelho
   a comparação 512 × Original e a reabertura do projeto. (O PBR completo entrou
@@ -80,8 +90,8 @@ de tarefas do BACKLOG sem refazer o que está pronto.
   itens de aceite implementados; (2) nenhum `runCatching` engole erro em
   silêncio — Log + Console (`KenkernLog`) + tela Diagnóstico; auditoria em
   `docs/RUNCATCHING_AUDIT.md`.
-- **App**: v0.1.20 (versionCode 21) — release de pré-lançamento
-  `v0.1.20-fase2-teste` com APK assinado (CI: 277 testes + assembleRelease +
+- **App**: v0.1.21 (versionCode 22) — release de pré-lançamento
+  `v0.1.21-fase2-teste` com APK assinado (CI: 297 testes + assembleRelease +
   llvm-nm E1 sobre a .so do APK).
 
 ## O que existe (Fases 1–2, validado por CI)

@@ -1,5 +1,81 @@
 # KENKERN — CHANGELOG
 
+## v0.1.21 — PARADA B: HUB NOVO (T0.5) + LUA NOS NICKS (M1.1) + COLISORES (M1.2)
+
+> 3 tarefas, um commit por ID (T0.5, M1.1, M1.2), CI verde em cada uma.
+
+### T0.5 — Hub novo (fundo 2.5D, atalhos Sandbox)
+
+- **Fundo 2.5D**: `HubCena2D` (novo, PURO e testado) + `HubFundo2D` (Canvas) —
+  paralaxe de 3 camadas de estrelas (posições determinísticas) e BURACO NEGRO
+  sutil (disco escuro + halo fraco + anel de acreção com 2 brilhos em órbita
+  achatada, pulso 0,85–1,0). **30 FPS de verdade**: laço `withFrameNanos` com
+  throttle de 1/30 s (em telas de 60/90 Hz o fundo pula frames de propósito).
+- **Pausa quando o Hub não está visível**: LifecycleEventObserver — ON_PAUSE
+  para o laço (nenhum frame do fundo roda em segundo plano); ON_RESUME retoma.
+- **"Reduzir animações"**: `Settings.Global.ANIMATOR_DURATION_SCALE ≤ 0,01` →
+  o laço NEM COMEÇA (fundo estático; o tempo congela).
+- **Atalhos** Modelar/Animar/Texturizar: linha "Começar:" sob o cabeçalho —
+  abrem o projeto **"Sandbox"** criado automaticamente
+  (`EditorViewModel.abrirOuCriarSandbox`: abre se existe; senão cria e entra).
+- Marca: usa **"Kenkern" + versão** (sem perguntar ao usuário, como pedido).
+  Botão "Novo projeto" compacto, recentes, seletor de idioma e Diagnóstico já
+  existiam e continuam.
+- **Provas**: `HubCena2DTest` (5 JVM — FPS alvo/intervalo, paralaxe profunda
+  anda menos, órbita dentro do raio e periódica, pulso sutil que nunca apaga,
+  reduzir animações congela). 282 testes verdes (277 + 5).
+
+### M1.1 — Lua ligado aos Nicks (API mínima de LUA_API.md)
+
+- **Script como CLASSE do Nick**: classe "Script" (campo `fonte` = código Lua;
+  os DEMAIS campos são VARIÁVEIS PÚBLICAS → entram no script como
+  `params.<nome>` (FLOAT/BOOL/STRING/VEC3) e se editam no Inspetor).
+- **Ponte mínima** (`engine/NickLuaScripts.kt`): 1 runtime por Nick com classe
+  Script ATIVA na CÓPIA de Play — `nick` (self): set_position/position/
+  set_scale/set_active/name/destroy; `scene`: find (nome → handle), destroy,
+  spawn (prefab simples: cubo de 1 m), log (Console), emit/on (eventos);
+  `engine.time()`. Stop descarta tudo — a cena do editor NUNCA é tocada.
+- **LIMITE DE INSTRUÇÕES**: hook de contagem do LuaJ (DebugLib +
+  `debug.sethook(hook, "", N)`) — "while true do end" para com LuaError
+  "LIMITE DE INSTRUÇÕES" e o jogo CONTINUA (o antigo travamento documentado
+  no F5.1 não existe mais); padrão 8 M instruções/chamada; orçamento de tempo
+  (4 ms/tick) permanece como 2ª rede.
+- **Erro nunca derruba o jogo**: sintaxe/runtime/orçamento/instruções
+  DESATIVAM o script com a mensagem no Console; evento que falha só registra.
+- **R8/checagem "release"**: `-keep class org.luaj.**` confirmado; `checarLua`
+  do Diagnóstico agora também executa um script real com `while true do end`
+  e EXIGE a parada pelo limite com a mensagem correta no release minificado.
+- **Provas**: `NickLuaScriptsTest` (9 JVM — script move o nick via
+  params.velocidade; find+set_active; spawn+handle; destroy; engine.time
+  cresce; erro desativa UM script e o jogo continua; limite para o laço
+  infinito em ms; on_collision + scene.on; params FLOAT/STRING/BOOL). 291
+  testes verdes (282 + 9).
+
+### M1.2 — Colliders (caixa/esfera/cápsula), gatilhos e eventos
+
+- **Parada em TODAS as formas**: body.collider agora bloqueia com a AABB DA
+  FORMA (esfera: raio = média das meia-extensões; cápsula: raio = média de
+  hx/hz com altura hy; cilindro/convexo/malha: AABB) — a MESMA convenção do
+  wireframe do editor. **Sem solver completo** (documentado; solver exato na
+  Fase 8+): nascimento DENTRO de um corpo atravessa. Gravidade básica mantida.
+- **GATILHOS**: cada area.volume ATIVO (volume = Colisor da área se houver;
+  senão o cubo de 1 m) dispara `on_trigger(nome)` UMA VEZ na ENTRADA do
+  jogador (borda false→true; sair e voltar dispara de novo) — no script do
+  jogador (self) e no script da ÁREA.
+- **on_collision(nomeDoCorpo)**: dispara quando o jogador PARA contra um
+  corpo no step — via ponte M1.1 (`runtime.scripts`).
+- **Provas**: `M1CollidersTest` (5 JVM — on_collision com o nome da parede;
+  on_trigger 1× na entrada e de novo ao voltar; volume do Colisor de 3 m;
+  área inativa não dispara; gravidade para no chão) + NickPlayRuntimeTest
+  atualizado ao contrato NOVO (esfera/cápsula bloqueiam; inativo ignora).
+  297 testes verdes (291 + 5, 2 atualizados).
+
+### Fechamento da PARADA B (F)
+
+- Versão 0.1.21-fase2 (versionCode 22); CHANGELOG/TESTES_PENDENTES/NICKS.md/
+  LUA_API.md/BACKLOG.md/PROGRESS.md atualizados; lint sem erros novos;
+  Release `v0.1.21-fase2-teste` com APK assinado.
+
 ## v0.1.20 — PARADA A: LUZ E CÂMERA (H1–H3) + IMPORTAÇÃO FIEL (T0.4)
 
 > 4 tarefas, um commit por ID (H1, H2, H3, T0.4), CI verde em cada uma.
@@ -392,6 +468,82 @@
   463 KB com etcpak+meshoptimizer+handler). 184 testes JVM verdes.
 
 # KENKERN — CHANGELOG
+
+## v0.1.21 — PARADA B: HUB NOVO (T0.5) + LUA NOS NICKS (M1.1) + COLISORES (M1.2)
+
+> 3 tarefas, um commit por ID (T0.5, M1.1, M1.2), CI verde em cada uma.
+
+### T0.5 — Hub novo (fundo 2.5D, atalhos Sandbox)
+
+- **Fundo 2.5D**: `HubCena2D` (novo, PURO e testado) + `HubFundo2D` (Canvas) —
+  paralaxe de 3 camadas de estrelas (posições determinísticas) e BURACO NEGRO
+  sutil (disco escuro + halo fraco + anel de acreção com 2 brilhos em órbita
+  achatada, pulso 0,85–1,0). **30 FPS de verdade**: laço `withFrameNanos` com
+  throttle de 1/30 s (em telas de 60/90 Hz o fundo pula frames de propósito).
+- **Pausa quando o Hub não está visível**: LifecycleEventObserver — ON_PAUSE
+  para o laço (nenhum frame do fundo roda em segundo plano); ON_RESUME retoma.
+- **"Reduzir animações"**: `Settings.Global.ANIMATOR_DURATION_SCALE ≤ 0,01` →
+  o laço NEM COMEÇA (fundo estático; o tempo congela).
+- **Atalhos** Modelar/Animar/Texturizar: linha "Começar:" sob o cabeçalho —
+  abrem o projeto **"Sandbox"** criado automaticamente
+  (`EditorViewModel.abrirOuCriarSandbox`: abre se existe; senão cria e entra).
+- Marca: usa **"Kenkern" + versão** (sem perguntar ao usuário, como pedido).
+  Botão "Novo projeto" compacto, recentes, seletor de idioma e Diagnóstico já
+  existiam e continuam.
+- **Provas**: `HubCena2DTest` (5 JVM — FPS alvo/intervalo, paralaxe profunda
+  anda menos, órbita dentro do raio e periódica, pulso sutil que nunca apaga,
+  reduzir animações congela). 282 testes verdes (277 + 5).
+
+### M1.1 — Lua ligado aos Nicks (API mínima de LUA_API.md)
+
+- **Script como CLASSE do Nick**: classe "Script" (campo `fonte` = código Lua;
+  os DEMAIS campos são VARIÁVEIS PÚBLICAS → entram no script como
+  `params.<nome>` (FLOAT/BOOL/STRING/VEC3) e se editam no Inspetor).
+- **Ponte mínima** (`engine/NickLuaScripts.kt`): 1 runtime por Nick com classe
+  Script ATIVA na CÓPIA de Play — `nick` (self): set_position/position/
+  set_scale/set_active/name/destroy; `scene`: find (nome → handle), destroy,
+  spawn (prefab simples: cubo de 1 m), log (Console), emit/on (eventos);
+  `engine.time()`. Stop descarta tudo — a cena do editor NUNCA é tocada.
+- **LIMITE DE INSTRUÇÕES**: hook de contagem do LuaJ (DebugLib +
+  `debug.sethook(hook, "", N)`) — "while true do end" para com LuaError
+  "LIMITE DE INSTRUÇÕES" e o jogo CONTINUA (o antigo travamento documentado
+  no F5.1 não existe mais); padrão 8 M instruções/chamada; orçamento de tempo
+  (4 ms/tick) permanece como 2ª rede.
+- **Erro nunca derruba o jogo**: sintaxe/runtime/orçamento/instruções
+  DESATIVAM o script com a mensagem no Console; evento que falha só registra.
+- **R8/checagem "release"**: `-keep class org.luaj.**` confirmado; `checarLua`
+  do Diagnóstico agora também executa um script real com `while true do end`
+  e EXIGE a parada pelo limite com a mensagem correta no release minificado.
+- **Provas**: `NickLuaScriptsTest` (9 JVM — script move o nick via
+  params.velocidade; find+set_active; spawn+handle; destroy; engine.time
+  cresce; erro desativa UM script e o jogo continua; limite para o laço
+  infinito em ms; on_collision + scene.on; params FLOAT/STRING/BOOL). 291
+  testes verdes (282 + 9).
+
+### M1.2 — Colliders (caixa/esfera/cápsula), gatilhos e eventos
+
+- **Parada em TODAS as formas**: body.collider agora bloqueia com a AABB DA
+  FORMA (esfera: raio = média das meia-extensões; cápsula: raio = média de
+  hx/hz com altura hy; cilindro/convexo/malha: AABB) — a MESMA convenção do
+  wireframe do editor. **Sem solver completo** (documentado; solver exato na
+  Fase 8+): nascimento DENTRO de um corpo atravessa. Gravidade básica mantida.
+- **GATILHOS**: cada area.volume ATIVO (volume = Colisor da área se houver;
+  senão o cubo de 1 m) dispara `on_trigger(nome)` UMA VEZ na ENTRADA do
+  jogador (borda false→true; sair e voltar dispara de novo) — no script do
+  jogador (self) e no script da ÁREA.
+- **on_collision(nomeDoCorpo)**: dispara quando o jogador PARA contra um
+  corpo no step — via ponte M1.1 (`runtime.scripts`).
+- **Provas**: `M1CollidersTest` (5 JVM — on_collision com o nome da parede;
+  on_trigger 1× na entrada e de novo ao voltar; volume do Colisor de 3 m;
+  área inativa não dispara; gravidade para no chão) + NickPlayRuntimeTest
+  atualizado ao contrato NOVO (esfera/cápsula bloqueiam; inativo ignora).
+  297 testes verdes (291 + 5, 2 atualizados).
+
+### Fechamento da PARADA B (F)
+
+- Versão 0.1.21-fase2 (versionCode 22); CHANGELOG/TESTES_PENDENTES/NICKS.md/
+  LUA_API.md/BACKLOG.md/PROGRESS.md atualizados; lint sem erros novos;
+  Release `v0.1.21-fase2-teste` com APK assinado.
 
 ## v0.1.20 — PARADA A: LUZ E CÂMERA (H1–H3) + IMPORTAÇÃO FIEL (T0.4)
 

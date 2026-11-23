@@ -1,5 +1,53 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## PARADA B — v0.1.21: Hub novo (T0.5) + Lua nos Nicks (M1.1) + Colliders (M1.2)
+
+> 3 tarefas COMPILADO+CI (297 testes JVM verdes). Aceite curto; nada vira
+> VALIDADO-NO-APARELHO sem o teste abaixo.
+
+### T0.5 — Hub novo
+
+1. O Hub tem o FUNDO 2.5D: estrelas em paralaxe (3 camadas) e um buraco negro
+   SUTIL no canto superior direito (anel de acreção com pulso suave). O resto
+   da tela continua legível.
+2. O fundo anda devagar (30 FPS); sair do app (botão home) e voltar: nada
+   travou e o fundo continua. Se o aparelho está com "reduzir animações"
+   (escala 0 nas opções de desenvolvedor/acessibilidade), o fundo fica
+   ESTÁTICO (sem laço).
+3. Atalhos "Começar: Modelar / Animar / Texturizar": qualquer um abre o
+   projeto "Sandbox" — criado automaticamente na 1ª vez, reaberto depois.
+4. O wordmark "Kenkern" + versão, o botão compacto "Novo projeto", os
+   recentes, o idioma e o Diagnóstico continuam funcionando.
+
+### M1.1 — Lua ligado aos Nicks
+
+5. Inspetor de um Nick → Adicionar classe → **Script** (categoria Lógica).
+   Cole no campo `fonte`:
+   `velocidade = params.velocidade or 2.0`
+   `on_update = function(dt) local p = nick.position() nick.set_position(p.x + velocidade*dt, p.y, p.z) end`
+6. Adicione a variável pública `velocidade` (FLOAT) à classe Script no
+   Inspetor e Play: o Nick anda; PARE e edite `velocidade` → Stop → Play:
+   o valor editado vale (params vem da classe).
+7. Script com ERRO (ex.: `on_update = function(dt) x = nil + 1 end`): a
+   mensagem aparece no CONSOLE e o jogo CONTINUA (os outros scripts e o
+   render não param).
+8. Script com `while true do end`: NÃO trava o Play — o script desativa com
+   "LIMITE DE INSTRUÇÕES" no Console.
+9. Diagnóstico → checagem "release": a linha do Lua inclui a PROVA do limite
+   (while true parou com a mensagem correta) — executa de fato um script.
+
+### M1.2 — Colliders e gatilhos
+
+10. Cena do teste do marco (chão/parede/jogador): trocar a forma do Colisor
+    da parede para **Esfera** e **Cápsula**: o jogador PARA em todas (o volume
+    de parada é a AABB da forma; SEM solver completo — nascer DENTRO do corpo
+    atravessa).
+11. Nick de Área (area.volume) com script `entradas = 0 · on_trigger =
+    function(outro) entradas = entradas + 1 end` no JOGADOR: Play e andar
+    até a área → +1 na entrada; sair e voltar → +1 de novo; ficar dentro
+    NÃO conta mais.
+12. Andar contra a parede: `on_collision` recebe o NOME do corpo ("parede").
+
 ## PARADA A — v0.1.20: Luz e câmera (H1–H3) + importação fiel (T0.4)
 
 > 4 tarefas COMPILADO+CI (277 testes JVM verdes). Aceite curto do que mudou;
