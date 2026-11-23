@@ -6,12 +6,26 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
-- **Prioridade atual — M1**: primeiro teste jogável com jogador, surgimento,
-  chão/parede, joystick de teste e câmera. Ver o catálogo `NICKS.md` e o roteiro
-  em `TESTES_PENDENTES.md`. PBR completo e Hub novo ficam pendentes.
+- **v0.1.20 — PARADA A (H1–H3 + T0.4) COMPILADO**: H1 auxiliares voltam depois
+  do Stop (causa raiz KenkernSurfaceView.kt:784 — condição de picking INVERTIDA
+  do E5; fix em AuxiliaresPreferencia + 5 testes); H2 luz Nick ilumina a cena
+  (LumeCena — direcional substitui o sol, ≤4 pontuais/spot por contribuição,
+  atenuação suave, auxiliares com alcance/ângulo REAIS, checagem "luz");
+  H3 câmera Nick (Lente: fov/near/far/orto, "Câmera principal" só uma por cena,
+  "Ver pela câmera" com moldura, follow com Alvo/distância/altura, aviso único
+  sem câmera); T0.4 material PBR COMPLETO como asset no .KERN v3 (5 mapas +
+  fatores, shader único usa o que existe, tangentes na GPU, skinning com causa
+  clara no ImportReport/Console, checagem "materiais"). 277 testes JVM verdes.
+  **Release `v0.1.20-fase2-teste` publicada — aguardando aceite no aparelho**
+  (16 itens no TESTES_PENDENTES.md).
+- **Prioridade seguinte — PARADA B (v0.1.21)**: T0.5 Hub novo (2.5D com
+  paralaxe) + M1.1 Lua ligado aos Nicks + M1.2 Colliders. Depois PARADA C
+  (v0.1.22: input/câmera 3ª pessoa/UI de jogo/Play-Stop reais) e PARADA D
+  (v0.1.23: template "Coletar moedas" + exportar APK do jogo).
 - **T0.4 parcial — resolução de texturas**: opção Original, redução proporcional
   e cache por resolução efetiva e qualidade ETC2. O usuário aprovou no aparelho
-  a comparação 512 × Original e a reabertura do projeto. O PBR completo segue pendente.
+  a comparação 512 × Original e a reabertura do projeto. (O PBR completo entrou
+  na v0.1.20 — ver CHANGELOG.)
 - **v0.1.19 — G1–G3 VALIDADOS NO APARELHO**: o usuário confirmou os
   sete testes de layout em `TESTES_PENDENTES.md` (TopBar, Adicionar Nick e
   controles de voo). O aceite é específico desta versão e não fecha a Fase 2.
@@ -66,8 +80,8 @@ de tarefas do BACKLOG sem refazer o que está pronto.
   itens de aceite implementados; (2) nenhum `runCatching` engole erro em
   silêncio — Log + Console (`KenkernLog`) + tela Diagnóstico; auditoria em
   `docs/RUNCATCHING_AUDIT.md`.
-- **App**: v0.1.18 (versionCode 19) — release de pré-lançamento
-  `v0.1.18-fase2-teste` com APK assinado (CI: 222 testes + assembleRelease +
+- **App**: v0.1.20 (versionCode 21) — release de pré-lançamento
+  `v0.1.20-fase2-teste` com APK assinado (CI: 277 testes + assembleRelease +
   llvm-nm E1 sobre a .so do APK).
 
 ## O que existe (Fases 1–2, validado por CI)

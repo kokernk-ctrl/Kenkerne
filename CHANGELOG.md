@@ -1,5 +1,118 @@
 # KENKERN — CHANGELOG
 
+## v0.1.20 — PARADA A: LUZ E CÂMERA (H1–H3) + IMPORTAÇÃO FIEL (T0.4)
+
+> 4 tarefas, um commit por ID (H1, H2, H3, T0.4), CI verde em cada uma.
+> Causas raiz com arquivo e linha; provas por tarefa.
+
+### H1 — Auxiliares não voltam depois do Stop (BUG)
+
+- **Causa raiz**: `KenkernSurfaceView.pickNickAt` (KenkernSurfaceView.kt:784,
+  do E5/ff4fef2) — a condição de picking dos auxiliares usava
+  `loop.playState != PlayState.STOPPED`, o INVERSO da regra do E5 ("pegáveis
+  FORA de Play"): depois de um Play→Stop os auxiliares (luz/câmera/área/
+  surgimento) ficavam NÃO pegáveis no editor — "não voltam" — e em Play,
+  quando são invisíveis, seriam pegáveis. A preferência "Mostrar auxiliares"
+  em si nunca era escrita pelo Play (o desenho já voltava pelo gate
+  `mostrarAuxiliares && !emJogo`); o defeito era o caminho de TOQUE acoplado
+  ao estado de play de forma invertida.
+- **Correção**: decisão única e PURA em `AuxiliaresPreferencia` (novo,
+  engine/): `deveDesenhar(ligado, playState) = ligado && STOPPED` e
+  `devePegar` = MESMA regra (invisível em Play = não pegável). O pickNickAt
+  usa `devePegar`; o gate de desenho do EngineRenderer é a mesma regra
+  documentada. A preferência é do usuário, o Play nunca altera; Play/Pausa
+  só suprimem; Stop restaura.
+- **Provas**: `AuxiliaresPreferenciaTest` (5 JVM) — ligar→Play→Stop continua
+  ligado; desligar→Play→Stop continua desligado; Pausa também suprime;
+  `devePegar == deveDesenhar` nos 3 estados; regressão reprova a semântica
+  invertida do E5. 251 testes verdes (246 + 5).
+
+### H2 — Nicks de luz iluminam a cena (LUME)
+
+- **O que entrou**: classe "Luz" no Nick (cor, intensidade, alcance,
+  ânguloInterno/Externo, ligado — Inspetor en/pt; Nick antigo sem a classe
+  usa defaults do tipo); DIRECIONAL ativa+ligada substitui o sol fixo
+  (sem nenhuma, sol padrão mantém); PONTUAL/SPOT: até 4 luzes por frame pela
+  MAIOR contribuição para a câmera (intensidade/(1+d²)), atenuação suave
+  (1−(d/alcance)⁴)² × 1/(1+d²), arrays primitivos reaproveitados
+  (`LumeCena.Frame`, zero alocação), atualização NO MESMO frame (editor e
+  Play). Sem sombras nesta fase. Auxiliares com cone e esfera do ÂNGULO e
+  ALCANCE REAIS (esfera de raio = alcance; cone com abertura externa real e
+  altura = alcance; cache FIFO de buffers por chave). Checagem "luz" nova no
+  Diagnóstico: quad branco + luz pontual VERMELHA offscreen — o pixel muda
+  e fica r>g,b; direcional vermelha substitui o sol.
+- **Arquivos**: core/LuzNick.kt + render/LumeCena.kt (novos, PUROS);
+  GlesBackend (shader: uLsCount/uLsPos/uLsCor/uLsAlcance/uLsDir/uLsCone +
+  vWorld no vertex); RenderBackend.setDynamicLights; EngineRenderer (coleta
+  antes do céu, direcional substitui o sol, auxiliares reais);
+  InspectorPanel (seção Luz en/pt); NickKindCatalog (defaultClasses Luz nos
+  3 tipos light.*); NickFunction (classe "Luz" registrada).
+- **Provas**: `LumeCenaTest` (11 JVM) + `EditorHelpersTest` (+2). 264 testes
+  verdes (251 + 13).
+
+### H3 — Nicks de câmera funcionam (LENTE)
+
+- **O que entrou**: classe "Lente" no Nick (fov, near, far, ortografica +
+  tamanhoOrto, principal, alvo, distancia, altura — Inspetor en/pt; Nick
+  antigo usa defaults); "Câmera principal" SÓ UMA por cena
+  (`SetLentePrincipalCommand` — um Command desmarca as demais e o undo
+  devolve TODOS os flags); botão "VER PELA CÂMERA" na TopBar (toggle) com
+  MOLDURA de proporção + rótulo + SAIR — render pela matriz do Nick de
+  câmera selecionado (camera.*) ou da principal, via
+  `EngineRenderer.renderFrameComMatrizes`; SAIR volta à câmera do editor SEM
+  perder a posição (a OrbitCamera nunca é tocada no preview). EM PLAY:
+  ordem principal > follow (agora com campo Alvo + distância/altura da
+  classe) > câmera fixa (comportamento M1 preservado); sem NENHUMA câmera,
+  usa a do editor e AVISA UMA VEZ no Console. FOV editado atualiza o
+  auxiliar: pirâmide por Nick com o FOV DO NICK (cache "P|fov|aspect");
+  orto usa 2·atan(tamanho). Mat4.setOrtho novo (projeção por meia-altura).
+- **Arquivos**: core/LenteNick.kt + render/LenteNickMatriz.kt (novos, PUROS);
+  NickPlayCamera (principal com matriz própria, alvo/distância/altura);
+  KenkernSurfaceView (preview, play path, aviso único);
+  EngineRenderer.renderFrameComMatrizes; EditorScreen (botão + moldura);
+  InspectorPanel (seção Câmera en/pt); commands/SceneCommands
+  (SetLentePrincipalCommand); Mat4.setOrtho.
+- **Provas**: `NickPlayCameraTest` (+6 JVM) e `SetLentePrincipalCommandTest`
+  (3 JVM). 272 testes verdes (264 + 8).
+
+### T0.4 — Fidelidade de importação (material PBR como asset no .KERN v3)
+
+- **O que entrou**: .KERN **v3** estende CADA material com os 5 mapas (base,
+  normal com scale, metallicRoughness — convenção glTF G=rugosidade/
+  B=metálico —, oclusão com strength, emissiva) + fatores (emissiveFactor
+  RGB, KHR_materials_emissive_strength, normalScale, oclusaoStrength); o
+  ESCRITOR só grava v3 quando algum material tem extensão PBR — v1/v2 ficam
+  byte-idênticos e o leitor aceita 1/2/3 (v4+ = erro claro). glTF lê TODOS
+  os mapas e fatores (os avisos "IGNORADA nesta fase" saem — os mapas
+  ENTRAM); FBX lê textura POR PROPRIEDADE (DiffuseColor/NormalMap/BumpMap/
+  EmissiveColor). O shader usa O QUE EXISTIR: um ÚNICO programa de material —
+  textura quando carregada, FATOR quando não; especular Blinn-Phong barato
+  dirigido pela rugosidade; AO multiplica o ambiente; emissivo somado. VBO
+  com tangente por vértice (stride 32→44) e `MeshData.fromKern` carrega as
+  tangentes. O modelo chega COMO FOI BAIXADO. Textura "Original" já estava
+  entregue (eb84cec).
+- **Personagem "sem cabeça" — causa investigada e reportada**: SKINNING. Os
+  ossos não movem vértices nesta versão (Fase 8 OSSATURA) e o vértice fica
+  na pose de BIND — partes presas ao esqueleto podem aparecer
+  colapsadas/ausentes (ex.: cabeça). DETECÇÃO: glTF conta os vértices com
+  JOINTS_0/WEIGHTS_0 por primitiva; FBX conta os Deformer Skin. O Número e a
+  causa CLARA vão no ImportReport (linha "SKIN: N vértices…") e no Console —
+  aviso visível na tela do relatório, sem crash.
+- **Diagnóstico**: checagem "materiais" nova (rápida): roundtrip .KERN v3
+  confere CADA campo dos 5 mapas + fatores; material sem PBR grava v2
+  (compatibilidade); amostra real importa com material.
+- **Provas**: `KernMaterialPbrTest` (5 JVM — roundtrip v3 campo a campo,
+  compat v2, glTF com 4 mapas por data URI + fatores preservados, skin
+  4 vértices com causa no relatório, tangentes na MeshData); 2 testes
+  antigos atualizados para o comportamento NOVO. 277 testes verdes
+  (272 + 5).
+
+### Fechamento da PARADA A (F)
+
+- Versão 0.1.20-fase2 (versionCode 21); CHANGELOG/TESTES_PENDENTES/NICKS.md/
+  BACKLOG.md/PROGRESS.md atualizados; lint sem erros novos; Release
+  `v0.1.20-fase2-teste` com APK assinado.
+
 ## v0.1.19 — 3 BUGS DE LAYOUT (G1–G3): PAISAGEM 800×360, NENHUMA FUNCIONALIDADE NOVA
 
 > Tarefa: 3 bugs de layout da v0.1.18, edições pontuais, CI verde por etapa
@@ -279,6 +392,119 @@
   463 KB com etcpak+meshoptimizer+handler). 184 testes JVM verdes.
 
 # KENKERN — CHANGELOG
+
+## v0.1.20 — PARADA A: LUZ E CÂMERA (H1–H3) + IMPORTAÇÃO FIEL (T0.4)
+
+> 4 tarefas, um commit por ID (H1, H2, H3, T0.4), CI verde em cada uma.
+> Causas raiz com arquivo e linha; provas por tarefa.
+
+### H1 — Auxiliares não voltam depois do Stop (BUG)
+
+- **Causa raiz**: `KenkernSurfaceView.pickNickAt` (KenkernSurfaceView.kt:784,
+  do E5/ff4fef2) — a condição de picking dos auxiliares usava
+  `loop.playState != PlayState.STOPPED`, o INVERSO da regra do E5 ("pegáveis
+  FORA de Play"): depois de um Play→Stop os auxiliares (luz/câmera/área/
+  surgimento) ficavam NÃO pegáveis no editor — "não voltam" — e em Play,
+  quando são invisíveis, seriam pegáveis. A preferência "Mostrar auxiliares"
+  em si nunca era escrita pelo Play (o desenho já voltava pelo gate
+  `mostrarAuxiliares && !emJogo`); o defeito era o caminho de TOQUE acoplado
+  ao estado de play de forma invertida.
+- **Correção**: decisão única e PURA em `AuxiliaresPreferencia` (novo,
+  engine/): `deveDesenhar(ligado, playState) = ligado && STOPPED` e
+  `devePegar` = MESMA regra (invisível em Play = não pegável). O pickNickAt
+  usa `devePegar`; o gate de desenho do EngineRenderer é a mesma regra
+  documentada. A preferência é do usuário, o Play nunca altera; Play/Pausa
+  só suprimem; Stop restaura.
+- **Provas**: `AuxiliaresPreferenciaTest` (5 JVM) — ligar→Play→Stop continua
+  ligado; desligar→Play→Stop continua desligado; Pausa também suprime;
+  `devePegar == deveDesenhar` nos 3 estados; regressão reprova a semântica
+  invertida do E5. 251 testes verdes (246 + 5).
+
+### H2 — Nicks de luz iluminam a cena (LUME)
+
+- **O que entrou**: classe "Luz" no Nick (cor, intensidade, alcance,
+  ânguloInterno/Externo, ligado — Inspetor en/pt; Nick antigo sem a classe
+  usa defaults do tipo); DIRECIONAL ativa+ligada substitui o sol fixo
+  (sem nenhuma, sol padrão mantém); PONTUAL/SPOT: até 4 luzes por frame pela
+  MAIOR contribuição para a câmera (intensidade/(1+d²)), atenuação suave
+  (1−(d/alcance)⁴)² × 1/(1+d²), arrays primitivos reaproveitados
+  (`LumeCena.Frame`, zero alocação), atualização NO MESMO frame (editor e
+  Play). Sem sombras nesta fase. Auxiliares com cone e esfera do ÂNGULO e
+  ALCANCE REAIS (esfera de raio = alcance; cone com abertura externa real e
+  altura = alcance; cache FIFO de buffers por chave). Checagem "luz" nova no
+  Diagnóstico: quad branco + luz pontual VERMELHA offscreen — o pixel muda
+  e fica r>g,b; direcional vermelha substitui o sol.
+- **Arquivos**: core/LuzNick.kt + render/LumeCena.kt (novos, PUROS);
+  GlesBackend (shader: uLsCount/uLsPos/uLsCor/uLsAlcance/uLsDir/uLsCone +
+  vWorld no vertex); RenderBackend.setDynamicLights; EngineRenderer (coleta
+  antes do céu, direcional substitui o sol, auxiliares reais);
+  InspectorPanel (seção Luz en/pt); NickKindCatalog (defaultClasses Luz nos
+  3 tipos light.*); NickFunction (classe "Luz" registrada).
+- **Provas**: `LumeCenaTest` (11 JVM) + `EditorHelpersTest` (+2). 264 testes
+  verdes (251 + 13).
+
+### H3 — Nicks de câmera funcionam (LENTE)
+
+- **O que entrou**: classe "Lente" no Nick (fov, near, far, ortografica +
+  tamanhoOrto, principal, alvo, distancia, altura — Inspetor en/pt; Nick
+  antigo usa defaults); "Câmera principal" SÓ UMA por cena
+  (`SetLentePrincipalCommand` — um Command desmarca as demais e o undo
+  devolve TODOS os flags); botão "VER PELA CÂMERA" na TopBar (toggle) com
+  MOLDURA de proporção + rótulo + SAIR — render pela matriz do Nick de
+  câmera selecionado (camera.*) ou da principal, via
+  `EngineRenderer.renderFrameComMatrizes`; SAIR volta à câmera do editor SEM
+  perder a posição (a OrbitCamera nunca é tocada no preview). EM PLAY:
+  ordem principal > follow (agora com campo Alvo + distância/altura da
+  classe) > câmera fixa (comportamento M1 preservado); sem NENHUMA câmera,
+  usa a do editor e AVISA UMA VEZ no Console. FOV editado atualiza o
+  auxiliar: pirâmide por Nick com o FOV DO NICK (cache "P|fov|aspect");
+  orto usa 2·atan(tamanho). Mat4.setOrtho novo (projeção por meia-altura).
+- **Arquivos**: core/LenteNick.kt + render/LenteNickMatriz.kt (novos, PUROS);
+  NickPlayCamera (principal com matriz própria, alvo/distância/altura);
+  KenkernSurfaceView (preview, play path, aviso único);
+  EngineRenderer.renderFrameComMatrizes; EditorScreen (botão + moldura);
+  InspectorPanel (seção Câmera en/pt); commands/SceneCommands
+  (SetLentePrincipalCommand); Mat4.setOrtho.
+- **Provas**: `NickPlayCameraTest` (+6 JVM) e `SetLentePrincipalCommandTest`
+  (3 JVM). 272 testes verdes (264 + 8).
+
+### T0.4 — Fidelidade de importação (material PBR como asset no .KERN v3)
+
+- **O que entrou**: .KERN **v3** estende CADA material com os 5 mapas (base,
+  normal com scale, metallicRoughness — convenção glTF G=rugosidade/
+  B=metálico —, oclusão com strength, emissiva) + fatores (emissiveFactor
+  RGB, KHR_materials_emissive_strength, normalScale, oclusaoStrength); o
+  ESCRITOR só grava v3 quando algum material tem extensão PBR — v1/v2 ficam
+  byte-idênticos e o leitor aceita 1/2/3 (v4+ = erro claro). glTF lê TODOS
+  os mapas e fatores (os avisos "IGNORADA nesta fase" saem — os mapas
+  ENTRAM); FBX lê textura POR PROPRIEDADE (DiffuseColor/NormalMap/BumpMap/
+  EmissiveColor). O shader usa O QUE EXISTIR: um ÚNICO programa de material —
+  textura quando carregada, FATOR quando não; especular Blinn-Phong barato
+  dirigido pela rugosidade; AO multiplica o ambiente; emissivo somado. VBO
+  com tangente por vértice (stride 32→44) e `MeshData.fromKern` carrega as
+  tangentes. O modelo chega COMO FOI BAIXADO. Textura "Original" já estava
+  entregue (eb84cec).
+- **Personagem "sem cabeça" — causa investigada e reportada**: SKINNING. Os
+  ossos não movem vértices nesta versão (Fase 8 OSSATURA) e o vértice fica
+  na pose de BIND — partes presas ao esqueleto podem aparecer
+  colapsadas/ausentes (ex.: cabeça). DETECÇÃO: glTF conta os vértices com
+  JOINTS_0/WEIGHTS_0 por primitiva; FBX conta os Deformer Skin. O Número e a
+  causa CLARA vão no ImportReport (linha "SKIN: N vértices…") e no Console —
+  aviso visível na tela do relatório, sem crash.
+- **Diagnóstico**: checagem "materiais" nova (rápida): roundtrip .KERN v3
+  confere CADA campo dos 5 mapas + fatores; material sem PBR grava v2
+  (compatibilidade); amostra real importa com material.
+- **Provas**: `KernMaterialPbrTest` (5 JVM — roundtrip v3 campo a campo,
+  compat v2, glTF com 4 mapas por data URI + fatores preservados, skin
+  4 vértices com causa no relatório, tangentes na MeshData); 2 testes
+  antigos atualizados para o comportamento NOVO. 277 testes verdes
+  (272 + 5).
+
+### Fechamento da PARADA A (F)
+
+- Versão 0.1.20-fase2 (versionCode 21); CHANGELOG/TESTES_PENDENTES/NICKS.md/
+  BACKLOG.md/PROGRESS.md atualizados; lint sem erros novos; Release
+  `v0.1.20-fase2-teste` com APK assinado.
 
 ## v0.1.16 — CORREÇÃO das 4 falhas do Diagnóstico no aparelho (nenhuma funcionalidade nova)
 

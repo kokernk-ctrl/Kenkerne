@@ -19,8 +19,8 @@ android {
         applicationId = "com.kenkern.engine"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "0.1.19-fase2"
+        versionCode = 21
+        versionName = "0.1.20-fase2"
 
         // B3: compila libkenkern.so só para arm64-v8a.
         ndk {

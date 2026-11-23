@@ -1,5 +1,69 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## PARADA A — v0.1.20: Luz e câmera (H1–H3) + importação fiel (T0.4)
+
+> 4 tarefas COMPILADO+CI (277 testes JVM verdes). Aceite curto do que mudou;
+> nada vira VALIDADO-NO-APARELHO sem o teste abaixo. Fase 2 CONTINUA ABERTA.
+
+### H1 — auxiliares voltam depois do Stop
+
+1. Editor com um Nick de Luz e um Ponto de Surgimento na cena: os ícones
+   (auxiliares) estão visíveis e são SELECIONÁVEIS por toque (24dp de
+   tolerância). Deixe o botão "Mostrar auxiliares" LIGADO.
+2. Play → Stop: os auxiliares VOLTA a aparecer e, principalmente, TAP em uma
+   luz/câmera SELECIONA de novo (era o bug: pegáveis só durante o Play).
+3. Desligar "Mostrar auxiliares" → Play → Stop: continua DESLIGADO (o Play
+   nunca muda a preferência; o desenho é só suprimido em Play/Pausa).
+
+### H2 — luz Nick ilumina a cena
+
+4. Inspetor do Nick de luz (en/pt): Ligada (switch), Cor (R,G,B),
+   Intensidade, Alcance (pontual/foco), Ângulo interno e externo (foco).
+5. Luz PONTUAL vermelha (intensidade 3) perto do cubo: o cubo ilumina DE
+   VERMELHO; desligar "Ligada" no Inspetor — a luz sai NO MESMO FRAME (sem
+   recarregar nada). Luz de FOCO apontada ao chão: cone com o ângulo real.
+6. Luz DIRECIONAL ligada: substitui o sol (o disco do céu segue a direção do
+   Nick); deletar/desligar a direcional: o sol padrão do editor volta.
+7. 5 luzes pontuais na cena: só as 4 de maior contribuição para a câmera
+   iluminam por frame (a mais distante não entra) — verificado também pela
+   matemática JVM (LumeCenaTest, teto de 4).
+8. Auxiliares: pontual desenha a ESFERA do alcance real; foco desenha o CONE
+   do ângulo externo real com altura = alcance; editar o alcance atualiza no
+   mesmo frame.
+9. Diagnóstico → checagem **"luz"**: APROVADO (quad branco + luz vermelha:
+   o pixel muda e fica r>g,b; direcional substitui o sol).
+
+### H3 — câmera Nick funciona
+
+10. Inspetor do Nick de Câmera (en/pt): Campo de visão, Plano próximo,
+    Plano distante, Ortográfica (switch) + Tamanho orto, "Câmera principal"
+    (só uma por cena — ligar na segunda DESMARCA a primeira).
+11. "Ver pela câmERA" na TopBar (câmera selecionada ou a principal): o
+    viewport renderiza PELA câmera do Nick com MOLDURA âmbar e o nome; SAIR
+    volta à câmera do editor EXATAMENTE onde estava (posição não se perde).
+12. FOV editado no Inspetor: a PIRÂMIDE do auxiliar atualiza no mesmo frame
+    (ortográfica usa a abertura equivalente ao tamanho).
+13. Play com câmera principal: renderiza PELA principal (fov/near/far/orto
+    do Nick). Seguidora: campo Alvo + distância + altura funcionam em Play
+    (mover o alvo move a câmera). Play SEM nenhuma câmera: usa a câmera do
+    editor e aparece UMA VEZ o aviso no Console ("Play sem Nick de câmera").
+
+### T0.4 — importação fiel (PBR + skinning)
+
+14. Importar um GLB com material PBR (normal/metallicRoughness/oclusão/
+    emissiva): o modelo aparece com os mapas — brilho especular pela
+    rugosidade, relevo pelo normal map, cantos escurecidos pela oclusão,
+    brilho próprio pelo emissivo. Textura "Original" continua disponível
+    (512/1024/2048/Original).
+15. Importar o MESMO modelo de novo: checagem "materiais" do Diagnóstico
+    APROVADO (roundtrip .KERN v3 dos 5 mapas + fatores; material antigo
+    continua abrindo — compatibilidade v1/v2).
+16. Importar um personagem skinned: o ImportReport mostra a linha
+    "SKIN: N vértices com JOINTS/WEIGHTS NÃO APLICADOS — os ossos não movem
+    vértices nesta versão (Fase 8)…" e o Console registra a causa (partes
+    na pose de bind podem aparecer colapsadas/ausentes — ex.: cabeça). O
+    aviso aparece na TELA do relatório, sem crash.
+
 ## Marco Jogável (M1) — Jogador, surgimento, colisão e câmera
 
 Num projeto novo, cria estes Nicks **na raiz**, ajustando posição e escala
