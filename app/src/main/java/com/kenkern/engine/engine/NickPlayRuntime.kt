@@ -13,9 +13,12 @@ import kotlin.math.sqrt
  * colide com corpos estáticos AABB. O runtime trabalha na Scene recebida (o
  * chamador é responsável por passar uma cópia descartável para Play).
  *
- * Colisores suportados: body.static (cubo local de 1 m) e body.collider com
- * classe Colisor/forma=box. Formas sphere/capsule/etc. são deliberadamente
- * ignoradas nesta primeira versão.
+ * M1.2 (v0.1.21): COLISORES — body.static (cubo 1 m), body.collider com a
+ * classe Colisor em TODAS as formas (caixa/esfera/cápsula/cilindro/convexo/
+ * malha — parada pela AABB da forma, a MESMA convenção do wireframe do
+ * editor; SEM solver completo: solver exato entra na Fase 8+). GATILHOS:
+ * area.volume dispara on_trigger na ENTRADA do jogador (borda, 1×). Eventos
+ * on_collision (parada contra corpo) e on_trigger vão para o Lua (ponte M1.1).
  */
 class NickPlayRuntime(private val scene: Scene) {
 
@@ -26,6 +29,12 @@ class NickPlayRuntime(private val scene: Scene) {
     val followCamera: Nick?
     val basicCamera: Nick?
 
+    /**
+     * M1.1/M1.2: ponte Lua dos scripts de Play — eventos on_collision e
+     * on_trigger saem daqui (opcional; sem scripts, nada é chamado).
+     */
+    var scripts: NickLuaScripts? = null
+
     private val traversal = ArrayList<Nick>()
     private val playerLocalCenter = FloatArray(3)
     private val playerLocalHalf = FloatArray(3)
@@ -33,6 +42,12 @@ class NickPlayRuntime(private val scene: Scene) {
     private val obstacleBounds = FloatArray(6)
     private val localDeltaScratch = FloatArray(3)
     private var verticalVelocity = 0f
+
+    /** M1.2: estado de DENTRO de cada gatilho (borda false→true dispara). */
+    private val dentroDoGatilho = HashMap<Nick, Boolean>()
+
+    /** M1.2: nome do Nick que PAROU o movimento neste step (evento de colisão). */
+    private var colisaoNome: String? = null
 
     init {
         scene.updateWorldTransforms()
@@ -99,6 +114,19 @@ class NickPlayRuntime(private val scene: Scene) {
         if ((dy < 0f && movedY > dy + COLLISION_EPSILON) ||
             (dy > 0f && movedY < dy - COLLISION_EPSILON)
         ) verticalVelocity = 0f
+        scene.updateWorldTransforms()
+
+        // M1.2: GATILHOS (áreas) — borda de ENTRADA dispara on_trigger 1 vez;
+        // sair e voltar dispara de novo. Colisor da área (se houver) define o
+        // volume; sem Colisor, o cubo de 1 m do Area Nick é o volume.
+        checarGatilhos()
+
+        // M1.2: evento de COLISÃO — o jogador PAROU contra um corpo neste step.
+        val colidiu = colisaoNome
+        if (colidiu != null) {
+            colisaoNome = null
+            scripts?.emitirColisao(activePlayer, colidiu)
+        }
         scene.updateWorldTransforms()
     }
 
@@ -177,6 +205,7 @@ class NickPlayRuntime(private val scene: Scene) {
         var allowed = requestedDelta
         traversal.clear()
         pushRootsInTreeOrder()
+        var bloqueouPor: Nick? = null
         while (traversal.isNotEmpty()) {
             val nick = traversal.removeAt(traversal.lastIndex)
             if (!nick.active) continue
@@ -190,11 +219,13 @@ class NickPlayRuntime(private val scene: Scene) {
                         val distance = obstacleNear - playerBounds[axis + 3]
                         if (distance >= -COLLISION_EPSILON && distance < allowed) {
                             allowed = distance.coerceAtLeast(0f)
+                            bloqueouPor = nick
                         }
                     } else {
                         val distance = obstacleFar - playerBounds[axis]
                         if (distance <= COLLISION_EPSILON && distance > allowed) {
                             allowed = distance.coerceAtMost(0f)
+                            bloqueouPor = nick
                         }
                     }
                 }
@@ -210,13 +241,20 @@ class NickPlayRuntime(private val scene: Scene) {
             ) return 0f
             readPlayerBounds()
         }
+        // M1.2: PAROU (permitido < pedido) → guarda quem bloqueou (evento).
+        if (allowed < requestedDelta - COLLISION_EPSILON && bloqueouPor != null) {
+            colisaoNome = bloqueouPor.displayName("pt")
+        }
         return allowed
     }
 
     private fun isBlockingStatic(nick: Nick): Boolean {
         if (nick.kind == "body.static") return true
         if (nick.kind != "body.collider") return false
-        return findClass(nick, MalhaNick.CLASSE_COLISOR)?.getString("forma", "box") == "box"
+        // M1.2: TODAS as formas param (sem solver completo — caixa/esfera/
+        // cápsula/cilindro/convexo/malha usam a AABB da forma, a MESMA do
+        // wireframe do editor; solver exato entra na Fase 8+).
+        return true
     }
 
     private fun getBlockingBounds(nick: Nick, out: FloatArray) {
@@ -230,10 +268,58 @@ class NickPlayRuntime(private val scene: Scene) {
         val hx = abs(size?.x ?: 1f) * 0.5f
         val hy = abs(size?.y ?: 1f) * 0.5f
         val hz = abs(size?.z ?: 1f) * 0.5f
-        setWorldBounds(
-            nick, center?.x ?: 0f, center?.y ?: 0f, center?.z ?: 0f,
-            hx, hy, hz, out
-        )
+        when (collider?.getString("forma", "box")) {
+            "sphere" -> {
+                // MESMA convenção do wireframe do editor (raio = média das
+                // meia-extensões); AABB da esfera para a parada.
+                val raio = (hx + hy + hz) / 3f
+                setWorldBounds(nick, center?.x ?: 0f, center?.y ?: 0f, center?.z ?: 0f, raio, raio, raio, out)
+            }
+            "capsule" -> {
+                // MESMA convenção do wireframe: raio = média de hx/hz, altura hy.
+                val raio = (hx + hz) * 0.5f
+                setWorldBounds(nick, center?.x ?: 0f, center?.y ?: 0f, center?.z ?: 0f, raio, hy, raio, out)
+            }
+            else ->
+                setWorldBounds(
+                    nick, center?.x ?: 0f, center?.y ?: 0f, center?.z ?: 0f,
+                    hx, hy, hz, out
+                )
+        }
+    }
+
+    /**
+     * M1.2: GATILHOS — cada area.volume ATIVO com sobreposição da AABB do
+     * jogador dispara on_trigger UMA VEZ na entrada (sai e volta = dispara
+     * de novo). O volume é o Colisor da área (se houver) ou o cubo de 1 m.
+     */
+    private fun checarGatilhos() {
+        val activePlayer = player ?: return
+        val pilha = traversal
+        pilha.clear()
+        pushRootsInTreeOrder()
+        while (pilha.isNotEmpty()) {
+            val area = pilha.removeAt(pilha.lastIndex)
+            if (!area.active) continue
+            if (area.children.isNotEmpty()) pushChildrenInTreeOrder(area)
+            if (area.kind != "area.volume") continue
+            val collider = findClass(area, MalhaNick.CLASSE_COLISOR)
+            val center = collider?.fields?.get("centro") as? NickValue.Vec3Value
+            val size = collider?.fields?.get("tamanho") as? NickValue.Vec3Value
+            val hx = abs(size?.x ?: 1f) * 0.5f
+            val hy = abs(size?.y ?: 1f) * 0.5f
+            val hz = abs(size?.z ?: 1f) * 0.5f
+            setWorldBounds(area, center?.x ?: 0f, center?.y ?: 0f, center?.z ?: 0f, hx, hy, hz, obstacleBounds)
+            val dentro = overlaps(playerBounds, obstacleBounds)
+            val antes = dentroDoGatilho[area]
+            if (dentro && antes != true) {
+                val nomeArea = area.displayName("pt")
+                // evento no script do JOGADOR (self) e no script da ÁREA.
+                scripts?.emitirGatilho(activePlayer, nomeArea)
+                scripts?.emitirGatilho(area, nomeArea)
+            }
+            dentroDoGatilho[area] = dentro
+        }
     }
 
     private fun readPlayerBounds() {

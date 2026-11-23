@@ -1066,8 +1066,11 @@ class KenkernSurfaceView(
                 playCamera = copy?.let { c ->
                     playRuntime?.let { r -> NickPlayCamera(c, r.player, r.followCamera, r.basicCamera) }
                 }
-                // M1.1: ponte Lua/nick — 1 runtime por Nick com classe "Script".
+                // M1.1/M1.2: ponte Lua/nick — 1 runtime por Nick com classe
+                // "Script"; o runtime de física usa a ponte para os eventos
+                // on_collision/on_trigger.
                 playScripts = copy?.let { c -> NickLuaScripts(c).also { s -> s.iniciarTodos() } }
+                playRuntime?.scripts = playScripts
             }
             return playScene
         }
