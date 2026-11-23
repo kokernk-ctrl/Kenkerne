@@ -9,6 +9,14 @@ import com.kenkern.engine.core.references.ReferenceSystem
  */
 class Scene(var name: String = "Cena") {
 
+    /**
+     * Limite de acesso para uma cena publicada no editor: comandos, arrasto e
+     * travessia GL inteira usam o mesmo monitor. Cenas privadas (Play, diagnóstico,
+     * carregamento antes da publicação) não precisam do lock. Não suspender nem
+     * esperar por outra thread dentro do bloco.
+     */
+    internal inline fun <T> withEditorAccess(block: () -> T): T = synchronized(this, block)
+
     val roots = ArrayList<Nick>()
     val references = ReferenceSystem()
     val linkerf = LinkerfGraph()
