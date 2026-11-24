@@ -1,5 +1,98 @@
 # KENKERN — CHANGELOG
 
+## v0.1.24 — ESTABILIZAÇÃO (S1–S8): nenhum recurso novo; REPRODUZIR ANTES DE CORRIGIR
+
+> 7 correções + fechamento, um commit por ID (S1–S7 + S8), CI verde em cada.
+> Regra da tarefa: para cada item, primeiro o teste que FALHAVA (JVM com cena
+> real), depois a correção, depois verde. Causa raiz com arquivo e linha.
+
+### S1 — Diagnóstico: títulos trocados + "materiais" sempre vermelha + relatório copiável
+
+- **S1a** CAUSA RAIZ `DiagnosticoScreen.kt:68-92`: o `when` id→recurso NÃO tinha
+  casos para `materiais/luz/layout/joystick` — caíam no `else → diag_check_ck`
+  (título ".ck (cena)" sobre mensagens de joystick/materiais). Correção:
+  mapeamento PURO em `DiagNomesChecagem` (24 ids, id desconhecido ERRA alto) +
+  4 strings novas en/pt. **Reprodução**: `DiagNomesChecagemTest` extraído com o
+  bug → vermelho (4 títulos compartilhados) → verde.
+- **S1b** CAUSA RAIZ `Diagnostico.checarMateriais` bloco (c): exigia tabela de
+  materiais da amostra `quadGlb()` — um glTF SEM materiais; o importador estava
+  CERTO (tabela vazia p/ modelo sem materiais). Amostra correta:
+  `quadComMaterialGlb` (fatores conferidos + modelo sem material importa vazio).
+- **S1c** botão **"Copiar relatório"** (texto COMPLETO, FALHAS no topo —
+  `DiagRelatorioTexto` puro + lista da tela ordenada igual).
+
+### S2 — Gravidade e física para TODO corpo dinâmico (nada caía no aparelho)
+
+- CAUSAS RAIZ `NickPlayRuntime` (v0.1.21): (1) `getBlockingBounds` —
+  `body.static` IGNORAVA a classe Colisor (volume 14×2×14 nunca usado);
+  (2) o `init` simulava SÓ o primeiro `body.player` — Rigid/Character/
+  Collider Body NUNCA caíam (não entravam na simulação; classes padrão sem
+  corpo/gravidade). Correção: TODOS os kinds `body.player/rigid/character/
+  collider` entram com gravidade própria (arrays por corpo, zero alocação
+  por frame); `body.static` respeita o Colisor; TODOS os kinds de corpo
+  nascem com a classe **Colisor** (editável no Inspetor). **Overlay de debug
+  de Play** (botão): corpos simulados, vy, "no chão", colisões. **Reprodução**:
+  `S2GravidadeFisicaTest` 5 vermelhos (player pousava em 0,5 com topo 1,0;
+  os outros três NUNCA caíam) → verde.
+
+### S3 — Inspetor AO VIVO em Play (a edição não chegava à cópia renderizada)
+
+- CAUSA RAIZ `KenkernSurfaceView.sceneForFrame`: em Play o viewport renderiza
+  a CÓPIA, mas os comandos do Inspetor escrevem SÓ na cena do editor — editar
+  posição/escala/cor/fov/colisor/script em Play não mudava NADA na tela.
+  Correção: `EspelhoNick` (estado editável capturado com cópias) aplicado na
+  cópia de Play ANTES do próximo frame (queueEvent do GL thread), depois de
+  cada comando de campo/transform (`setLentePrincipal` espelha todas as
+  câmeras). **Reprodução**: `S3InspetorAoVivoTest` — comandos no editor +
+  frame da CÓPIA = valores ANTIGOS → espelho = novos (mesmo frame) → verde.
+
+### S4 — Tipos de Nick: tabela completa + Joystick ui.* NUNCA desenha 3D
+
+- CAUSA RAIZ `MalhaNick.desenhavel`: `ui.joystick` FOLHA caía no ramo
+  `children.isEmpty()` e desenhava o CUBO 3D (controle de tela como objeto
+  3D). Correção: classificação ELEMENTO 2D (`ehKindElemento2D` — ui.*): nunca
+  malha/cubo/auxiliar 3D; no editor o Joystick Nick aparece como MOLDURA 2D
+  de tela no viewport. `KindEmPlay` (novo, PURO) = tabela de TODO kind
+  (viewport/classes padrão/Play) provada por `NickKindTabelaTest` (cria um
+  Nick de CADA kind); NICKS.md espelha. Luz no editor: MESMO pipeline do
+  Play (a checagem "luz" usa o MESMO renderFrame — verde = editor ilumina).
+
+### S5 — Indicador girando infinito: 15 s com causa visível
+
+- ACHADO: o Hub (criar/abrir/carregar/importar pacote/duplicar/exportar/
+  apagar/renomear/listar) rodava SEM timeout em `Dispatchers.IO` — um I/O
+  pendurado deixava `isLoading=true` para sempre: "Carregando…" eterno com
+  TODOS os botões desabilitados. Correção: `OperacaoComLimite` (15 s;
+  withTimeoutOrNull) em TODAS as operações — `TempoEsgotado` vira
+  statusMessage (vm_timeout) + Console + logcat; `isLoading` volta a false.
+  **Reprodução**: `S5OperacaoComLimiteTest` — sem timeout o bloco pendurado
+  devolvia Sucesso TARDE DEMAIS (esperou 60 s = o spinner eterno) → verde.
+
+### S6 — Janela de Jogo em TELA CHEIA
+
+- Play abre a tela CHEIA só do jogo: TopBar/painéis/StatusBar do editor NÃO
+  são compostos (o AndroidView fica no MESMO ponto da árvore — a superfície
+  GL NÃO é recriada); botões **Pausar/Continuar** e **Sair (Stop)** no topo;
+  gizmos/seleção já desligados em jogo; Sair restaura a cena exatamente.
+  `S6JanelaJogoTest`: entrar e sair 10× (cena idêntica byte a byte a cada
+  Stop; edição entre ciclos vista pelo Play seguinte; cópia de Play
+  COLETÁVEL após o Stop — sem vazamento) + pausa congela/continua exato.
+
+### S7 — Checagem "jogo" no Diagnóstico
+
+- O jogo do aparelho virou teste: template "Coletar moedas" SEM GL, 300
+  ticks com INPUT SINTÉTICO (rumo à moeda mais distante), exige contador
+  ≥ 1 E jogador NO CHÃO. A falha DIZ O PASSO: "CAIU / ATRAVESSOU O CHÃO /
+  NÃO MOVEU / NÃO COLIDIU". `S7ChecagemJogoTest` (3): o jogo real verde
+  (contador ≥ 1, no chão, andou) + variantes quebradas provam as mensagens.
+
+### S8 — Fechamento
+
+- v0.1.24 (versionCode 25), UMA Release com APK assinado,
+  TESTES_PENDENTES.md com 8 itens de aceite no aparelho. 353 testes JVM
+  verdes (316 → 353, +37; todos os vermelhos de reprodução viraram verdes
+  junto com as correções).
+
 ## v0.1.23 — PARADA D: EXPORTAR O JOGO (M1.7 + M1.8) — MARCO M1 FECHADO
 
 > 2 tarefas, um commit por ID (M1.7, M1.8), CI verde em cada uma.

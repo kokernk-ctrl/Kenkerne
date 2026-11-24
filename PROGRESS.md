@@ -6,6 +6,20 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
+- **v0.1.24 — ESTABILIZAÇÃO (S1–S8) COMPILADO**: nenhum recurso novo; cada
+  correção nasceu de um teste VERMELHO (reprodução antes de corrigir). S1
+  Diagnóstico (títulos trocados DiagnosticoScreen.kt:68-92; checagem
+  "materiais" cobrava a amostra sem materiais; Copiar relatório com falhas
+  no topo); S2 TODO corpo dinâmico cai (NickPlayRuntime simulava só o
+  body.player e ignorava o Colisor do estático; overlay de debug de Play);
+  S3 Inspetor ao vivo em Play (EspelhoNick na cópia renderizada); S4 tabela
+  de TODO kind (KindEmPlay) + Joystick ui.* NUNCA desenha 3D (moldura 2D);
+  S5 limite de 15 s com causa visível em toda operação do Hub
+  (OperacaoComLimite); S6 Janela de Jogo em tela cheia com Pausar/Sair; S7
+  checagem "jogo" (template real, 300 ticks, input sintético — a falha diz
+  o passo); S8 fechamento. 353 testes JVM verdes.
+  **Release `v0.1.24-fase2-teste` publicada — aguardando aceite no aparelho**
+  (8 itens no TESTES_PENDENTES.md).
 - **v0.1.20 — PARADA A (H1–H3 + T0.4) COMPILADO**: H1 auxiliares voltam depois
   do Stop (causa raiz KenkernSurfaceView.kt:784 — condição de picking INVERTIDA
   do E5; fix em AuxiliaresPreferencia + 5 testes); H2 luz Nick ilumina a cena

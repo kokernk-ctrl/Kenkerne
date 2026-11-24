@@ -80,6 +80,20 @@ LOD0, índices u16 com remap por parte, manter JPEG de origem em disco (Sponza
 | T0.4 | **Fidelidade de importação**: PBR completo (glTF e FBX — metálico/rugosidade/normal/oclusão/emissivo/alfa/dupla face) como asset no .KERN **v3**, textura "Original" (até o limite do aparelho) e presets 512/1024/2048; skinning com causa clara no ImportReport | F2.17 | COMPILADO+CI ✓ (v0.1.20, T0.4 + H2/H3: PARADA A entregue; aguarda aparelho) |
 | T0.5 | **Hub novo** (seção 7 do adendo: fundo 2.5D com paralaxe, buraco negro com disco de acreção, wordmark + versão, Novo projeto compacto, recentes, seletor de idioma, Diagnóstico, atalhos Modelar/Animar/Texturizar com "Sandbox" automático; custo baixo: ≤ 30 FPS, pausa quando invisível, respeita bateria e "reduzir animações"). **PARADA 2** | T0.1 | TODO |
 
+## ESTABILIZAÇÃO (v0.1.24) — S1–S8 entregues
+
+S1–S7 entregues + S8 fechamento (v0.1.24 — ver CHANGELOG/PROGRESS). Cada item
+nasceu de um teste VERMELHO (reprodução antes de corrigir), com causa raiz
+arquivo/linha. Ficou REGISTRADO para as próximas fases:
+- IMPORTAÇÃO de modelo não tem timeout de 15 s (é operação de progresso com
+  cancelar + relatório; modelos grandes importam por minutos legitimamente).
+- Estrutura de cena criada/excluída DURANTE o Play não é espelhada na cópia
+  (Inspetor ao vivo cobre campos/transform; a cópia nasce no Play).
+- Params de script editados durante o Play atualizam o CAMPO na cópia; o
+  runtime Lua lê os params na iniciação do Play.
+- body.enemy/body.npc NÃO são simulados (comportamento/IA pendentes — Fase 8+);
+  a tabela completa de kinds vive em KindEmPlay (+ NICKS.md).
+
 ## MARCO JOGÁVEL (M1) — com os Nicks reais (adendo v4)
 
 M1.1–M1.8 entregues (PARADAS B/C/D, v0.1.21–v0.1.23 — COMPILADO+CI; ver CHANGELOG). MARCO M1 FECHADO:
