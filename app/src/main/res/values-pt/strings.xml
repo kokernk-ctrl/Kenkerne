@@ -282,6 +282,7 @@
     <string name="diag_check_luz">Luz do LUME — quad branco + luz vermelha (o pixel muda)</string>
     <string name="diag_check_layout">Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável</string>
     <string name="diag_check_joystick">Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)</string>
+    <string name="diag_check_jogo">Jogo Coletar moedas — template real, 300 ticks com input sintético, contador de pelo menos 1 e jogador no chão</string>
     <!-- S1 (v0.1.24): botão de copiar relatório -->
     <string name="diag_copy_report">Copiar relatório</string>
     <string name="diag_report_copied">Relatório copiado para a área de transferência — cole onde quiser</string>

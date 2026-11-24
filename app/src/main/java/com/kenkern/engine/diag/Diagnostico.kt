@@ -58,6 +58,7 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.sqrt
 
 /**
  * TELA DIAGNÓSTICO (Prompt Mestre v3): checagens que rodam NO APARELHO com
@@ -125,8 +126,111 @@ class Diagnostico(private val appContext: Context) {
             Checagem("memoria", "Limites de memória do aparelho"),
             Checagem("release", "Release minificado — classes críticas + operações mínimas"),
             Checagem("layout", "Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável"),
-            Checagem("joystick", "Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)")
+            Checagem("joystick", "Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)"),
+            Checagem("jogo", "Jogo 'Coletar moedas' — template real, 300 ticks com input sintético, contador ≥ 1 e jogador no chão")
         )
+
+        /**
+         * S7 (v0.1.24): núcleo da checagem "jogo" — carrega o TEMPLATE
+         * "Coletar moedas" SEM GL, simula 300 ticks com INPUT SINTÉTICO
+         * (rumo à moeda mais distante — prova o andar) e exige contador
+         * ≥ 1 e jogador no chão. A mensagem de falha diz o PASSO:
+         * caiu / atravessou o chão / não moveu / não colidiu.
+         */
+        class ResultadoJogo(
+            val moedasColetadas: Int,
+            val peDoJogador: Float,
+            val metrosAndados: Float,
+            val falha: String? // null = jogo OK
+        )
+
+        /**
+         * S7: avalia UMA cena como o jogo real — o MESMO caminho de Play
+         * (cópia por sessão + física + scripts por tick). Parâmetros:
+         * [cena] (template ou variante quebrada p/ teste), [ticks].
+         */
+        fun avaliarJogo(cena: com.kenkern.engine.core.Scene, ticks: Int): ResultadoJogo {
+            cena.updateWorldTransforms()
+            val original = com.kenkern.engine.core.serialization.CkFormat.writeToString(cena)
+            val copia = com.kenkern.engine.core.serialization.CkFormat.parseToNewScene(original, cena.name)!!
+            val runtime = com.kenkern.engine.engine.NickPlayRuntime(copia)
+            val scripts = com.kenkern.engine.engine.NickLuaScripts(copia).also { it.iniciarTodos() }
+            runtime.scripts = scripts
+            val jogador = runtime.player
+                ?: return ResultadoJogo(0, Float.NaN, 0f, "sem body.player no template")
+
+            val inicioX = jogador.transform.worldMatrix.m[12]
+            val inicioZ = jogador.transform.worldMatrix.m[14]
+            var restantes = ticks
+            while (restantes-- > 0) {
+                // INPUT SINTÉTICO: rumo à moeda VIVA mais distante (andar de verdade).
+                val alvo = moedaMaisDistanteDe(copia, jogador) ?: break
+                val m = jogador.transform.worldMatrix.m
+                val dx = alvo.first - m[12]
+                val dz = alvo.second - m[14]
+                val len = sqrt(dx * dx + dz * dz)
+                val nx = if (len > 1e-4f) dx / len else 0f
+                val nz = if (len > 1e-4f) dz / len else 0f
+                runtime.step(1f / 60f, nx, nz)
+                scripts.atualizar(1f / 60f)
+            }
+
+            copia.updateWorldTransforms()
+            val ui = scripts.snapshotUiJogo()
+            val moedas = ui["moedas"]?.toFloatOrNull()?.toInt() ?: 0
+            val pe = jogador.transform.worldMatrix.m[13] - 0.5f // pé (cubo de 1 m)
+            val m2 = jogador.transform.worldMatrix.m
+            val andados = sqrt(
+                (m2[12] - inicioX) * (m2[12] - inicioX) +
+                    (m2[14] - inicioZ) * (m2[14] - inicioZ)
+            )
+
+            // TOPO do chão do template: estático em y=-0,5 com escala Y=1 → topo 0.
+            val falha = when {
+                pe < -0.5f -> "ATRAVESSOU O CHÃO — o jogador caiu para baixo do piso (pé em $pe m)"
+                pe < -0.05f -> "CAIU — o jogador não pousou no chão (pé em $pe m)"
+                andados < 1f -> "NÃO MOVEU — o input sintético não moveu o jogador ($andados m)"
+                moedas < 1 -> "NÃO COLIDIU — andou ${"%.1f".format(andados)} m mas nenhum gatilho de moeda disparou (contador $moedas)"
+                else -> null
+            }
+            return ResultadoJogo(moedas, pe, andados, falha)
+        }
+
+        /** Moeda (area.volume com nome "Moeda …") VIVA mais distante do jogador. */
+        private fun moedaMaisDistanteDe(
+            cena: com.kenkern.engine.core.Scene,
+            jogador: com.kenkern.engine.core.Nick
+        ): Pair<Float, Float>? {
+            var melhor: Pair<Float, Float>? = null
+            var melhorDist = -1f
+            val m = jogador.transform.worldMatrix.m
+            val px = m[12]
+            val pz = m[14]
+            val pilha = ArrayDeque<com.kenkern.engine.core.Nick>()
+            for (raiz in cena.roots) pilha.addLast(raiz)
+            while (!pilha.isEmpty()) {
+                val nick = pilha.removeLast()
+                if (nick.active && nick.kind == "area.volume" && nick.name?.startsWith("Moeda") == true) {
+                    val wm = nick.transform.worldMatrix.m
+                    val dx = wm[12] - px
+                    val dz = wm[14] - pz
+                    val dist = sqrt(dx * dx + dz * dz)
+                    if (dist > melhorDist) {
+                        melhorDist = dist
+                        melhor = wm[12] to wm[14]
+                    }
+                }
+                for (filho in nick.children) pilha.addLast(filho)
+            }
+            return melhor
+        }
+
+        /** S7: conveniência — o TEMPLATE real da checagem "jogo". */
+        fun avaliarJogoTemplate(): ResultadoJogo {
+            val cena = com.kenkern.engine.core.Scene("Coletar moedas")
+            com.kenkern.engine.projects.ProjectManager.montarTemplateColetarMoedas(cena)
+            return avaliarJogo(cena, 300)
+        }
         /**
          * S1 (v0.1.24): parte (c) da checagem "materiais" — amostra glTF
          * embutida — EXTRAÍDA para a JVM poder reproduzir/verificar o
@@ -237,7 +341,7 @@ class Diagnostico(private val appContext: Context) {
      */
     suspend fun executar(onAtualiza: (Checagem) -> Unit) {
         cancelado = false
-        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "materiais", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout", "joystick")
+        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "materiais", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout", "joystick", "jogo")
         val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "luz", "astc")
         // E2: ids já FINALIZADAS nesta rodada — no cancel, só o que NÃO rodou vira
         // CANCELADA (aprovadas/falhas anteriores permanecem com o resultado delas).
@@ -351,6 +455,7 @@ class Diagnostico(private val appContext: Context) {
                             "release" -> checarRelease(c)
                             "layout" -> checarLayout(c)
                             "joystick" -> checarJoystick(c)
+                            "jogo" -> checarJogo(c)
                         }
                     }.onFailure {
                         c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
@@ -1420,6 +1525,28 @@ class Diagnostico(private val appContext: Context) {
             )
         } else {
             c.falhou(problemas.joinToString("; "))
+        }
+    }
+
+    /**
+     * S7 (v0.1.24): checagem "jogo" — o template "Coletar moedas" JOGÁVEL
+     * de verdade SEM GL: cópia de Play + 300 ticks com INPUT SINTÉTICO (rumo à
+     * moeda mais distante) + scripts por tick; exige contador ≥ 1 e jogador
+     * NO CHÃO. A falha DIZ O PASSO: caiu / atravessou o chão / não moveu /
+     * não colidiu — o relatório do aparelho vira teste de JVM.
+     */
+    private fun checarJogo(c: Checagem) {
+        val r = avaliarJogoTemplate()
+        val falha = r.falha
+        if (falha != null) {
+            c.falhou(
+                "$falha · moedas=${r.moedasColetadas} · pé=${r.peDoJogador} · andou=${r.metrosAndados} m"
+            )
+        } else {
+            c.aprovado(
+                "300 ticks · moedas=${r.moedasColetadas} · jogador NO CHÃO (pé=${r.peDoJogador} m) · " +
+                    "andou ${r.metrosAndados} m com input sintético — o jogo é jogável"
+            )
         }
     }
 

@@ -282,6 +282,7 @@
     <string name="diag_check_luz">LUME lighting — white quad + red light (pixel changes)</string>
     <string name="diag_check_layout">Landscape layout 800×360 — TopBar fits + Add Nick window reachable</string>
     <string name="diag_check_joystick">On-screen joystick — math (normalization, dead zone, 8 directions, actions)</string>
+    <string name="diag_check_jogo">Collect-coins game — real template, 300 ticks with synthetic input, counter at least 1 and player on the ground</string>
     <!-- S1 (v0.1.24): copy report button -->
     <string name="diag_copy_report">Copy report</string>
     <string name="diag_report_copied">Report copied to the clipboard — paste it anywhere</string>
