@@ -370,6 +370,13 @@ class KenkernSurfaceView(
      */
     fun snapshotUiJogo(): Map<String, String> = glRenderer.playScriptsSnapshotUi()
 
+    /**
+     * S2 (v0.1.24): snapshot do OVERLAY DE DEBUG DE PLAY — corpos simulados,
+     * velocidade, no chão, colisões. Chamado pela UI a ~2 Hz (fpsTick), nunca
+     * no hot loop (a montagem das linhas pode alocar).
+     */
+    fun snapshotPlayDebug(): List<String> = glRenderer.playRuntimeSnapshotDebug()
+
     /** True se o roundtrip .KERN (gravar/ler malha) passou nesta sessão de render. */
     fun isKernOk(): Boolean = glRenderer.isKernRoundtripOk()
 
@@ -1058,6 +1065,18 @@ class KenkernSurfaceView(
 
         fun playScriptsSnapshotUi(): Map<String, String> =
             playScripts?.snapshotUiJogo() ?: emptyMap()
+
+        /**
+         * S2 (v0.1.24): linhas do OVERLAY DE DEBUG DE PLAY (corpos simulados,
+         * velocidade, no chão, colisões) — lido pela UI a ~2 Hz. Fora de Play
+         * devolve lista VAZIA.
+         */
+        fun playRuntimeSnapshotDebug(): List<String> {
+            val runtime = playRuntime ?: return emptyList()
+            val linhas = ArrayList<String>(runtime.corposSimulados.size)
+            runtime.snapshotDebug(linhas)
+            return linhas
+        }
 
         fun clearPlaySession() {
             editorScene = null

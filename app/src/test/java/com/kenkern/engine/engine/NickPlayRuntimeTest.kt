@@ -99,6 +99,10 @@ class NickPlayRuntimeTest {
         // M1.2: esfera do Colisor AGORA bloqueia (AABB da forma = convenção do
         // wireframe: raio = média das meia-extensões = 0,5); blocker INATIVO
         // (por pai) continua ignorado (pararia em 0,3 se estivesse ativo).
+        // S2 (v0.1.24): corpos dinâmicos TÊM GRAVIDADE — a esfera nasce
+        // APOIADA no chão (topo 9,8 + raio 0,5 = y 10,3) para continuar no
+        // lugar bloqueando o jogador (nascer DENTRO do chão atravessa,
+        // sem solver completo).
         val scene = Scene()
         val player = scene.createRootNick("player", kind = "body.player")
         player.transform.position.set(0f, 10.5f, 0f) // acima do topo do chão (9,8)
@@ -107,7 +111,7 @@ class NickPlayRuntimeTest {
         val inactiveWall = scene.createNick("wall inativa", inactiveParent, kind = "body.static")
         inactiveWall.transform.position.set(0.8f, 10f, 0f)
         val sphere = scene.createRootNick("sphere", kind = "body.collider")
-        sphere.transform.position.set(1.5f, 10f, 0f)
+        sphere.transform.position.set(1.5f, 10.3f, 0f)
         sphere.addClassInstance(boxCollider(shape = "sphere"))
         // chão para o jogador NÃO cair abaixo da esfera durante os passos
         val chao = scene.createRootNick("chao", kind = "body.static")
@@ -118,16 +122,19 @@ class NickPlayRuntimeTest {
         repeat(3) { runtime.step(0.25f, 1f, 0f) }
 
         assertEquals("parou na AABB da esfera (1,5 − 0,5 − 0,5)", 0.5f, player.transform.position.x, 1e-3f)
+        assertEquals("esfera apoiada continua no lugar (S2: gravidade)", 10.3f, sphere.transform.position.y, 0.01f)
     }
 
     @Test
     fun `capsula bloqueia a parada pela sua AABB`() {
         // M1.2: cápsula (raio = média de hx/hz = 0,5; altura hy) também para.
+        // S2 (v0.1.24): cápsula dinâmica nasce APOIADA no chão (topo 9,8 +
+        // raio 0,5 = 10,3) para continuar no lugar bloqueando o jogador.
         val scene = Scene()
         val player = scene.createRootNick("player", kind = "body.player")
         player.transform.position.set(0f, 10.5f, 0f) // acima do topo do chão (9,8)
         val capsula = scene.createRootNick("capsula", kind = "body.collider")
-        capsula.transform.position.set(1.5f, 10f, 0f)
+        capsula.transform.position.set(1.5f, 10.3f, 0f)
         capsula.addClassInstance(boxCollider(shape = "capsule"))
         val chao = scene.createRootNick("chao", kind = "body.static")
         chao.transform.position.set(0f, 9.3f, 0f)
@@ -135,6 +142,7 @@ class NickPlayRuntimeTest {
         val runtime = NickPlayRuntime(scene)
         repeat(3) { runtime.step(0.25f, 1f, 0f) }
         assertEquals(0.5f, player.transform.position.x, 1e-3f)
+        assertEquals("cápsula apoiada continua no lugar (S2: gravidade)", 10.3f, capsula.transform.position.y, 0.01f)
     }
 
     @Test

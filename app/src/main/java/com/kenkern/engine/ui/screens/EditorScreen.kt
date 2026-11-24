@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -552,6 +553,72 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                         )
                                     }
                                 }
+                            }
+
+                            // S2 (v0.1.24): OVERLAY DE DEBUG DE PLAY — botão que
+                            // mostra NICKS SIMULADOS (nome + kind), velocidade
+                            // vertical, "no chão" e a última colisão. Lê o
+                            // snapshot do runtime a ~2 Hz (fpsTick — nunca
+                            // acopla Compose ao thread GL).
+                            var debugFisica by remember { mutableStateOf(false) }
+                            var debugLinhas by remember { mutableStateOf<List<String>>(emptyList()) }
+                            LaunchedEffect(svForPlay, fpsTick, debugFisica) {
+                                debugLinhas = if (debugFisica) svForPlay.snapshotPlayDebug() else emptyList()
+                            }
+                            if (debugFisica) {
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(top = 56.dp, end = 10.dp)
+                                        .widthIn(max = 340.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(KenkernSurface.copy(alpha = 0.85f))
+                                        .padding(8.dp)
+                                ) {
+                                    Text(
+                                        stringResource(R.string.play_debug_titulo),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = KenkernAmber
+                                    )
+                                    if (debugLinhas.isEmpty()) {
+                                        Text(
+                                            stringResource(R.string.play_debug_vazio),
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = KenkernTextMid
+                                        )
+                                    } else {
+                                        for (linha in debugLinhas) {
+                                            Text(
+                                                linha,
+                                                fontSize = 10.sp,
+                                                lineHeight = 13.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = KenkernTextMid
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            // botão SEMPRE presente em Play: alterna o overlay
+                            IconButton(
+                                onClick = { debugFisica = !debugFisica },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(end = 8.dp, top = 8.dp)
+                                    .size(40.dp)
+                                    .background(
+                                        if (debugFisica) KenkernAmber.copy(alpha = 0.25f) else KenkernSurface.copy(alpha = 0.6f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                            ) {
+                                Icon(
+                                    Icons.Filled.BugReport,
+                                    contentDescription = stringResource(R.string.play_debug_botao),
+                                    tint = if (debugFisica) KenkernAmber else KenkernTextMid
+                                )
                             }
                         }
 

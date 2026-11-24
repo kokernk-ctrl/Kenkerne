@@ -174,12 +174,16 @@ object NickKindCatalog {
         )
 
         // ---------------- CORPOS ----------------
+        // S2 (v0.1.24): TODOS os kinds de corpo ganham a classe Colisor por
+        // PADRÃO — volume de colisão/gravidade EDITÁVEL no Inspetor (antes
+        // só o body.collider tinha; o chão estático usava o cubo unitário).
         NickKindRegistry.register(
             NickKind(
                 key = "body.static", labelEn = "Static Body Nick", labelPt = "Nick de Corpo Estático",
                 descEn = "Never moves; collides (walls, floor)",
                 descPt = "Nunca se move; colide (paredes, chão)",
-                group = NickKindGroup.CORPOS, iconKey = "body.static"
+                group = NickKindGroup.CORPOS, iconKey = "body.static",
+                defaultClasses = listOf("Colisor")
             )
         )
         NickKindRegistry.register(
@@ -187,7 +191,8 @@ object NickKindCatalog {
                 key = "body.rigid", labelEn = "Rigid Body Nick", labelPt = "Nick de Corpo Rígido",
                 descEn = "Physics-driven body (mass, gravity, bounce)",
                 descPt = "Corpo guiado pela física (massa, gravidade, quique)",
-                group = NickKindGroup.CORPOS, iconKey = "body.rigid"
+                group = NickKindGroup.CORPOS, iconKey = "body.rigid",
+                defaultClasses = listOf("Colisor")
             )
         )
         NickKindRegistry.register(
@@ -204,7 +209,8 @@ object NickKindCatalog {
                 key = "body.character", labelEn = "Character Body Nick", labelPt = "Nick de Corpo de Personagem",
                 descEn = "Walks, jumps and climbs ramps",
                 descPt = "Anda, pula e sobe rampas",
-                group = NickKindGroup.CORPOS, iconKey = "body.character"
+                group = NickKindGroup.CORPOS, iconKey = "body.character",
+                defaultClasses = listOf("Colisor")
             )
         )
         NickKindRegistry.register(
@@ -212,7 +218,8 @@ object NickKindCatalog {
                 key = "body.player", labelEn = "Player Body Nick", labelPt = "Nick de Corpo de Jogador",
                 descEn = "Character + input + follow camera",
                 descPt = "Character + input + câmera seguidora",
-                group = NickKindGroup.CORPOS, iconKey = "body.player"
+                group = NickKindGroup.CORPOS, iconKey = "body.player",
+                defaultClasses = listOf("Colisor")
             )
         )
         NickKindRegistry.register(

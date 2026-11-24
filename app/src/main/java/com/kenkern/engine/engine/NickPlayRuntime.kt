@@ -19,6 +19,18 @@ import kotlin.math.sqrt
  * editor; SEM solver completo: solver exato entra na Fase 8+). GATILHOS:
  * area.volume dispara on_trigger na ENTRADA do jogador (borda, 1×). Eventos
  * on_collision (parada contra corpo) e on_trigger vão para o Lua (ponte M1.1).
+ *
+ * S2 (v0.1.24): TODOS os corpos dinâmicos caem — não só o player. CAUSAS
+ * RAIZ corrigidas:
+ *  (1) getBlockingBounds do body.static IGNORAVA a classe Colisor (chão
+ *      "Static Body + Colisor" colidia como cubo unitário — o volume 14×2×14
+ *      nunca era usado; agora a classe define o volume, igual ao body.collider);
+ *  (2) SÓ o primeiro body.player entrava na simulação — Rigid Body,
+ *      Character Body e Collider Body NUNCA caíam ("no aparelho nada cai");
+ *      agora TODO Nick ativo dos kinds body.player/body.rigid/
+ *      body.character/body.collider entra na simulação com gravidade
+ *      própria e bloqueio por estáticos/colisores. O INPUT (mover/pular)
+ *      continua só do player; o pulo, só com o player apoiado.
  */
 class NickPlayRuntime(private val scene: Scene) {
 
@@ -30,6 +42,16 @@ class NickPlayRuntime(private val scene: Scene) {
     val basicCamera: Nick?
 
     /**
+     * S2 (v0.1.24): TODOS os corpos dinâmicos ativos da cena (body.player,
+     * body.rigid, body.character, body.collider), em ordem da árvore —
+     * quem ENTRA na simulação de Play (o overlay de debug e a JVM provam).
+     */
+    val corposSimulados: List<Nick>
+
+    /** S2: índice do player em [corposSimulados] (−1 se a cena não tem player). */
+    private val playerIndex: Int
+
+    /**
      * M1.1/M1.2: ponte Lua dos scripts de Play — eventos on_collision e
      * on_trigger saem daqui (opcional; sem scripts, nada é chamado).
      */
@@ -39,24 +61,17 @@ class NickPlayRuntime(private val scene: Scene) {
     private var pedirPulo = false
     private var apoiado = false
 
-    /** M1.3: botão PULAR (borda) — consumido no próximo step com o jogador apoiado. */
-    fun pular() {
-        pedirPulo = true
-    }
-
     private val traversal = ArrayList<Nick>()
     private val playerLocalCenter = FloatArray(3)
     private val playerLocalHalf = FloatArray(3)
     private val playerBounds = FloatArray(6)
     private val obstacleBounds = FloatArray(6)
     private val localDeltaScratch = FloatArray(3)
-    private var verticalVelocity = 0f
 
-    /** M1.2: estado de DENTRO de cada gatilho (borda false→true dispara). */
-    private val dentroDoGatilho = HashMap<Nick, Boolean>()
-
-    /** M1.2: nome do Nick que PAROU o movimento neste step (evento de colisão). */
-    private var colisaoNome: String? = null
+    /** S2: velocidade vertical e estado "no chão" POR corpo (indexado por [corposSimulados]). */
+    private val velocidadesY: FloatArray
+    private val apoiados: BooleanArray
+    private val colisaoPorCorpo: Array<String?>
 
     init {
         scene.updateWorldTransforms()
@@ -66,6 +81,7 @@ class NickPlayRuntime(private val scene: Scene) {
         var foundSpawn: Nick? = null
         var foundFollow: Nick? = null
         var foundBasic: Nick? = null
+        val dinamicos = ArrayList<Nick>()
         while (traversal.isNotEmpty()) {
             val nick = traversal.removeAt(traversal.lastIndex)
             if (!nick.active) continue
@@ -73,11 +89,18 @@ class NickPlayRuntime(private val scene: Scene) {
             if (foundSpawn == null && nick.kind == "area.spawn") foundSpawn = nick
             if (foundFollow == null && nick.kind == "camera.follow") foundFollow = nick
             if (foundBasic == null && nick.kind == "camera.basic") foundBasic = nick
+            // S2: TODO corpo dinâmico ativo entra na simulação (não só o player).
+            if (isDynamicBody(nick)) dinamicos.add(nick)
             pushChildrenInTreeOrder(nick)
         }
         player = foundPlayer
         followCamera = foundFollow
         basicCamera = foundBasic
+        corposSimulados = dinamicos
+        playerIndex = dinamicos.indexOfFirst { it === foundPlayer }
+        velocidadesY = FloatArray(dinamicos.size)
+        apoiados = BooleanArray(dinamicos.size)
+        colisaoPorCorpo = arrayOfNulls(dinamicos.size)
 
         val activePlayer = player
         if (activePlayer != null) {
@@ -92,15 +115,37 @@ class NickPlayRuntime(private val scene: Scene) {
         }
     }
 
+    /** S2: kinds que ENTRAM na simulação de Play (gravidade + colisão). */
+    private fun isDynamicBody(nick: Nick): Boolean = when (nick.kind) {
+        "body.player", "body.rigid", "body.character", "body.collider" -> true
+        else -> false
+    }
+
     /**
-     * Avança o player. moveX/moveZ são eixos de mundo; a entrada diagonal é
-     * normalizada. dt é limitado a 0.25 s para proteger o primeiro runtime de
-     * pausas longas, e deslocamentos são resolvidos por varredura em cada eixo
-     * para não atravessar paredes/floors em um único passo.
+     * S2 (v0.1.24): snapshot de debug para o OVERLAY DE PLAY — chamado pela
+     * UI a ~2 Hz (pode alocar; NUNCA é chamado no hot loop). Uma linha por
+     * corpo simulado: nome · kind · velocidade · no chão · última colisão.
+     */
+    fun snapshotDebug(linhas: MutableList<String>) {
+        for (i in corposSimulados.indices) {
+            val corpo = corposSimulados[i]
+            linhas.add(
+                "${corpo.displayName("pt")} · ${corpo.kind} · vy=${velocidadesY[i]} · " +
+                    "${if (apoiados[i]) "no chão" else "no ar"} · " +
+                    "colisão=${colisaoPorCorpo[i] ?: "—"}"
+            )
+        }
+    }
+
+    /**
+     * Avança os corpos. moveX/moveZ são eixos de mundo (SÓ o player recebe
+     * input); a entrada diagonal é normalizada. dt é limitado a 0.25 s para
+     * proteger o primeiro runtime de pausas longas, e deslocamentos são
+     * resolvidos por varredura em cada eixo para não atravessar
+     * paredes/floors em um único passo.
      */
     fun step(dt: Float, moveX: Float, moveZ: Float) {
-        val activePlayer = player ?: return
-        if (dt <= 0f || !dt.isFinite() || !isEffectivelyActive(activePlayer)) return
+        if (dt <= 0f || !dt.isFinite()) return
         scene.updateWorldTransforms()
 
         var x = if (moveX.isFinite()) moveX else 0f
@@ -112,37 +157,64 @@ class NickPlayRuntime(private val scene: Scene) {
         }
 
         val deltaTime = dt.coerceAtMost(MAX_STEP_SECONDS)
-        val dx = x * PLAYER_SPEED * deltaTime
-        val dz = z * PLAYER_SPEED * deltaTime
-        // M1.3: PULO — impulso único quando apoiado (borda consumida 1×).
+        // M1.3: PULO — impulso único quando o PLAYER está apoiado (borda
+        // consumida 1×; S2: índice do player vem do init, não é mais 0).
         if (pedirPulo) {
             pedirPulo = false
-            if (apoiado) verticalVelocity = VELOCIDADE_PULO
+            if (apoiado && playerIndex >= 0) velocidadesY[playerIndex] = VELOCIDADE_PULO
         }
-        verticalVelocity = (verticalVelocity - GRAVITY * deltaTime).coerceAtLeast(-TERMINAL_VELOCITY)
-        val dy = verticalVelocity * deltaTime
+        val dx = x * PLAYER_SPEED * deltaTime
+        val dz = z * PLAYER_SPEED * deltaTime
 
-        moveAxis(AXIS_X, dx)
-        moveAxis(AXIS_Z, dz)
-        val movedY = moveAxis(AXIS_Y, dy)
-        apoiado = dy < 0f && movedY > dy + COLLISION_EPSILON // parou ao CAIR = no chão
-        if ((dy < 0f && movedY > dy + COLLISION_EPSILON) ||
-            (dy > 0f && movedY < dy - COLLISION_EPSILON)
-        ) verticalVelocity = 0f
-        scene.updateWorldTransforms()
+        for (i in corposSimulados.indices) {
+            val corpo = corposSimulados[i]
+            stepCorpo(i, deltaTime, if (corpo === player) dx else 0f, if (corpo === player) dz else 0f)
+        }
+
+        // S2: bounds do PLAYER atualizados antes dos GATILHOS (o loop acima
+        // deixou os bounds do ÚLTIMO corpo em playerBounds).
+        readPlayerBounds()
 
         // M1.2: GATILHOS (áreas) — borda de ENTRADA dispara on_trigger 1 vez;
         // sair e voltar dispara de novo. Colisor da área (se houver) define o
         // volume; sem Colisor, o cubo de 1 m do Area Nick é o volume.
         checarGatilhos()
 
-        // M1.2: evento de COLISÃO — o jogador PAROU contra um corpo neste step.
-        val colidiu = colisaoNome
-        if (colidiu != null) {
-            colisaoNome = null
-            scripts?.emitirColisao(activePlayer, colidiu)
+        // M1.2/S2: evento de COLISÃO — cada corpo que PAROU contra um
+        // obstáculo neste step dispara on_collision NO SEU script.
+        val bridge = scripts
+        if (bridge != null) {
+            for (i in corposSimulados.indices) {
+                val nome = colisaoPorCorpo[i] ?: continue
+                colisaoPorCorpo[i] = null
+                bridge.emitirColisao(corposSimulados[i], nome)
+            }
         }
         scene.updateWorldTransforms()
+    }
+
+    /** S2: um corpo dinâmico — gravidade própria, varredura por eixo, apoio. */
+    private fun stepCorpo(i: Int, deltaTime: Float, dx: Float, dz: Float) {
+        val corpo = corposSimulados[i]
+        if (!isEffectivelyActive(corpo)) return
+
+        velocidadesY[i] = (velocidadesY[i] - GRAVITY * deltaTime).coerceAtLeast(-TERMINAL_VELOCITY)
+        val dy = velocidadesY[i] * deltaTime
+
+        moveAxis(corpo, i, AXIS_X, dx)
+        moveAxis(corpo, i, AXIS_Z, dz)
+        val movedY = moveAxis(corpo, i, AXIS_Y, dy)
+        val apoiadoAgora = dy < 0f && movedY > dy + COLLISION_EPSILON // parou ao CAIR = no chão
+        apoiados[i] = apoiadoAgora
+        if (corpo === player) apoiado = apoiadoAgora
+        if ((dy < 0f && movedY > dy + COLLISION_EPSILON) ||
+            (dy > 0f && movedY < dy - COLLISION_EPSILON)
+        ) velocidadesY[i] = 0f
+    }
+
+    /** M1.3: botão PULAR (borda) — consumido no próximo step com o jogador apoiado. */
+    fun pular() {
+        pedirPulo = true
     }
 
     /**
@@ -163,40 +235,43 @@ class NickPlayRuntime(private val scene: Scene) {
     /** Move no espaço de mundo e converte a translação para o pai do player. */
     private fun setPlayerWorldPosition(worldX: Float, worldY: Float, worldZ: Float) {
         val activePlayer = player ?: return
-        val parent = activePlayer.parent
+        setNickWorldPosition(activePlayer, worldX, worldY, worldZ)
+    }
+
+    /** S2: posição mundial para QUALQUER corpo (spawn do player e futuros spawns). */
+    private fun setNickWorldPosition(nick: Nick, worldX: Float, worldY: Float, worldZ: Float) {
+        val parent = nick.parent
         if (parent == null) {
-            activePlayer.transform.position.set(worldX, worldY, worldZ)
+            nick.transform.position.set(worldX, worldY, worldZ)
             return
         }
         val m = parent.transform.worldMatrix.m
         if (!inverseParentDelta(m, worldX - m[12], worldY - m[13], worldZ - m[14], localDeltaScratch)) return
-        activePlayer.transform.position.set(localDeltaScratch[0], localDeltaScratch[1], localDeltaScratch[2])
+        nick.transform.position.set(localDeltaScratch[0], localDeltaScratch[1], localDeltaScratch[2])
     }
 
     /** Converte um deslocamento de mundo em translação local, sem alocar. */
-    private fun translatePlayerWorld(dx: Float, dy: Float, dz: Float): Boolean {
-        val activePlayer = player ?: return false
-        val parent = activePlayer.parent
+    private fun translateNickWorld(nick: Nick, dx: Float, dy: Float, dz: Float): Boolean {
+        val parent = nick.parent
         if (parent == null) {
-            activePlayer.transform.position.x += dx
-            activePlayer.transform.position.y += dy
-            activePlayer.transform.position.z += dz
+            nick.transform.position.x += dx
+            nick.transform.position.y += dy
+            nick.transform.position.z += dz
         } else {
             val m = parent.transform.worldMatrix.m
             if (!inverseParentDelta(m, dx, dy, dz, localDeltaScratch)) return false
-            activePlayer.transform.position.x += localDeltaScratch[0]
-            activePlayer.transform.position.y += localDeltaScratch[1]
-            activePlayer.transform.position.z += localDeltaScratch[2]
+            nick.transform.position.x += localDeltaScratch[0]
+            nick.transform.position.y += localDeltaScratch[1]
+            nick.transform.position.z += localDeltaScratch[2]
         }
-        refreshPlayerWorldTransform()
+        refreshNickWorldTransform(nick)
         return true
     }
 
-    private fun refreshPlayerWorldTransform() {
-        val activePlayer = player ?: return
-        val transform = activePlayer.transform
+    private fun refreshNickWorldTransform(nick: Nick) {
+        val transform = nick.transform
         transform.localMatrix.setTRS(transform.position, transform.rotation, transform.scale)
-        val parent = activePlayer.parent
+        val parent = nick.parent
         if (parent == null) transform.worldMatrix.copyFrom(transform.localMatrix)
         else transform.worldMatrix.multiply(parent.transform.worldMatrix, transform.localMatrix)
     }
@@ -213,10 +288,10 @@ class NickPlayRuntime(private val scene: Scene) {
         return true
     }
 
-    /** Varredura exata em um eixo contra AABBs estáticos ativos. */
-    private fun moveAxis(axis: Int, requestedDelta: Float): Float {
+    /** S2: varredura exata em um eixo contra AABBs estáticas ATIVAS, para QUALQUER corpo. */
+    private fun moveAxis(corpo: Nick, indiceCorpo: Int, axis: Int, requestedDelta: Float): Float {
         if (requestedDelta == 0f || !requestedDelta.isFinite()) return 0f
-        readPlayerBounds()
+        readBodyBounds(corpo)
         var allowed = requestedDelta
         traversal.clear()
         pushRootsInTreeOrder()
@@ -224,7 +299,7 @@ class NickPlayRuntime(private val scene: Scene) {
         while (traversal.isNotEmpty()) {
             val nick = traversal.removeAt(traversal.lastIndex)
             if (!nick.active) continue
-            if (nick === player) continue // ignora o player e sua subárvore
+            if (nick === corpo) continue // ignora o próprio corpo e sua subárvore
             if (isBlockingStatic(nick)) {
                 getBlockingBounds(nick, obstacleBounds)
                 if (otherAxesOverlap(axis)) {
@@ -248,17 +323,18 @@ class NickPlayRuntime(private val scene: Scene) {
             pushChildrenInTreeOrder(nick)
         }
         if (allowed != 0f) {
-            if (!translatePlayerWorld(
+            if (!translateNickWorld(
+                    corpo,
                     if (axis == AXIS_X) allowed else 0f,
                     if (axis == AXIS_Y) allowed else 0f,
                     if (axis == AXIS_Z) allowed else 0f
                 )
             ) return 0f
-            readPlayerBounds()
+            readBodyBounds(corpo)
         }
-        // M1.2: PAROU (permitido < pedido) → guarda quem bloqueou (evento).
+        // M1.2/S2: PAROU (permitido < pedido) → guarda quem bloqueou (evento).
         if (allowed < requestedDelta - COLLISION_EPSILON && bloqueouPor != null) {
-            colisaoNome = bloqueouPor.displayName("pt")
+            colisaoPorCorpo[indiceCorpo] = bloqueouPor.displayName("pt")
         }
         return allowed
     }
@@ -268,16 +344,21 @@ class NickPlayRuntime(private val scene: Scene) {
         if (nick.kind != "body.collider") return false
         // M1.2: TODAS as formas param (sem solver completo — caixa/esfera/
         // cápsula/cilindro/convexo/malha usam a AABB da forma, a MESMA do
-        // wireframe do editor; solver exato entra na Fase 8+).
+        // wireframe do editor; solver exato entra na Fase 8+). S2: um
+        // body.collider também é DINÂMICO — ele bloqueia os OUTROS corpos
+        // e ele mesmo cai/para nos estáticos.
         return true
     }
 
     private fun getBlockingBounds(nick: Nick, out: FloatArray) {
-        if (nick.kind == "body.static") {
+        val collider = findClass(nick, MalhaNick.CLASSE_COLISOR)
+        // S2: body.static SEM classe Colisor = cubo unitário × escala do
+        // transform (world matrix). COM Colisor = volume da classe (igual ao
+        // body.collider) — antes a classe era IGNORADA para estáticos.
+        if (nick.kind == "body.static" && collider == null) {
             setWorldBounds(nick, 0f, 0f, 0f, 0.5f, 0.5f, 0.5f, out)
             return
         }
-        val collider = findClass(nick, MalhaNick.CLASSE_COLISOR)
         val center = collider?.fields?.get("centro") as? NickValue.Vec3Value
         val size = collider?.fields?.get("tamanho") as? NickValue.Vec3Value
         val hx = abs(size?.x ?: 1f) * 0.5f
@@ -339,7 +420,12 @@ class NickPlayRuntime(private val scene: Scene) {
 
     private fun readPlayerBounds() {
         val activePlayer = player ?: return
-        val collider = findClass(activePlayer, MalhaNick.CLASSE_COLISOR)
+        readBodyBounds(activePlayer)
+    }
+
+    /** S2: AABB do corpo (Colisor caixa > Malha AABB > cubo 1 m) em playerBounds. */
+    private fun readBodyBounds(corpo: Nick) {
+        val collider = findClass(corpo, MalhaNick.CLASSE_COLISOR)
         val boxCenter = collider?.fields?.get("centro") as? NickValue.Vec3Value
         val boxSize = collider?.fields?.get("tamanho") as? NickValue.Vec3Value
         if (collider?.getString("forma", "") == "box" && boxCenter != null && boxSize != null) {
@@ -350,7 +436,7 @@ class NickPlayRuntime(private val scene: Scene) {
             playerLocalHalf[1] = abs(boxSize.y) * 0.5f
             playerLocalHalf[2] = abs(boxSize.z) * 0.5f
         } else {
-            val mesh = findClass(activePlayer, MalhaNick.CLASSE)
+            val mesh = findClass(corpo, MalhaNick.CLASSE)
             if (mesh == null) {
                 playerLocalCenter[0] = 0f
                 playerLocalCenter[1] = 0f
@@ -374,7 +460,7 @@ class NickPlayRuntime(private val scene: Scene) {
             }
         }
         setWorldBounds(
-            activePlayer,
+            corpo,
             playerLocalCenter[0], playerLocalCenter[1], playerLocalCenter[2],
             playerLocalHalf[0], playerLocalHalf[1], playerLocalHalf[2], playerBounds
         )
@@ -459,4 +545,7 @@ class NickPlayRuntime(private val scene: Scene) {
         private const val AXIS_Y = 1
         private const val AXIS_Z = 2
     }
+
+    /** M1.2: estado de DENTRO de cada gatilho (borda false→true dispara). */
+    private val dentroDoGatilho = HashMap<Nick, Boolean>()
 }

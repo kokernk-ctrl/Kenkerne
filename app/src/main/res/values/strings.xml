@@ -194,6 +194,10 @@
 
     <string name="play_pular">Jump</string>
     <string name="play_atacar">Attack</string>
+    <!-- S2 (v0.1.24): physics debug overlay during Play -->
+    <string name="play_debug_titulo">PHYSICS (Play)</string>
+    <string name="play_debug_botao">Toggle physics debug overlay</string>
+    <string name="play_debug_vazio">no simulated body in this Play session</string>
     <!-- ===================== Luz do LUME (H2) ===================== -->
     <string name="light_section">Light</string>
     <string name="light_on">On</string>
