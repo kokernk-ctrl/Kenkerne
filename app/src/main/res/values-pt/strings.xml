@@ -267,6 +267,14 @@
     <string name="diag_check_glcaps">Capacidades GL (versão/extensões/compute)</string>
     <string name="diag_check_memoria">Limites de memória do aparelho</string>
     <string name="diag_check_release">Release minificado — classes críticas + operações mínimas</string>
+    <!-- S1 (v0.1.24): títulos que faltavam — caíam no fallback ".ck (cena)" -->
+    <string name="diag_check_materiais">Materiais PBR — .KERN v3 (5 mapas + fatores) + compat v2</string>
+    <string name="diag_check_luz">Luz do LUME — quad branco + luz vermelha (o pixel muda)</string>
+    <string name="diag_check_layout">Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável</string>
+    <string name="diag_check_joystick">Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)</string>
+    <!-- S1 (v0.1.24): botão de copiar relatório -->
+    <string name="diag_copy_report">Copiar relatório</string>
+    <string name="diag_report_copied">Relatório copiado para a área de transferência — cole onde quiser</string>
 
     <!-- ===================== Crash report dialog ===================== -->
     <string name="crash_title">O app fechou na última vez</string>

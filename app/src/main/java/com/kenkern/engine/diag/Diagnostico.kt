@@ -95,7 +95,88 @@ class Diagnostico(private val appContext: Context) {
 
         /** E2 (v0.1.18): tempo máximo POR CHECAGEM — nenhuma pode travar a rodada. */
         const val TIMEOUT_CHECAGEM_MS = 30_000L
+
+        /**
+         * S1 (v0.1.24): catálogo de checagens PURO (sem Context) — a JVM prova
+         * que todo id tem título único (DiagNomesChecagemTest). A instância
+         * [novaLista] só delega aqui.
+         */
+        fun novaListaDeChecagens(): List<Checagem> = listOf(
+            Checagem("nativo", "Núcleo nativo C++ — biblioteca, eco, handler de sinais"),
+            Checagem("etc2-nativo", "ETC2 nativo (etcpak) — 1024² ms/MP/s + PSNR × Kotlin em 256²"),
+            Checagem("malha-nativa", "Malha nativa (meshoptimizer) — dedup+cache+LOD: ms × Kotlin"),
+            Checagem("ck", ".ck (cena) — ida e volta"),
+            Checagem("kern", ".KERN (malha) — ida e volta"),
+            Checagem("materiais", "Materiais PBR — .KERN v3 (5 mapas + fatores) + compat v2"),
+            Checagem("gltf", "Importador glTF/GLB → .KERN (meta + integridade)"),
+            Checagem("fbx", "Importador FBX → .KERN (instâncias + integridade)"),
+            Checagem("importar", "Botão Importar modelo (pipeline + undo/redo + zip)"),
+            Checagem("kimg", ".KIMG — ida e volta + mipmaps + limites"),
+            Checagem("etc2", "ETC2 — upload e leitura de pixel (GL offscreen)"),
+            Checagem("tex-cena", "Textura na cena — quad com .KIMG (pixel não-preto)"),
+            Checagem("cena", "Cena = tela — viewport desenha só Nicks; M malhas medido"),
+            Checagem("luz", "Luz do LUME — quad branco + luz vermelha (o pixel muda)"),
+            Checagem("astc", "ASTC — extensão do aparelho (informativo)"),
+            Checagem("picking", "Matemática de picking (raio de tela)"),
+            Checagem("toque", "Toque no cubo — API real do TouchController"),
+            Checagem("shaders", "Compilação de shaders (GLSL ES)"),
+            Checagem("buffers", "Alocação de buffers (VBO/VAO)"),
+            Checagem("glcaps", "Capacidades GL (versão/extensões/compute)"),
+            Checagem("memoria", "Limites de memória do aparelho"),
+            Checagem("release", "Release minificado — classes críticas + operações mínimas"),
+            Checagem("layout", "Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável"),
+            Checagem("joystick", "Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)")
+        )
+        /**
+         * S1 (v0.1.24): parte (c) da checagem "materiais" — amostra glTF
+         * embutida — EXTRAÍDA para a JVM poder reproduzir/verificar o
+         * contrato (antes só existia dentro da instância, só no aparelho).
+         *
+         * CORREÇÃO S1b (causa raiz: Diagnostico.checarMateriais, v0.1.23,
+         * bloco (c)): a checagem exigia tabela de materiais da amostra
+         * `quadGlb()` — um glTF SEM NENHUM material no JSON — então ela
+         * SEMPRE falhava com "amostra quad.glb importou SEM tabela de
+         * materiais" no aparelho. O importador estava CERTO (tabela vazia
+         * para modelo sem materiais). A amostra com material é
+         * [GltfAmostras.quadComMaterialGlb] (2 primitivas com o MESMO
+         * material — dedup deixa 1; fatores 0.8/0.2/0.1, metallic 0.5,
+         * roughness 0.4, doubleSided).
+         */
+        fun avaliarAmostraMateriais(problemas: MutableList<String>): Int {
+            try {
+                val amostra = GltfImporter.importar(GltfAmostras.quadComMaterialGlb(), null, "quad.glb")
+                val tabela = amostra.mesh.materiais
+                if (tabela.isEmpty()) {
+                    problemas.add("amostra quad.glb (com material) importou SEM tabela de materiais")
+                    return 0
+                }
+                if (tabela.size != 1) {
+                    problemas.add("dedup de materiais: 2 primitivas com o MESMO material devem virar 1 (vieram ${tabela.size})")
+                }
+                val m = tabela[0]
+                if (abs(m.baseColorR - 0.8f) > 1e-3 || abs(m.baseColorG - 0.2f) > 1e-3 || abs(m.baseColorB - 0.1f) > 1e-3) {
+                    problemas.add("baseColorFactor divergiu: (${m.baseColorR}, ${m.baseColorG}, ${m.baseColorB})")
+                }
+                if (abs(m.metallic - 0.5f) > 1e-3) problemas.add("metallicFactor divergiu: ${m.metallic}")
+                if (abs(m.roughness - 0.4f) > 1e-3) problemas.add("roughnessFactor divergiu: ${m.roughness}")
+                if (!m.doubleSided) problemas.add("doubleSided=true do glTF se perdeu")
+
+                // Modelo SEM materiais no JSON: tabela VAZIA é o comportamento
+                // correto — o importador NÃO INVENTA material (a falha antiga
+                // vinha da CHECAGEM cobrar tabela cheia dessa amostra).
+                val semMaterial = GltfImporter.importar(GltfAmostras.quadGlb(), null, "quad.glb")
+                if (semMaterial.mesh.materiais.isNotEmpty()) {
+                    problemas.add("modelo sem materiais importou ${semMaterial.mesh.materiais.size} materiais INVENTADOS")
+                }
+                return tabela.size
+            } catch (e: Exception) {
+                problemas.add("amostra quad.glb falhou: ${e.message ?: e.javaClass.simpleName}")
+                return 0
+            }
+        }
     }
+
+    fun novaLista(): List<Checagem> = novaListaDeChecagens()
 
     enum class Status { PENDENTE, RODANDO, APROVADO, FALHOU, CANCELADA }
 
@@ -132,32 +213,6 @@ class Diagnostico(private val appContext: Context) {
         }
     }
 
-    fun novaLista(): List<Checagem> = listOf(
-        Checagem("nativo", "Núcleo nativo C++ — biblioteca, eco, handler de sinais"),
-        Checagem("etc2-nativo", "ETC2 nativo (etcpak) — 1024² ms/MP/s + PSNR × Kotlin em 256²"),
-        Checagem("malha-nativa", "Malha nativa (meshoptimizer) — dedup+cache+LOD: ms × Kotlin"),
-        Checagem("ck", ".ck (cena) — ida e volta"),
-        Checagem("kern", ".KERN (malha) — ida e volta"),
-        Checagem("materiais", "Materiais PBR — .KERN v3 (5 mapas + fatores) + compat v2"),
-        Checagem("gltf", "Importador glTF/GLB → .KERN (meta + integridade)"),
-        Checagem("fbx", "Importador FBX → .KERN (instâncias + integridade)"),
-        Checagem("importar", "Botão Importar modelo (pipeline + undo/redo + zip)"),
-        Checagem("kimg", ".KIMG — ida e volta + mipmaps + limites"),
-        Checagem("etc2", "ETC2 — upload e leitura de pixel (GL offscreen)"),
-        Checagem("tex-cena", "Textura na cena — quad com .KIMG (pixel não-preto)"),
-        Checagem("cena", "Cena = tela — viewport desenha só Nicks; M malhas medido"),
-        Checagem("luz", "Luz do LUME — quad branco + luz vermelha (o pixel muda)"),
-        Checagem("astc", "ASTC — extensão do aparelho (informativo)"),
-        Checagem("picking", "Matemática de picking (raio de tela)"),
-        Checagem("toque", "Toque no cubo — API real do TouchController"),
-        Checagem("shaders", "Compilação de shaders (GLSL ES)"),
-        Checagem("buffers", "Alocação de buffers (VBO/VAO)"),
-        Checagem("glcaps", "Capacidades GL (versão/extensões/compute)"),
-        Checagem("memoria", "Limites de memória do aparelho"),
-        Checagem("release", "Release minificado — classes críticas + operações mínimas"),
-        Checagem("layout", "Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável"),
-        Checagem("joystick", "Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)")
-    )
 
     /**
      * E2 (v0.1.18): cancela a rodada — o botão da tela chama junto com
@@ -234,7 +289,7 @@ class Diagnostico(private val appContext: Context) {
         }
     }
 
-    private fun nome(id: String): String = novaLista().first { it.id == id }.nome
+    private fun nome(id: String): String = novaListaDeChecagens().first { it.id == id }.nome
 
     /**
      * E2: UMA checagem em background com timeout de [TIMEOUT_CHECAGEM_MS].
@@ -1354,20 +1409,14 @@ class Diagnostico(private val appContext: Context) {
         }
 
         // ---------- (c) amostra real (glTF embutido) ----------
-        try {
-            val amostra = GltfImporter.importar(GltfAmostras.quadGlb(), null, "quad.glb")
-            if (amostra.mesh.materiais.isEmpty()) {
-                problemas.add("amostra quad.glb importou SEM tabela de materiais")
-            }
-        } catch (e: Exception) {
-            problemas.add("amostra quad.glb falhou: ${e.message ?: e.javaClass.simpleName}")
-        }
+        val amostraMateriais = avaliarAmostraMateriais(problemas)
 
         if (problemas.isEmpty()) {
             c.aprovado(
                 ".KERN v3 preserva os 5 mapas + fatores do material PBR (roundtrip completo) · " +
                     "material sem PBR segue gravando v2 (compatibilidade) · amostra real importou " +
-                    "${lida.materiais.size} material(is)"
+                    "$amostraMateriais material(is) (fatores 0,8/0,2/0,1 · metallic 0,5 · roughness 0,4 · " +
+                    "modelo SEM material importa tabela vazia)"
             )
         } else {
             c.falhou(problemas.joinToString("; "))

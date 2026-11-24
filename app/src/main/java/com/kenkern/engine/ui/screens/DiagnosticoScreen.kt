@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,14 +38,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kenkern.engine.R
+import com.kenkern.engine.diag.DiagNomesChecagem
+import com.kenkern.engine.diag.DiagRelatorioTexto
 import com.kenkern.engine.diag.Diagnostico
 import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.ui.theme.KenkernAmber
@@ -57,39 +62,19 @@ import com.kenkern.engine.ui.theme.KenkernTextHigh
 import com.kenkern.engine.ui.theme.KenkernTextLow
 import com.kenkern.engine.ui.theme.KenkernTextMid
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
  * T0.1: nome da checagem LOCALIZADO por id (o Diagnostico em si roda sem
  * Context — o nome exibido vem do recurso do idioma atual).
+ * S1 (v0.1.24): o mapeamento saiu do `when` daqui para [DiagNomesChecagem]
+ * (PURO, JVM-testável — o bug S1a era o `else` que reutilizava o título
+ * ".ck (cena)" para materiais/luz/layout/joystick).
  */
 @Composable
-private fun nomeChecagem(id: String): String = stringResource(
-    when (id) {
-        "nativo" -> R.string.diag_check_nativo
-        "etc2-nativo" -> R.string.diag_check_etc2_nativo
-        "malha-nativa" -> R.string.diag_check_malha_nativa
-        "ck" -> R.string.diag_check_ck
-        "kern" -> R.string.diag_check_kern
-        "gltf" -> R.string.diag_check_gltf
-        "fbx" -> R.string.diag_check_fbx
-        "importar" -> R.string.diag_check_importar
-        "kimg" -> R.string.diag_check_kimg
-        "etc2" -> R.string.diag_check_etc2
-        "tex-cena" -> R.string.diag_check_tex_cena
-        "cena" -> R.string.diag_check_cena
-        "astc" -> R.string.diag_check_astc
-        "picking" -> R.string.diag_check_picking
-        "toque" -> R.string.diag_check_toque
-        "shaders" -> R.string.diag_check_shaders
-        "buffers" -> R.string.diag_check_buffers
-        "glcaps" -> R.string.diag_check_glcaps
-        "memoria" -> R.string.diag_check_memoria
-        "release" -> R.string.diag_check_release
-        else -> R.string.diag_check_ck
-    }
-)
+private fun nomeChecagem(id: String): String = stringResource(DiagNomesChecagem.resource(id))
 
 /**
  * TELA DIAGNÓSTICO (Hub): roda as checagens da engine NO APARELHO e mostra
@@ -109,6 +94,17 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
     var rodando by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var jobRodada by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    // S1 (v0.1.24): timestamp (SystemClock) da última cópia do relatório —
+    // usado para mostrar a confirmação por ~2,5 s sem bloquear a UI.
+    var copiadoAte by remember { mutableStateOf(0L) }
+    val clipboard = LocalClipboardManager.current
+    LaunchedEffect(copiadoAte) {
+        if (copiadoAte > 0L) {
+            delay(2_500)
+            copiadoAte = 0L
+        }
+    }
 
     fun rodar() {
         if (rodando) return
@@ -180,6 +176,30 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                     overflow = TextOverflow.Ellipsis
                 )
             }
+            // S1 (v0.1.24): COPIAR RELATÓRIO — o texto COMPLETO das checagens
+            // (título + estado + tempo + detalhe inteiro; FALHAS no topo) vai
+            // para a área de transferência, pronto para colar em qualquer app.
+            Button(
+                onClick = {
+                    val relatorio = DiagRelatorioTexto.montar(resultados) { id ->
+                        context.getString(DiagNomesChecagem.resource(id))
+                    }
+                    clipboard.setText(AnnotatedString(relatorio))
+                    copiadoAte = android.os.SystemClock.elapsedRealtime()
+                },
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = KenkernTextMid),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                modifier = Modifier
+                    .height(40.dp)
+                    .padding(end = 8.dp)
+            ) {
+                Text(
+                    stringResource(R.string.diag_copy_report),
+                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
             Button(
                 onClick = { if (rodando) cancelar() else rodar() },
                 shape = RoundedCornerShape(8.dp),
@@ -208,6 +228,18 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
         }
         HorizontalDivider(thickness = 1.dp, color = KenkernOutlineSoft)
 
+        // S1 (v0.1.24): confirmação da cópia (some sozinha em 2,5 s).
+        if (copiadoAte > 0L) {
+            Text(
+                stringResource(R.string.diag_report_copied),
+                fontSize = 11.sp,
+                color = KenkernSuccess,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+
         // ---------- Resultados ----------
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -225,8 +257,11 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                     color = if (falharam > 0) KenkernError else KenkernTextMid
                 )
             }
-            items(resultados.size) { i ->
-                val r = resultados[i]
+            // S1 (v0.1.24): FALHAS NO TOPO da lista (a ordem de EXIBIÇÃO;
+            // a lista em si segue o catálogo para a atualização por id).
+            val ordenados = DiagRelatorioTexto.ordenar(resultados)
+            items(ordenados.size) { i ->
+                val r = ordenados[i]
                 Row(
                     verticalAlignment = Alignment.Top,
                     modifier = Modifier

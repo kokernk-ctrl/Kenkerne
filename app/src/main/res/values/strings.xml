@@ -267,6 +267,14 @@
     <string name="diag_check_glcaps">GL capabilities (version/extensions/compute)</string>
     <string name="diag_check_memoria">Device memory limits</string>
     <string name="diag_check_release">Minified release — critical classes + minimal operations</string>
+    <!-- S1 (v0.1.24): titles that were missing — they fell into the ".ck (scene)" fallback -->
+    <string name="diag_check_materiais">PBR materials — .KERN v3 (5 maps + factors) + v2 compat</string>
+    <string name="diag_check_luz">LUME lighting — white quad + red light (pixel changes)</string>
+    <string name="diag_check_layout">Landscape layout 800×360 — TopBar fits + Add Nick window reachable</string>
+    <string name="diag_check_joystick">On-screen joystick — math (normalization, dead zone, 8 directions, actions)</string>
+    <!-- S1 (v0.1.24): copy report button -->
+    <string name="diag_copy_report">Copy report</string>
+    <string name="diag_report_copied">Report copied to the clipboard — paste it anywhere</string>
 
     <!-- ===================== Crash report dialog ===================== -->
     <string name="crash_title">The app closed last time</string>
