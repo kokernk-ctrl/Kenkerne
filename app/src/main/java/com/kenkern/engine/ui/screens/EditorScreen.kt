@@ -317,14 +317,25 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
         painelFoco = null
     }
 
+    // S6 (v0.1.24): JANELA DE JOGO — Play abre TELA CHEIA só do jogo: a
+    // TopBar/painéis/StatusBar do editor SOMEM (o AndroidView do viewport
+    // PERMANECE no mesmo ponto da árvore — a superfície GL NÃO é recriada,
+    // só redimensionada), os toques de câmera do editor já são engolidos em
+    // Play (KenkernSurfaceView.onTouchEvent) e a seleção/gizmos já não
+    // desenham em jogo (renderer). Pausa/Sair ficam na mão do usuário.
+    val janelaDeJogo = vm.playState.value != PlayState.STOPPED
+
     Box(Modifier.fillMaxSize().background(KenkernBackground)) {
         Column(
             Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
+                .then(
+                    if (janelaDeJogo) Modifier // jogo em TELA CHEIA (sem insets)
+                    else Modifier.statusBarsPadding().navigationBarsPadding()
+                )
         ) {
-            EditorTopBar(
+            if (!janelaDeJogo) {
+                EditorTopBar(
                 vm = vm,
                 onExit = onExit,
                 hierarchy = hierarchy,
@@ -352,6 +363,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 onDebugToggle = { debugOverlay = !debugOverlay },
                 onImportClick = onImportClick
             )
+            }
 
             // ---------- Row central: painéis acoplados | viewport | painéis ----------
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
@@ -360,8 +372,9 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 val viewportHpx = with(density) { maxHeight.toPx() }
 
                 Row(Modifier.fillMaxSize()) {
-                    val hShown = hierarchy.visible.value
-                    val iShown = inspector.visible.value
+                    // S6: na janela de jogo NENHUM painel do editor é composto.
+                    val hShown = hierarchy.visible.value && !janelaDeJogo
+                    val iShown = inspector.visible.value && !janelaDeJogo
                     val hDockedSide = wide && hShown && hierarchy.docked.value
                     val iDockedSide = wide && iShown && inspector.docked.value
 
@@ -424,6 +437,48 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                         // continua recebendo todos os eventos.
                         if (debugOverlay) {
                             TouchDebugOverlay(surfaceView)
+                        }
+
+                        // S6 (v0.1.24): BOTÕES DA JANELA DE JOGO — Pausar/
+                        // Continuar e Sair (Stop) sobre o jogo em tela cheia.
+                        // Sair restaura a cena do editor exatamente (M1.6).
+                        if (janelaDeJogo) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = 8.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(KenkernSurface.copy(alpha = 0.75f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        vm.setPlayState(
+                                            if (vm.playState.value == PlayState.PLAYING) PlayState.PAUSED
+                                            else PlayState.PLAYING
+                                        )
+                                    }
+                                ) {
+                                    Text(
+                                        if (vm.playState.value == PlayState.PAUSED) stringResource(R.string.jogo_continuar)
+                                        else stringResource(R.string.jogo_pausar),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = KenkernTextHigh
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { vm.setPlayState(PlayState.STOPPED) }
+                                ) {
+                                    Text(
+                                        stringResource(R.string.jogo_sair),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = KenkernError
+                                    )
+                                }
+                            }
                         }
 
                         // Dica de controle do viewport: some no 1º toque e não volta na sessão.
@@ -779,7 +834,9 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 }
             }
 
-            EditorStatusBar(vm, surfaceView, fpsTick)
+            if (!janelaDeJogo) {
+                EditorStatusBar(vm, surfaceView, fpsTick)
+            }
         }
 
         // ---------- Janela "Adicionar Nick" (G2, v0.1.19) ----------
