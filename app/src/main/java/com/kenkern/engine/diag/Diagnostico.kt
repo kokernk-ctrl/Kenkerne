@@ -1434,6 +1434,13 @@ class Diagnostico(private val appContext: Context) {
      *      muda e fica dominado pelo vermelho.
      * Auxiliares de editor DESLIGADOS no render para isolar a LUZ (sem as
      * linhas vermelhas do auxiliar da pontual poluirem a comparação).
+     *
+     * S4 (v0.1.24): esta checagem usa o MESMO [EngineRenderer.renderFrame]
+     * do viewport do editor (LumeCena.coletar por frame, setLighting/
+     * setDynamicLights SEM guarda de emJogo) — ela verde PROVA que a luz do
+     * Nick ilumina o EDITOR, não só o Play. Investigação S4c ("a iluminação
+     * não aparece no editor, se for o caso"): não há caminho separado —
+     * editor e Play compartilham o MESMO pipeline de luz.
      */
     private fun checarLuz(c: Checagem, egl: EglDiag?) {
         if (egl == null) {
@@ -1518,7 +1525,8 @@ class Diagnostico(private val appContext: Context) {
             if (problemas.isEmpty()) {
                 c.aprovado(
                     "pontual vermelha ilumina e sai no mesmo frame (ligada ${fmtCor(pixelLigado)} × desligada ${fmtCor(pixelDesligado)}) · " +
-                        "direcional substitui o sol (${fmtCor(comSolNick)}) · ≤4 pontuais/spot por frame (LumeCena)"
+                        "direcional substitui o sol (${fmtCor(comSolNick)}) · ≤4 pontuais/spot por frame (LumeCena) · " +
+                        "MESMO caminho renderFrame do viewport: verde aqui = a luz ilumina o EDITOR também"
                 )
             } else {
                 c.falhou(problemas.joinToString("; "))

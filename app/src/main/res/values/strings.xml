@@ -194,6 +194,8 @@
 
     <string name="play_pular">Jump</string>
     <string name="play_atacar">Attack</string>
+    <!-- S4 (v0.1.24): 2D joystick frame in the editor viewport -->
+    <string name="joystick_moldura">Joystick · 2D (screen)</string>
     <!-- S2 (v0.1.24): physics debug overlay during Play -->
     <string name="play_debug_titulo">PHYSICS (Play)</string>
     <string name="play_debug_botao">Toggle physics debug overlay</string>

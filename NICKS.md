@@ -24,12 +24,54 @@ Regras (DECISIONS #24–#28):
 - A janela "Adicionar Nick" lista SOMENTE tipos IMPLEMENTADOS.
 - Nicks de UI (2D) vivem na árvore própria do TELAR (DECISIONS #29).
 
-**Auditoria do catálogo:** 18 tipos registrados
-(3 base, 3 luz, 2 câmeras, 7 corpos, 3 áreas/sinais); o restante abaixo é
-planejado e não aparece em "Adicionar Nick". Dos presets registrados,
-`body.collider` é o único com classe padrão (`Colisor`); nenhum declara filhos
-padrão. As classes/funções de Nick são um mecanismo separado dos tipos: o
-registro do tipo não associa automaticamente input, física, IA, áudio, etc.
+**Auditoria do catálogo:** 19 tipos registrados
+(3 base, 3 luz, 2 câmeras, 7 corpos, 3 áreas/sinais, 1 UI — ui.joystick);
+o restante abaixo é planejado e não aparece em "Adicionar Nick". Desde o S2
+(v0.1.24) TODOS os 5 kinds de corpo do primeiro recorte (static/rigid/
+collider/character/player) têm a classe padrão `Colisor`; luzes têm `Luz`,
+câmeras têm `Lente`, joystick tem `Joystick`. As classes/funções de Nick são
+um mecanismo separado dos tipos: o registro do tipo não associa
+automaticamente input, física, IA, áudio, etc.
+
+### Tabela S4 (v0.1.24) — TODO kind implementado: viewport, classes, Play
+
+Fonte única testável: `KindEmPlay` (core) — `NickKindTabelaTest` cria um Nick
+de CADA kind e confere as três colunas abaixo (a mesma tabela é a prova de
+regressão do S4).
+
+| Chave | Viewport (editor) | Classes padrão | Em Play |
+|-------|--------------------|----------------|---------|
+| nick.empty | auxiliar LOSANGO | — | nada — só transform/filhos/classes |
+| nick.group | container (não desenha) | — | nada — só estrutura |
+| nick.mesh | malha importada ou cubo | — | desenha a malha |
+| body.static | cubo × escala | Colisor | BLOQUEIA (estático; volume do Colisor) |
+| body.rigid | cubo | Colisor | SIMULA: gravidade + colisão |
+| body.collider | cubo | Colisor | SIMULA: gravidade + colisão — e bloqueia os outros |
+| body.character | cubo | Colisor | SIMULA: gravidade + colisão (sem input) |
+| body.player | cubo | Colisor | SIMULA: gravidade + input (mover/pular) + colisão; nasce no spawn; câmera segue |
+| body.enemy | cubo | — | NÃO simulado (IA pendente) |
+| body.npc | cubo | — | NÃO simulado (diálogo pendente) |
+| area.volume | auxiliar volume em arame | — | GATILHO on_trigger 1× na entrada do jogador |
+| area.spawn | auxiliar LOSANGO | — | SPAWN: teleporta o jogador ao iniciar |
+| area.signal | auxiliar | — | NÃO simulado (LINKERF pendente) |
+| camera.basic | auxiliar PIRÂMIDE | Lente | câmera de Play pela Lente (principal vence) |
+| camera.follow | auxiliar PIRÂMIDE | Lente | segue o jogador (clamp do chão) |
+| light.directional | auxiliar SETA | Luz | ILUMINA: substitui o sol (editor e Play) |
+| light.point | auxiliar ESFERA + alcance real | Luz | ILUMINA: ≤4 pontuais/spot por frame |
+| light.spot | auxiliar CONE + ângulo/alcance reais | Luz | ILUMINA: cone + alcance reais |
+| ui.joystick | MOLDURA 2D de tela (S4) — NUNCA malha 3D/cubo | Joystick | INPUT: joystick de tela (tipo/tamanho/zona morta/8 direções; Controla) |
+
+S4b (v0.1.24): Nicks ui.* são ELEMENTOS 2D DE TELA
+(`MalhaNick.ehKindElemento2D`): NUNCA desenham malha 3D, cubo nem auxiliar
+3D — no editor aparecem como MOLDURA 2D no viewport (tamanho da classe
+Joystick); em Play viram controles reais. (Antes do S4 o ui.joystick folha
+desenhava o CUBO 3D — `MalhaNick.desenhavel` não cobria `ui.*`.)
+
+S4c (v0.1.24) — luz no editor: editor e Play compartilham o MESMO pipeline
+(`EngineRenderer.renderFrame` → `LumeCena.coletar` por frame → setLighting/
+setDynamicLights, sem guarda de `emJogo`). A checagem "luz" do Diagnóstico
+renderiza pelo MESMO `renderFrame` (offscreen): verde nela = a luz do Nick
+ilumina o EDITOR também.
 
 ### Primeiro recorte do Marco Jogável (M1)
 
@@ -217,7 +259,7 @@ alcance; cone com a abertura externa real e altura = alcance). Checagem
 | ui.image | UI Image Nick | Nick de Imagem de UI | Exibe imagem/textura na interface. | UI | PLANEJADO | TELAR |
 | ui.button | UI Button Nick | Nick de Botão de UI | Elemento acionável que produz eventos de interação. | UI | PLANEJADO | TELAR |
 | ui.video | UI Video Nick | Nick de Vídeo de UI | Reproduz vídeo dentro da interface. | UI | PLANEJADO | TELAR |
-| ui.joystick | UI Joystick Nick | Nick de Joystick de UI | Controle de toque que produz eixos/ações de movimento e pode comandar um Nick. | UI | PLANEJADO | M1.3 |
+| ui.joystick | UI Joystick Nick | Nick de Joystick de UI | Controle de toque que produz eixos/ações de movimento e pode comandar um Nick. | UI | IMPLEMENTADO (M1.3, v0.1.22 — input de jogo; **S4 v0.1.24: no editor é MOLDURA 2D de tela — NUNCA malha 3D/cubo**) | M1.3 |
 | ui.slider | UI Slider Nick | Nick de Controle Deslizante de UI | Controle deslizante para selecionar/editar um valor. | UI | PLANEJADO | TELAR |
 | ui.progress | UI Progress Nick | Nick de Barra de Progresso de UI | Exibe progresso ou quantidade como barra/indicador. | UI | PLANEJADO | TELAR |
 | ui.list | UI List Nick | Nick de Lista de UI | Apresenta uma lista de itens navegáveis/selecionáveis. | UI | PLANEJADO | TELAR |

@@ -84,7 +84,8 @@ object MalhaNick {
      * continua desenhando — a malha vence o tipo).
      */
     fun desenhavel(nick: Nick): Boolean =
-        temMalha(nick) || (!ehKindAuxiliar(nick.kind) && nick.kind != NickKindRegistry.NICK_GROUP &&
+        temMalha(nick) || (!ehKindAuxiliar(nick.kind) && !ehKindElemento2D(nick.kind) &&
+            nick.kind != NickKindRegistry.NICK_GROUP &&
             (nick.children.isEmpty() || nick.kind == "body.player" || nick.kind == "body.static"))
 
     /**
@@ -100,6 +101,14 @@ object MalhaNick {
     fun ehKindAuxiliar(kind: String): Boolean =
         kind == "nick.empty" || kind.startsWith("light.") ||
             kind.startsWith("camera.") || kind.startsWith("area.")
+
+    /**
+     * S4 (v0.1.24): ELEMENTO 2D DE TELA — Nicks de UI (ui.*) NUNCA desenham
+     * malha 3D nem cubo nem auxiliar 3D: são elementos de TELA, mostrados no
+     * editor como MOLDURA 2D (overlay do viewport), e em Play viram controles
+     * reais (joystick/botões) sobre a renderização. Puro (JVM-testável).
+     */
+    fun ehKindElemento2D(kind: String): Boolean = kind.startsWith("ui.")
 
     /** Total de Nicks da cena (N da StatusBar "N nicks · M malhas", E6). */
     fun contarNicks(scene: Scene): Int {

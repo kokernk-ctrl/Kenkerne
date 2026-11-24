@@ -496,6 +496,53 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             FlightControls(svForFlight)
                         }
 
+                        // S4 (v0.1.24): MOLDURA 2D do Joystick Nick no viewport do
+                        // EDITOR — Nicks ui.* NUNCA desenham malha 3D nem cubo nem
+                        // auxiliar 3D (MalhaNick.ehKindElemento2D); no editor aparecem
+                        // como MOLDURA DE TELA (tamanho da classe Joystick), empilhadas
+                        // no canto inferior esquerdo. Em Play o controle REAL entra
+                        // (PlayControles).
+                        if (vm.playState.value == PlayState.STOPPED && mostrarAuxiliares) {
+                            val joysticksEditor = remember(vm.scene.value, sceneRevision) {
+                                val s = vm.scene.value
+                                if (s == null) emptyList()
+                                else {
+                                    val lista = ArrayList<com.kenkern.engine.core.Nick>(2)
+                                    val pilha = ArrayDeque<com.kenkern.engine.core.Nick>()
+                                    for (raiz in s.roots) pilha.addLast(raiz)
+                                    while (!pilha.isEmpty()) {
+                                        val n = pilha.removeLast()
+                                        if (n.active && n.kind == "ui.joystick") lista.add(n)
+                                        for (filho in n.children) pilha.addLast(filho)
+                                    }
+                                    lista
+                                }
+                            }
+                            var deslocamento = 12.dp
+                            for (j in joysticksEditor) {
+                                val inst = j.findClassInstance("Joystick")
+                                val tamanhoMoldura = (inst?.getFloat("tamanho", 112f) ?: 112f).coerceIn(64f, 200f)
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(start = 12.dp, bottom = deslocamento)
+                                        .size(tamanhoMoldura.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(KenkernAmber.copy(alpha = 0.08f))
+                                        .border(1.dp, KenkernAmber.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+                                ) {
+                                    Text(
+                                        stringResource(R.string.joystick_moldura),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = KenkernAmber
+                                    )
+                                }
+                                deslocamento += tamanhoMoldura.dp + 12.dp
+                            }
+                        }
+
                         // The viewport already sits inside the root safe-drawing
                         // area. Keep this control out of panel overlays; on narrow
                         // layouts the docked panels cover the viewport itself.
