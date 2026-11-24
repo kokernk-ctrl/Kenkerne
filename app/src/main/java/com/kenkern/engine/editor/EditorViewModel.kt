@@ -38,6 +38,7 @@ import com.kenkern.engine.core.Scene
 import com.kenkern.engine.core.TransformSnapshot
 import com.kenkern.engine.diag.BootTrace
 import com.kenkern.engine.diag.KenkernLog
+import com.kenkern.engine.engine.EspelhoNick
 import com.kenkern.engine.engine.PlayState
 import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
@@ -473,11 +474,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     /** T0.3: troca a FORMA do colisor do Nick selecionado (UM Command; ajusta à AABB). */
     fun setColliderShape(id: ReferenceId, forma: String) {
         run(SetColliderShapeCommand(sceneRef ?: return, id, forma))
+        espelharSeEmPlay(id)
     }
 
     fun renameSelected(newName: String) {
         val id = selection.value ?: return
         run(RenameCommand(sceneRef ?: return, id, newName))
+        espelharSeEmPlay(id)
     }
 
     fun deleteSelected() {
@@ -488,14 +491,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setNickActive(id: ReferenceId, value: Boolean) {
         run(SetFlagCommand(sceneRef ?: return, id, SetFlagCommand.FlagField.ACTIVE, value))
+        espelharSeEmPlay(id)
     }
 
     fun setNickVisible(id: ReferenceId, value: Boolean) {
         run(SetFlagCommand(sceneRef ?: return, id, SetFlagCommand.FlagField.VISIBLE, value))
+        espelharSeEmPlay(id)
     }
 
     fun setTransform(id: ReferenceId, snapshot: TransformSnapshot) {
         run(TransformCommand(sceneRef ?: return, id, snapshot))
+        espelharSeEmPlay(id)
     }
 
     /**
@@ -506,6 +512,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun commitGizmoDrag(id: ReferenceId, start: TransformSnapshot, end: TransformSnapshot) {
         val s = sceneRef ?: return
         run(TransformDragCommand(s, id, start, end))
+        espelharSeEmPlay(id)
     }
 
     fun reparentSelected(newParentId: ReferenceId?) {
@@ -534,6 +541,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setClassField(id: ReferenceId, typeName: String, fieldName: String, value: NickValue) {
         run(SetClassFieldCommand(sceneRef ?: return, id, typeName, fieldName, value))
+        espelharSeEmPlay(id)
     }
 
     /**
@@ -542,7 +550,40 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
      * demais camera.*; undo devolve TODOS os flags de uma vez.
      */
     fun setLentePrincipal(id: ReferenceId, principal: Boolean) {
-        run(SetLentePrincipalCommand(sceneRef ?: return, id, principal))
+        val s = sceneRef ?: return
+        run(SetLentePrincipalCommand(s, id, principal))
+        // S3: a regra "só UMA principal" envolve VÁRIOS nicks — espelha TODAS
+        // as câmeras da cena para a cópia de Play receber o mesmo conjunto.
+        espelharCamarasSeEmPlay(s)
+    }
+
+    /**
+     * S3 (v0.1.24): INSPETOR AO VIVO EM PLAY — depois de cada comando de
+     * campo/transform, o estado editável do Nick (transform + classes +
+     * flags + nome) é ESPELHADO na cópia de Play que o viewport renderiza,
+     * no MESMO frame (EngineControls.espelharNickNoPlay → queueEvent do GL
+     * thread). Sem sessão de Play a chamada é ignorada pelo renderer.
+     * Estrutura criada/excluída durante o Play não é espelhada (a cópia
+     * nasce no Play — campo/transform sim, estrutura não).
+     */
+    private fun espelharSeEmPlay(id: ReferenceId?) {
+        if (id == null) return
+        val s = sceneRef ?: return
+        val nick = s.findNick(id) ?: return
+        engineControls?.espelharNickNoPlay(EspelhoNick.de(nick))
+    }
+
+    /** S3: espelha todas as câmeras (a regra da principal desmarca as outras). */
+    private fun espelharCamarasSeEmPlay(s: Scene) {
+        val camaras = ArrayList<com.kenkern.engine.core.Nick>(4)
+        val pilha = ArrayDeque<com.kenkern.engine.core.Nick>()
+        for (raiz in s.roots) pilha.addLast(raiz)
+        while (!pilha.isEmpty()) {
+            val nick = pilha.removeLast()
+            if (nick.kind.startsWith("camera.")) camaras.add(nick)
+            for (filho in nick.children) pilha.addLast(filho)
+        }
+        for (camera in camaras) engineControls?.espelharNickNoPlay(EspelhoNick.de(camera))
     }
 
     fun setPlayState(state: PlayState) {

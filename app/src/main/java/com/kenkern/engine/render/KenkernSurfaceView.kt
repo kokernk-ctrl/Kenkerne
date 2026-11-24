@@ -22,6 +22,7 @@ import com.kenkern.engine.core.math.Quaternion
 import com.kenkern.engine.core.math.Vec3
 import com.kenkern.engine.engine.FixedStepLoop
 import com.kenkern.engine.engine.NickLuaScripts
+import com.kenkern.engine.engine.EspelhoNick
 import com.kenkern.engine.engine.NickPlayRuntime
 import com.kenkern.engine.engine.PlayState
 import javax.microedition.khronos.egl.EGL10
@@ -37,6 +38,14 @@ interface EngineControls {
 
     /** GL_MAX_TEXTURE_SIZE real (0 = GL ainda não inicializou). */
     val maxTextureSize: Int
+
+    /**
+     * S3 (v0.1.24): INSPETOR AO VIVO EM PLAY — espelha o estado editável de
+     * um Nick (transform + classes + flags + nome) na CÓPIA de Play que o
+     * viewport renderiza, no MESMO frame (queueEvent do GL thread; fora de
+     * Play a chamada é ignorada).
+     */
+    fun espelharNickNoPlay(espelho: EspelhoNick)
 }
 
 /**
@@ -330,6 +339,11 @@ class KenkernSurfaceView(
         }
 
         override fun currentPlayState(): PlayState = requestedPlayState
+
+        /** S3: a edição do Inspetor chega à cópia de Play no mesmo frame. */
+        override fun espelharNickNoPlay(espelho: EspelhoNick) {
+            queueEvent { glRenderer.aplicarEspelhoNoPlay(espelho) }
+        }
 
         override val maxTextureSize: Int
             get() = glRenderer.currentMaxTextureSize()
@@ -1076,6 +1090,18 @@ class KenkernSurfaceView(
             val linhas = ArrayList<String>(runtime.corposSimulados.size)
             runtime.snapshotDebug(linhas)
             return linhas
+        }
+
+        /**
+         * S3 (v0.1.24): INSPETOR AO VIVO EM PLAY — aplica o espelho do Nick
+         * editado na CÓPIA renderizada ANTES do próximo frame (chegou pelo
+         * queueEvent do GL thread; sem sessão de Play ativa, ignora).
+         */
+        fun aplicarEspelhoNoPlay(espelho: EspelhoNick) {
+            val alvo = playScene ?: return
+            if (EspelhoNick.aplicar(espelho, alvo)) {
+                alvo.updateWorldTransforms()
+            }
         }
 
         fun clearPlaySession() {
