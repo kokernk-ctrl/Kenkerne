@@ -292,6 +292,8 @@
     <string name="vm_create_fail">Could not create the project</string>
     <string name="vm_invalid">Invalid or corrupted project</string>
     <string name="vm_open_fail">Failed to open project: %1$s</string>
+    <!-- S5 (v0.1.24): async operation timeout (15 s) with visible error state -->
+    <string name="vm_timeout">“%1$s” did not finish in %2$d s (step: %3$s) — the device I/O stalled; logged to Console. Try again.</string>
     <string name="vm_duplicate_ok">Copy created: %1$s</string>
     <string name="vm_duplicate_fail">Could not duplicate the project</string>
     <string name="vm_rename_fail">Could not rename the project</string>

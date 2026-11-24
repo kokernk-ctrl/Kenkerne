@@ -131,8 +131,19 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun refreshProjects() {
         viewModelScope.launch(Dispatchers.IO) {
-            val list = ProjectManager.listProjects(getApplication())
-            withContext(Dispatchers.Main) { projects.value = list }
+            val r = OperacaoComLimite.executar("listar projetos") {
+                ProjectManager.listProjects(getApplication())
+            }
+            withContext(Dispatchers.Main) {
+                when (r) {
+                    is OperacaoComLimite.Resultado.Sucesso -> projects.value = r.valor
+                    is OperacaoComLimite.Resultado.Erro -> {
+                        KenkernLog.e(TAG, "listar projetos falhou", r.causa)
+                        projects.value = emptyList()
+                    }
+                    is OperacaoComLimite.Resultado.TempoEsgotado -> registrarTimeout(r)
+                }
+            }
         }
     }
 
@@ -155,10 +166,27 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         BootTrace.mark("openProject início")
         isLoading.value = true
         viewModelScope.launch {
-            val handle = withContext(Dispatchers.IO) {
-                ProjectManager.createProject(getApplication(), rawName, template)
+            // S5 (v0.1.24): limite de 15 s — I/O pendurado vira estado de ERRO
+            // visível (não spinner eterno com o Hub travado).
+            val r = OperacaoComLimite.executar("criar projeto '$rawName'") {
+                withContext(Dispatchers.IO) {
+                    ProjectManager.createProject(getApplication(), rawName, template)
+                }
             }
             isLoading.value = false
+            val handle = when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> r.valor
+                is OperacaoComLimite.Resultado.Erro -> {
+                    KenkernLog.e(TAG, "criar projeto falhou", r.causa)
+                    statusMessage.value = ProjectManager.lastError
+                        ?: getApplication<Application>().getString(R.string.vm_create_fail)
+                    return@launch
+                }
+                is OperacaoComLimite.Resultado.TempoEsgotado -> {
+                    registrarTimeout(r)
+                    return@launch
+                }
+            }
             if (handle == null) {
                 statusMessage.value =
                     ProjectManager.lastError ?: getApplication<Application>().getString(R.string.vm_create_fail)
@@ -177,10 +205,28 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         BootTrace.mark("openProject início")
         isLoading.value = true
         viewModelScope.launch {
-            val valid = withContext(Dispatchers.IO) {
-                ProjectManager.openProject(getApplication(), handle.root)
+            // S5 (v0.1.24): limite de 15 s — I/O pendurado vira estado de ERRO
+            // visível (não spinner eterno com o Hub travado).
+            val r = OperacaoComLimite.executar("abrir projeto '${handle.name}'") {
+                withContext(Dispatchers.IO) {
+                    ProjectManager.openProject(getApplication(), handle.root)
+                }
             }
             isLoading.value = false
+            val valid = when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> r.valor
+                is OperacaoComLimite.Resultado.Erro -> {
+                    KenkernLog.e(TAG, "abrir projeto falhou", r.causa)
+                    statusMessage.value = getApplication<Application>().getString(R.string.vm_invalid)
+                    refreshProjects()
+                    return@launch
+                }
+                is OperacaoComLimite.Resultado.TempoEsgotado -> {
+                    registrarTimeout(r)
+                    refreshProjects()
+                    return@launch
+                }
+            }
             if (valid == null) {
                 statusMessage.value = getApplication<Application>().getString(R.string.vm_invalid)
                 refreshProjects()
@@ -193,38 +239,70 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private fun loadIntoEditor(handle: ProjectHandle) {
         isLoading.value = true
         viewModelScope.launch {
-            runCatching {
-                val recovered = withContext(Dispatchers.IO) { ProjectManager.hasAutosave(handle) }
-                val loaded = withContext(Dispatchers.IO) { ProjectManager.loadScene(handle) }
-                BootTrace.mark("cena carregada") // loadScene retornou sem exceção
-                // Encerra o estado anterior DEPOIS que a cena nova carregou com sucesso.
-                detachEngineState()
-                project.value = handle
-                activeHandleAtEnter = handle
-                sceneRef = loaded
-                scene.value = loaded
-                // Malhas importadas apontam para a raiz DESTE projeto (a cache de GPU
-                // é limpa junto — caminhos relativos resolvem só contra a raiz certa).
-                AssetMeshLibrary.limpar()
-                AssetMeshLibrary.baseDir = handle.root
-                TextureLibrary.limpar()
-                TextureLibrary.baseDir = handle.root
-                recoveryNotice.value = recovered
-                history.clear()
-                selection.value = null
-                selectionRef = null
-                playState.value = PlayState.STOPPED
-                autosave.start({ sceneRef }, { project.value })
-                refreshProjects()
-                bump()
-            }.onFailure {
-                Log.e(TAG, "Falha ao abrir projeto", it)
-                KenkernLog.e(TAG, "Falha ao abrir projeto", it)
-                statusMessage.value = getApplication<Application>()
-                    .getString(R.string.vm_open_fail, it.message ?: "erro desconhecido")
+            // S5 (v0.1.24): limite de 15 s — carregar a cena pendurada vira
+            // estado de ERRO visível (não spinner eterno).
+            val r = OperacaoComLimite.executar("carregar cena do projeto '${handle.name}'") {
+                runCatching {
+                    val recovered = withContext(Dispatchers.IO) { ProjectManager.hasAutosave(handle) }
+                    val loaded = withContext(Dispatchers.IO) { ProjectManager.loadScene(handle) }
+                    BootTrace.mark("cena carregada") // loadScene retornou sem exceção
+                    // Encerra o estado anterior DEPOIS que a cena nova carregou com sucesso.
+                    detachEngineState()
+                    project.value = handle
+                    activeHandleAtEnter = handle
+                    sceneRef = loaded
+                    scene.value = loaded
+                    // Malhas importadas apontam para a raiz DESTE projeto (a cache de GPU
+                    // é limpa junto — caminhos relativos resolvem só contra a raiz certa).
+                    AssetMeshLibrary.limpar()
+                    AssetMeshLibrary.baseDir = handle.root
+                    TextureLibrary.limpar()
+                    TextureLibrary.baseDir = handle.root
+                    recoveryNotice.value = recovered
+                    history.clear()
+                    selection.value = null
+                    selectionRef = null
+                    playState.value = PlayState.STOPPED
+                    autosave.start({ sceneRef }, { project.value })
+                    refreshProjects()
+                    bump()
+                }
             }
             isLoading.value = false
+            when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> {
+                    r.valor.onFailure {
+                        Log.e(TAG, "Falha ao abrir projeto", it)
+                        KenkernLog.e(TAG, "Falha ao abrir projeto", it)
+                        statusMessage.value = getApplication<Application>()
+                            .getString(R.string.vm_open_fail, it.message ?: "erro desconhecido")
+                    }
+                }
+                is OperacaoComLimite.Resultado.Erro -> {
+                    KenkernLog.e(TAG, "Falha ao abrir projeto", r.causa)
+                    statusMessage.value = getApplication<Application>()
+                        .getString(R.string.vm_open_fail, r.causa.message ?: "erro desconhecido")
+                }
+                is OperacaoComLimite.Resultado.TempoEsgotado -> registrarTimeout(r)
+            }
         }
+    }
+
+    /**
+     * S5 (v0.1.24): estado de ERRO VISÍVEL para operação que estourou o limite
+     * de 15 s — mensagem com a OPERAÇÃO e a ETAPA como causa, registro no
+     * Console (KenkernLog) e no logcat; isLoading volta a false (o Hub nunca
+     * fica travado em "Carregando…" para sempre).
+     */
+    private fun registrarTimeout(t: OperacaoComLimite.Resultado.TempoEsgotado) {
+        val segundos = t.limiteMs / 1000
+        val etapa = t.etapa ?: "—"
+        KenkernLog.e(
+            TAG,
+            "operação '${t.operacao}' não terminou em $segundos s (etapa: $etapa) — I/O pendurado; registrado no Console"
+        )
+        statusMessage.value = getApplication<Application>()
+            .getString(R.string.vm_timeout, t.operacao, segundos, etapa)
     }
 
     fun exitProject() {
@@ -248,12 +326,21 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     /** Renomeia um projeto do Hub (I/O em background). Nunca crasha. */
     fun renameProject(handle: ProjectHandle, newName: String) {
         viewModelScope.launch {
-            val updated = withContext(Dispatchers.IO) {
-                ProjectManager.renameProject(handle, newName)
+            // S5: limite de 15 s também no renomear.
+            val r = OperacaoComLimite.executar("renomear projeto '${handle.name}'") {
+                withContext(Dispatchers.IO) { ProjectManager.renameProject(handle, newName) }
             }
-            if (updated == null) {
-                statusMessage.value =
-                    ProjectManager.lastError ?: getApplication<Application>().getString(R.string.vm_rename_fail)
+            when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> if (r.valor == null) {
+                    statusMessage.value =
+                        ProjectManager.lastError ?: getApplication<Application>().getString(R.string.vm_rename_fail)
+                }
+                is OperacaoComLimite.Resultado.Erro -> {
+                    KenkernLog.e(TAG, "renomear projeto falhou", r.causa)
+                    statusMessage.value =
+                        getApplication<Application>().getString(R.string.vm_rename_fail)
+                }
+                is OperacaoComLimite.Resultado.TempoEsgotado -> registrarTimeout(r)
             }
             refreshProjects()
         }
@@ -266,7 +353,21 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun duplicateProject(handle: ProjectHandle) {
         if (isLoading.value) return
         viewModelScope.launch {
-            val copia = withContext(Dispatchers.IO) { ProjectManager.duplicateProject(handle) }
+            // S5: limite de 15 s — duplicar pendurado vira erro visível.
+            val r = OperacaoComLimite.executar("duplicar projeto '${handle.name}'") {
+                withContext(Dispatchers.IO) { ProjectManager.duplicateProject(handle) }
+            }
+            val copia = when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> r.valor
+                is OperacaoComLimite.Resultado.Erro -> {
+                    KenkernLog.e(TAG, "duplicar projeto falhou", r.causa)
+                    null
+                }
+                is OperacaoComLimite.Resultado.TempoEsgotado -> {
+                    registrarTimeout(r)
+                    return@launch
+                }
+            }
             statusMessage.value = if (copia != null) {
                 getApplication<Application>().getString(R.string.vm_duplicate_ok, copia.name)
             } else {
@@ -282,24 +383,35 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun exportarProjetoPara(handle: ProjectHandle, uri: Uri) {
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching {
-                    val app = getApplication<Application>()
-                    app.contentResolver.openOutputStream(uri, "w")?.use { saida ->
-                        Kernpack.empacotar(handle.root, saida) > 0
-                    } ?: error("não foi possível abrir o destino")
-                }.onFailure {
-                    Log.e(TAG, "Falha ao exportar .kernpack", it)
-                    KenkernLog.e(TAG, "Falha ao exportar .kernpack", it)
+            // S5: limite de 15 s — SAF pendurado vira erro visível.
+            val r = OperacaoComLimite.executar("exportar .kernpack de '${handle.name}'") {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        val app = getApplication<Application>()
+                        app.contentResolver.openOutputStream(uri, "w")?.use { saida ->
+                            Kernpack.empacotar(handle.root, saida) > 0
+                        } ?: error("não foi possível abrir o destino")
+                    }.onFailure {
+                        Log.e(TAG, "Falha ao exportar .kernpack", it)
+                        KenkernLog.e(TAG, "Falha ao exportar .kernpack", it)
+                    }
                 }
             }
-            statusMessage.value = ok.fold(
-                onSuccess = { gravou ->
-                    val app = getApplication<Application>()
-                    if (gravou) app.getString(R.string.vm_export_ok) else app.getString(R.string.vm_export_empty)
-                },
-                onFailure = { getApplication<Application>().getString(R.string.vm_export_fail, it.message ?: "") }
-            )
+            statusMessage.value = when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> r.valor.fold(
+                    onSuccess = { gravou ->
+                        val app = getApplication<Application>()
+                        if (gravou) app.getString(R.string.vm_export_ok) else app.getString(R.string.vm_export_empty)
+                    },
+                    onFailure = { getApplication<Application>().getString(R.string.vm_export_fail, it.message ?: "") }
+                )
+                is OperacaoComLimite.Resultado.Erro -> getApplication<Application>()
+                    .getString(R.string.vm_export_fail, r.causa.message ?: "")
+                is OperacaoComLimite.Resultado.TempoEsgotado -> {
+                    registrarTimeout(r)
+                    return@launch
+                }
+            }
         }
     }
 
@@ -311,36 +423,48 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun importarKernpack(uri: Uri) {
         if (isLoading.value) return
         viewModelScope.launch {
-            val resultado = withContext(Dispatchers.IO) {
-                runCatching {
-                    val app = getApplication<Application>()
-                    val nomeLido = app.contentResolver.openInputStream(uri)?.use { Kernpack.nomeDoProjeto(it) }
-                    val base = ProjectManager.sanitize(nomeLido ?: "Importado").ifBlank { "Importado" }
-                    val pasta = ProjectManager.novaPastaUnica(ProjectManager.projectsRoot(app), base)
-                    try {
-                        val arquivos = app.contentResolver.openInputStream(uri)?.use {
-                            Kernpack.desempacotar(it, pasta)
-                        } ?: error("não foi possível abrir o pacote")
-                        val handle = ProjectManager.openProject(app, pasta)
-                            ?: error("pacote sem project.kenkern válido")
-                        getApplication<Application>().getString(R.string.vm_import_ok, handle.name, arquivos)
-                    } catch (e: Exception) {
-                        pasta.deleteRecursively() // não deixa migalha de pacote ruim
-                        throw e
+            // S5: limite de 15 s — pacote pendurado vira erro visível.
+            val r = OperacaoComLimite.executar("importar .kernpack") {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        val app = getApplication<Application>()
+                        val nomeLido = app.contentResolver.openInputStream(uri)?.use { Kernpack.nomeDoProjeto(it) }
+                        val base = ProjectManager.sanitize(nomeLido ?: "Importado").ifBlank { "Importado" }
+                        val pasta = ProjectManager.novaPastaUnica(ProjectManager.projectsRoot(app), base)
+                        try {
+                            val arquivos = app.contentResolver.openInputStream(uri)?.use {
+                                Kernpack.desempacotar(it, pasta)
+                            } ?: error("não foi possível abrir o pacote")
+                            val handle = ProjectManager.openProject(app, pasta)
+                                ?: error("pacote sem project.kenkern válido")
+                            getApplication<Application>().getString(R.string.vm_import_ok, handle.name, arquivos)
+                        } catch (e: Exception) {
+                            pasta.deleteRecursively() // não deixa migalha de pacote ruim
+                            throw e
+                        }
+                    }.onFailure {
+                        Log.e(TAG, "Falha ao importar .kernpack", it)
+                        KenkernLog.e(TAG, "Falha ao importar .kernpack", it)
                     }
-                }.onFailure {
-                    Log.e(TAG, "Falha ao importar .kernpack", it)
-                    KenkernLog.e(TAG, "Falha ao importar .kernpack", it)
                 }
             }
-            statusMessage.value = resultado.fold(
-                onSuccess = { it },
-                onFailure = {
-                    getApplication<Application>().getString(
-                        R.string.vm_import_fail, it.message ?: it.javaClass.simpleName
-                    )
+            statusMessage.value = when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> r.valor.fold(
+                    onSuccess = { it },
+                    onFailure = {
+                        getApplication<Application>().getString(
+                            R.string.vm_import_fail, it.message ?: it.javaClass.simpleName
+                        )
+                    }
+                )
+                is OperacaoComLimite.Resultado.Erro -> getApplication<Application>().getString(
+                    R.string.vm_import_fail, r.causa.message ?: r.causa.javaClass.simpleName
+                )
+                is OperacaoComLimite.Resultado.TempoEsgotado -> {
+                    registrarTimeout(r)
+                    return@launch
                 }
-            )
+            }
             refreshProjects()
         }
     }
@@ -359,7 +483,21 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 autosave.stop()
                 detachEngineState()
             }
-            val ok = withContext(Dispatchers.IO) { ProjectManager.deleteProject(handle) }
+            // S5: limite de 15 s — apagar pendurado vira erro visível.
+            val r = OperacaoComLimite.executar("apagar projeto '${handle.name}'") {
+                withContext(Dispatchers.IO) { ProjectManager.deleteProject(handle) }
+            }
+            val ok = when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> r.valor
+                is OperacaoComLimite.Resultado.Erro -> {
+                    KenkernLog.e(TAG, "apagar projeto falhou", r.causa)
+                    false
+                }
+                is OperacaoComLimite.Resultado.TempoEsgotado -> {
+                    registrarTimeout(r)
+                    return@launch
+                }
+            }
             if (!ok) {
                 statusMessage.value =
                     ProjectManager.lastError ?: getApplication<Application>().getString(R.string.vm_delete_fail)

@@ -292,6 +292,8 @@
     <string name="vm_create_fail">Não foi possível criar o projeto</string>
     <string name="vm_invalid">Projeto inválido ou corrompido</string>
     <string name="vm_open_fail">Falha ao abrir projeto: %1$s</string>
+    <!-- S5 (v0.1.24): timeout de operação assíncrona (15 s) com estado de erro visível -->
+    <string name="vm_timeout">“%1$s” não terminou em %2$d s (etapa: %3$s) — o I/O do aparelho travou; registrado no Console. Tente de novo.</string>
     <string name="vm_duplicate_ok">Cópia criada: %1$s</string>
     <string name="vm_duplicate_fail">Não foi possível duplicar o projeto</string>
     <string name="vm_rename_fail">Não foi possível renomear o projeto</string>
