@@ -93,7 +93,7 @@ class ContratoNickC0Test {
         }
 
         val texto = CkFormat.writeToString(cena)
-        val lida = CkFormat.readFromString(texto)
+        val lida = CkFormat.parseToNewScene(texto, "projeto-antigo")!!
         for (k in semFuncao) {
             val achado = lida.roots.firstOrNull { it.kind == k.key }
             assertNotNull("${k.key} sobrevive ao roundtrip .ck de projeto antigo", achado)
