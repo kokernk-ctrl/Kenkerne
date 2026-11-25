@@ -6,12 +6,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * T0.5 (v0.1.21): matemática PURA da cena 2.5D do Hub (paralaxe + buraco
- * negro sutil) — 30 FPS, pausa quando invisível (sem laço = sem tempo),
- * "reduzir animações" congela o fundo.
+ * Matemática e contrato do fundo do Hub:
+ *  - 30 FPS, pausa quando invisível, "reduzir animações" congela em frame estático;
+ *  - C1: resolução de 50% para o FBO + upscale, qualidade Alta/Baixa e shader
+ *    com lente gravitacional, disco inclinado com Doppler, anel de fótons e paralaxe.
  */
 class HubCena2DTest {
-
     @Test
     fun fpsAlvoEIntervaloDe30() {
         assertEquals(30, HubCena2D.FPS_ALVO)
@@ -26,7 +26,6 @@ class HubCena2DTest {
         HubCena2D.deslocamentoCamada(2f, 0.25f, b)
         assertTrue("camada próxima anda 4× a distante", kotlin.math.abs(a[0]) == 4f * kotlin.math.abs(b[0]))
         assertTrue("deriva para trás (negativa)", a[0] < 0f)
-        // t=0 → sem deslocamento (fundo estático no primeiro frame)
         HubCena2D.deslocamentoCamada(0f, 1f, a)
         assertEquals(0f, a[0], 1e-6f)
     }
@@ -41,7 +40,6 @@ class HubCena2DTest {
             assertTrue("y achatado ≤ raio (${out[1]})", kotlin.math.abs(out[1]) <= 0.62f + 1e-3f)
             f += 0.5f
         }
-        // período: t e t+ORBITA devolvem o mesmo ponto
         HubCena2D.pontoOrbita(0f, 0.7f, 1f, out)
         val x0 = out[0]; val y0 = out[1]
         HubCena2D.pontoOrbita(HubCena2D.ORBITA_SEGUNDOS, 0.7f, 1f, out)
@@ -65,5 +63,39 @@ class HubCena2DTest {
         assertTrue("escala 0,005 = reduzidas", HubCena2D.animacoesReduzidas(0.005f))
         assertFalse("escala 1 = animações normais", HubCena2D.animacoesReduzidas(1f))
         assertTrue("NaN é tratado como reduzido (fundo estático)", HubCena2D.animacoesReduzidas(Float.NaN))
+    }
+
+    @Test
+    fun resolucaoCinquentaPorCentoZeroAlocacao() {
+        val out = IntArray(2)
+        HubCena2D.resolucaoFundo(1600, 720, out)
+        assertEquals(800, out[0])
+        assertEquals(360, out[1])
+
+        // Mínimo seguro em telas minúsculas/transição
+        HubCena2D.resolucaoFundo(40, 20, out)
+        assertEquals(HubCena2D.TAMANHO_MINIMO_FBO, out[0])
+        assertEquals(HubCena2D.TAMANHO_MINIMO_FBO, out[1])
+    }
+
+    @Test
+    fun qualidadeAltaBaixaEShadersContrato() {
+        assertEquals(QualidadeFundoHub.ALTA, QualidadeFundoHub.fromCodigo(null))
+        assertEquals(QualidadeFundoHub.ALTA, QualidadeFundoHub.fromCodigo("invalido"))
+        assertEquals(QualidadeFundoHub.BAIXA, QualidadeFundoHub.fromCodigo("baixa"))
+        assertEquals(QualidadeFundoHub.BAIXA, QualidadeFundoHub.ALTA.alternar())
+        assertEquals(QualidadeFundoHub.ALTA, QualidadeFundoHub.BAIXA.alternar())
+        assertTrue(QualidadeFundoHub.ALTA.passosGeodesicos > QualidadeFundoHub.BAIXA.passosGeodesicos)
+        assertTrue(QualidadeFundoHub.ALTA.camadasEstrelas > QualidadeFundoHub.BAIXA.camadasEstrelas)
+
+        val fs = HubBlackHoleShaders.BLACK_HOLE_FRAGMENT_SHADER
+        assertTrue("GLSL ES 3.00", fs.contains("#version 300 es"))
+        assertTrue("uniform uResolution", fs.contains("uniform vec2 uResolution"))
+        assertTrue("uniform uTime", fs.contains("uniform float uTime"))
+        assertTrue("uniform uQuality", fs.contains("uniform float uQuality"))
+        assertTrue("lente gravitacional geodésica", fs.contains("cross(pos, vel)") && fs.contains("accel"))
+        assertTrue("anel de fótons", fs.contains("rPhoton") && fs.contains("photonRing"))
+        assertTrue("Doppler assimétrico no disco", fs.contains("doppler") && fs.contains("beaming"))
+        assertTrue("upscale bilinear usa uTexture", HubBlackHoleShaders.UPSCALE_FRAGMENT_SHADER.contains("uniform sampler2D uTexture"))
     }
 }

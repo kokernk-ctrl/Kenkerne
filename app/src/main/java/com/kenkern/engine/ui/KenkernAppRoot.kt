@@ -61,8 +61,7 @@ fun KenkernAppRoot() {
                 onAbrirDiagnostico = { showDiagnostico = true },
                 onDuplicateProject = { handle -> vm.duplicateProject(handle) },
                 onImportarKernpack = { uri -> vm.importarKernpack(uri) },
-                onExportarProjeto = { handle, uri -> vm.exportarProjetoPara(handle, uri) },
-                onAbrirSandbox = { vm.abrirOuCriarSandbox() }
+                onExportarProjeto = { handle, uri -> vm.exportarProjetoPara(handle, uri) }
             )
         }
     } else {

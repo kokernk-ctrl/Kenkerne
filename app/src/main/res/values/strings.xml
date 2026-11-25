@@ -191,6 +191,10 @@
     <string name="hub_shortcut_modelar">Model</string>
     <string name="hub_shortcut_animar">Animate</string>
     <string name="hub_shortcut_texturizar">Texture</string>
+    <string name="hub_shortcut_soon">Soon</string>
+    <string name="hub_shortcut_disabled_fmt">%1$s · %2$s</string>
+    <string name="hub_bg_quality_high">BG: High</string>
+    <string name="hub_bg_quality_low">BG: Low</string>
 
     <string name="play_pular">Jump</string>
     <string name="play_atacar">Attack</string>
