@@ -44,6 +44,9 @@ class EngineRenderer {
 
     private var initialized = false
     private var cubeHandle = 0
+    // C0 (v0.1.25): formas visíveis próprias dos 7 corpos (nunca cubo cinza genérico)
+    private val bodyHandles = IntArray(BodyMeshes.TOTAL)
+    private val bodyColorScratch = FloatArray(3)
     private var gizmoHandle = 0
     private var gizmoVertexCount = 0
 
@@ -228,6 +231,7 @@ class EngineRenderer {
     ) {
         initialized = false
         cubeHandle = 0
+        for (i in bodyHandles.indices) bodyHandles[i] = 0
         gizmoHandle = 0
         tgTrisMove = 0; tgTrisRotate = 0; tgTrisScale = 0
         tGizmo = transformGizmo
@@ -256,6 +260,7 @@ class EngineRenderer {
         // Cada construção é independente: se uma falhar, o resto ainda desenha —
         // mas a falha É REGISTRADA no Console (regra: runCatching não engole).
         runCatching { buildCube(backend) }.onFailure { KenkernLog.w(TAG, "cube não construído (viewport segue sem cubo)", it) }
+        runCatching { buildBodyMeshes(backend) }.onFailure { KenkernLog.w(TAG, "formas dos corpos não construídas (fallback para cubo)", it) }
         runCatching { buildGizmo(backend) }.onFailure { KenkernLog.w(TAG, "gizmo de eixos não construído", it) }
         runCatching { buildTransformGizmoBuffers(backend) }.onFailure { KenkernLog.w(TAG, "buffers do gizmo de transformação não construídos", it) }
         runCatching { buildEditorHelpers(backend) }.onFailure { KenkernLog.w(TAG, "auxiliares de editor não construídos (luz/câmera/área ficam invisíveis)", it) }
@@ -264,6 +269,13 @@ class EngineRenderer {
         // no caminho de render (Bug A). O torus renderiza SÓ no Diagnóstico.
         runCatching { validarKernRoundtrip() }.onFailure { KenkernLog.w(TAG, "roundtrip .KERN do torus de teste falhou", it) }
         initialized = true
+    }
+
+    /** C0: upload ÚNICO das 7 formas distintas de corpos (zero alocação por frame). */
+    private fun buildBodyMeshes(backend: RenderBackend) {
+        for (i in 0 until BodyMeshes.TOTAL) {
+            bodyHandles[i] = backend.createMesh(BodyMeshes.construir(i))
+        }
     }
 
     /** Upload ÚNICO dos buffers estáticos do gizmo de transformação (1 VBO de triângulos por modo). */
@@ -635,19 +647,33 @@ class EngineRenderer {
                             // O Nick continua selecionável/picker pela AABB da classe Malha.
                             AssetMeshLibrary.marcarNecessario(caminhoMalha)
                         }
-                    } else if (cubeHandle != 0) {
-                        geometry.submit(
-                            cubeHandle,
-                            nick.transform.worldMatrix,
-                            materialGray, materialGray, materialGray, 1f
-                        )
-                        malhasDrawnThisFrame++
-                        if (nick.id == selectedId) {
-                            // Contorno #FFA940 (inverted hull): world × inflação 1.06.
-                            outlineScratch.multiply(nick.transform.worldMatrix, outlineInflation)
-                            geometry.submitOutline(
-                                cubeHandle, outlineScratch, outlineR, outlineG, outlineB, 1f
-                            )
+                    } else {
+                        val bodyIdx = BodyMeshes.indiceDe(nick.kind)
+                        val bodyHandle = if (bodyIdx >= 0) bodyHandles[bodyIdx] else 0
+                        val handleUsado = if (bodyHandle != 0) bodyHandle else cubeHandle
+                        if (handleUsado != 0) {
+                            if (bodyHandle != 0) {
+                                BodyMeshes.corDoCorpo(bodyIdx, bodyColorScratch)
+                                geometry.submit(
+                                    handleUsado,
+                                    nick.transform.worldMatrix,
+                                    bodyColorScratch[0], bodyColorScratch[1], bodyColorScratch[2], 1f
+                                )
+                            } else {
+                                geometry.submit(
+                                    handleUsado,
+                                    nick.transform.worldMatrix,
+                                    materialGray, materialGray, materialGray, 1f
+                                )
+                            }
+                            malhasDrawnThisFrame++
+                            if (nick.id == selectedId) {
+                                // Contorno #FFA940 (inverted hull): world × inflação 1.06.
+                                outlineScratch.multiply(nick.transform.worldMatrix, outlineInflation)
+                                geometry.submitOutline(
+                                    handleUsado, outlineScratch, outlineR, outlineG, outlineB, 1f
+                                )
+                            }
                         }
                     }
                 } else if (nick.active && nick.visible && MalhaNick.ehAuxiliar(nick) && auxCount < auxNicks.size) {

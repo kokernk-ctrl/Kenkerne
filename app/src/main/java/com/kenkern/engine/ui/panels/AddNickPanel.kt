@@ -111,11 +111,11 @@ fun AddNickPanel(
     // Favoritos mudam com o toque: estado observável.
     var favoritosRev by remember { mutableIntStateOf(0) }
     val favoritos = remember(favoritosRev) { AddNickStore.favoritos(context) }
-    val recentes = remember { AddNickStore.recentes(context) }
+    val recentes = remember { AddNickStore.recentes(context).filter { NickKindRegistry.find(it)?.visivel == true } }
 
     // Grupos COM tipos registrados (ordem do enum) + aba Recentes no início.
     val gruposComTipos = NickKindGroup.entries.filter { g ->
-        NickKindRegistry.byGroup(g).isNotEmpty()
+        NickKindRegistry.visiveisByGroup(g).isNotEmpty()
     }
     val tiposDoGrupo: (Int) -> List<String> = { idx ->
         if (idx == 0) {
@@ -125,7 +125,7 @@ fun AddNickPanel(
             if (g == null) {
                 emptyList()
             } else {
-                val doGrupo = NickKindRegistry.byGroup(g).map { it.key }
+                val doGrupo = NickKindRegistry.visiveisByGroup(g).map { it.key }
                 // Favoritos primeiro (o resto na ordem do registro).
                 doGrupo.sortedByDescending { it in favoritos }
             }
@@ -320,7 +320,7 @@ fun AddNickPanel(
                 val lista: List<String> = if (buscaAtiva) {
                     // Busca global: nome (en/pt), descrição (en/pt) e chave.
                     val q = busca.trim().lowercase()
-                    NickKindRegistry.all().filter { k ->
+                    NickKindRegistry.visiveis().filter { k ->
                         k.key.contains(q, true) ||
                             k.labelEn.lowercase().contains(q) ||
                             k.labelPt.lowercase().contains(q) ||

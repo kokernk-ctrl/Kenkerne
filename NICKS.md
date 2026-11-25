@@ -44,13 +44,13 @@ regressão do S4).
 | nick.empty | auxiliar LOSANGO | — | nada — só transform/filhos/classes |
 | nick.group | container (não desenha) | — | nada — só estrutura |
 | nick.mesh | malha importada ou cubo | — | desenha a malha |
-| body.static | cubo × escala | Colisor | BLOQUEIA (estático; volume do Colisor) |
-| body.rigid | cubo | Colisor | SIMULA: gravidade + colisão |
-| body.collider | cubo | Colisor | SIMULA: gravidade + colisão — e bloqueia os outros |
-| body.character | cubo | Colisor | SIMULA: gravidade + colisão (sem input) |
-| body.player | cubo | Colisor | SIMULA: gravidade + input (mover/pular) + colisão; nasce no spawn; câmera segue |
-| body.enemy | cubo | — | NÃO simulado (IA pendente) |
-| body.npc | cubo | — | NÃO simulado (diálogo pendente) |
+| body.static | plinto azul-ardósia (BodyMeshes) | Colisor | BLOQUEIA (estático; volume do Colisor) |
+| body.rigid | bloco chanfrado laranja (BodyMeshes) | Colisor | SIMULA: gravidade + colisão |
+| body.collider | prisma octogonal lima (BodyMeshes) | Colisor | SIMULA: gravidade + colisão — e bloqueia os outros |
+| body.character | cápsula verde-água (BodyMeshes) | Colisor | SIMULA: gravidade + colisão (sem input) |
+| body.player | cápsula + visor azul (BodyMeshes) | Colisor | SIMULA: gravidade + input (mover/pular) + colisão; nasce no spawn; câmera segue |
+| body.enemy | prisma angular + crista vermelho (BodyMeshes) | — | NÃO simulado (IA pendente) |
+| body.npc | cápsula + coroa verde (BodyMeshes) | — | NÃO simulado (diálogo pendente) |
 | area.volume | auxiliar volume em arame | — | GATILHO on_trigger 1× na entrada do jogador |
 | area.spawn | auxiliar LOSANGO | — | SPAWN: teleporta o jogador ao iniciar |
 | area.signal | auxiliar | — | NÃO simulado (LINKERF pendente) |
@@ -99,6 +99,89 @@ demais tipos = LOSANGO. Botão "Mostrar auxiliares" na TopBar (padrão ligado).
 Corpos (body.*) continuam com o CUBO de 1 m como geometria placeholder até o
 M1/FORJA darem forma própria. Auxiliares NÃO contam como malha na StatusBar
 ("N nicks · M malhas" — E6).
+
+### Contrato de Nick C0 (v0.1.25) — TODOS os kinds do catálogo
+
+Status oficial por kind: **FUNCIONAL** (Play + Inspetor + Lua completos e testados), **PARCIAL** (funcionalidade parcial em transição) ou **SEM FUNÇÃO** (oculto em Adicionar Nick via `visivel = false`, mantido no registro para projetos antigos).
+
+| Chave | Grupo | Status C0 | Visível em Adicionar Nick | Forma no Viewport | Play / Inspetor / Lua |
+|-------|-------|-----------|---------------------------|-------------------|------------------------|
+| `nick.empty` | Base | FUNCIONAL | `true` | Auxiliar LOSANGO | Transform, filhos, classes, scripts Lua |
+| `nick.group` | Base | FUNCIONAL | `true` | Container (sem desenho) | Organiza subárvore, ativo/visível, Lua |
+| `nick.mesh` | Base | FUNCIONAL | `true` | Malha .KERN ou cubo padrão | Renderiza malha/PBR, Inspetor, Lua |
+| `nick.prefab` | Base | SEM FUNÇÃO | `false` (planejado) | — | Entra na Parada 2 (N5) |
+| `light.directional` | Luz | FUNCIONAL | `true` | Auxiliar SETA | LUME direcional (editor+Play), Inspetor, Lua |
+| `light.point` | Luz | FUNCIONAL | `true` | Auxiliar ESFERA + alcance | LUME pontual (editor+Play), Inspetor, Lua |
+| `light.spot` | Luz | FUNCIONAL | `true` | Auxiliar CONE + alcance | LUME foco (editor+Play), Inspetor, Lua |
+| `camera.basic` | Câmera | FUNCIONAL | `true` | Auxiliar PIRÂMIDE | Lente (fov/near/far/orto/principal), Lua |
+| `camera.follow` | Câmera | FUNCIONAL | `true` | Auxiliar PIRÂMIDE | Seguidora de alvo com clamp do chão, Lua |
+| `camera.cinematic` | Câmera | SEM FUNÇÃO | `false` (planejado) | — | Pendente (timeline) |
+| `body.static` | Corpos | FUNCIONAL | `true` | Plinto azul-ardósia (`BodyMeshes`) | Estático com `Colisor`, bloqueia corpos, Lua |
+| `body.rigid` | Corpos | FUNCIONAL | `true` | Bloco chanfrado laranja (`BodyMeshes`) | Gravidade + colisão com `Colisor`, Lua |
+| `body.kinematic` | Corpos | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `body.collider` | Corpos | FUNCIONAL | `true` | Prisma octogonal lima (`BodyMeshes`) | Gravidade + colisão + bloqueia corpos, Lua |
+| `body.character` | Corpos | FUNCIONAL | `true` | Cápsula verde-água (`BodyMeshes`) | Gravidade + colisão com `Colisor`, Lua |
+| `body.player` | Corpos | FUNCIONAL | `true` | Cápsula + visor azul (`BodyMeshes`) | Gravidade + input mover/pular + spawn + câmera, Lua |
+| `body.enemy` | Corpos | SEM FUNÇÃO | `false` (registro preservado) | Prisma angular vermelho (`BodyMeshes`) | Abre em projetos antigos; IA entra na Parada 2 (N7) |
+| `body.npc` | Corpos | SEM FUNÇÃO | `false` (registro preservado) | Cápsula + coroa verde (`BodyMeshes`) | Abre em projetos antigos; rotina entra na Parada 2 (N7) |
+| `body.car` | Corpos | SEM FUNÇÃO | `false` (planejado) | — | Pendente (RODANTE) |
+| `body.bike` | Corpos | SEM FUNÇÃO | `false` (planejado) | — | Pendente (RODANTE) |
+| `body.ragdoll` | Corpos | SEM FUNÇÃO | `false` (planejado) | — | Pendente (OSSATURA) |
+| `area.volume` | Áreas | FUNCIONAL | `true` | Auxiliar caixa em arame | Gatilho `on_trigger` na entrada, Inspetor, Lua |
+| `area.signal` | Áreas | SEM FUNÇÃO | `false` (registro preservado) | Auxiliar LOSANGO | Abre em projetos antigos; sinal entra na Parada 2 (N2) |
+| `area.spawn` | Áreas | FUNCIONAL | `true` | Auxiliar LOSANGO | Posição de nascimento do jogador, Lua |
+| `area.checkpoint` | Áreas | SEM FUNÇÃO | `false` (planejado) | — | Entra na Parada 2 (N4) |
+| `area.navigation` | Áreas | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ai.behavior` | IA | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `dialogue.dialogue` | IA | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `anim.player` | Animação | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `anim.body` | Animação | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `anim.skeleton` | Animação | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `anim.state` | Animação | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `anim.parts` | Animação | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `anim.timeline` | Animação | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `env.environment` | Ambiente | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `env.sky` | Ambiente | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `env.daynight` | Ambiente | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `env.weather` | Ambiente | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `env.fog` | Ambiente | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `env.wind` | Ambiente | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `env.water` | Ambiente | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `env.terrain` | Ambiente | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `env.vegetation` | Ambiente | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `env.procedural` | Ambiente | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `fx.particles` | Efeitos | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `fx.decal` | Efeitos | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `fx.trail` | Efeitos | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `audio.source` | Áudio | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `audio.music` | Áudio | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `audio.zone` | Áudio | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `media.video` | Mídia | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `media.sprite` | Mídia | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `media.anim2d` | Mídia | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `curve.mesh` | Curvas | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `curve.path` | Curvas | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `curve.road` | Curvas | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `curve.traffic` | Curvas | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `logic.linkerf` | Lógica | SEM FUNÇÃO | `false` (planejado) | — | Entra na Parada 3 (K4) |
+| `logic.timer` | Lógica | SEM FUNÇÃO | `false` (planejado) | — | Entra na Parada 2 (N3) |
+| `logic.counter` | Lógica | SEM FUNÇÃO | `false` (planejado) | — | Entra na Parada 2 (N3) |
+| `logic.spawner` | Lógica | SEM FUNÇÃO | `false` (planejado) | — | Entra na Parada 2 (N6) |
+| `logic.save` | Lógica | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `world.world` | Mundo | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `world.layer` | Mundo | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ui.screen` | UI | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ui.panel` | UI | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ui.text` | UI | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ui.image` | UI | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ui.button` | UI | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ui.video` | UI | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ui.joystick` | UI | FUNCIONAL | `true` | Moldura 2D de tela | Input 2D/ações/Controla em Play, Inspetor, Lua |
+| `ui.slider` | UI | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ui.progress` | UI | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ui.list` | UI | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ui.dialogue` | UI | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
+| `ui.touch` | UI | SEM FUNÇÃO | `false` (planejado) | — | Pendente |
 
 ## BASE
 

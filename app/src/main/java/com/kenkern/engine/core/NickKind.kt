@@ -27,6 +27,9 @@ enum class NickKindGroup(val key: String, val labelEn: String, val labelPt: Stri
     UI("ui", "UI", "UI")
 }
 
+/** Status funcional de um tipo no contrato de Nicks (C0). */
+enum class NickKindStatus { FUNCIONAL, PARCIAL, SEM_FUNCAO }
+
 /** Definição de um tipo de Nick (preset de dados; chaves estáveis em inglês). */
 class NickKind(
     val key: String,
@@ -40,7 +43,11 @@ class NickKind(
     /** Nomes de classes aplicadas ao Nick criado deste tipo. */
     val defaultClasses: List<String> = emptyList(),
     /** Chaves dos filhos criados junto (ex.: prefab → filhos padrão). */
-    val childKinds: List<String> = emptyList()
+    val childKinds: List<String> = emptyList(),
+    /** Status funcional no contrato de Nicks (NICKS.md). */
+    val status: NickKindStatus = NickKindStatus.FUNCIONAL,
+    /** Kinds SEM_FUNCAO ficam fora de Adicionar Nick, mas abrem em projetos antigos. */
+    val visivel: Boolean = status != NickKindStatus.SEM_FUNCAO
 ) {
     fun label(language: String): String = if (language == "pt") labelPt else labelEn
 
@@ -66,6 +73,12 @@ object NickKindRegistry {
 
     fun byGroup(group: NickKindGroup): List<NickKind> =
         kinds.values.filter { it.group == group }
+
+    /** C0: somente tipos com função real para exibir em Adicionar Nick. */
+    fun visiveis(): List<NickKind> = kinds.values.filter { it.visivel }
+
+    fun visiveisByGroup(group: NickKindGroup): List<NickKind> =
+        kinds.values.filter { it.visivel && it.group == group }
 
     /**
      * Rótulo do tipo no idioma pedido; chave DESCONHECIDA devolve a própria
@@ -227,7 +240,8 @@ object NickKindCatalog {
                 key = "body.enemy", labelEn = "Enemy Body Nick", labelPt = "Nick de Corpo Inimigo",
                 descEn = "Character + behavior + health and damage",
                 descPt = "Character + comportamento + vida e dano",
-                group = NickKindGroup.CORPOS, iconKey = "body.enemy"
+                group = NickKindGroup.CORPOS, iconKey = "body.enemy",
+                status = NickKindStatus.SEM_FUNCAO, visivel = false
             )
         )
         NickKindRegistry.register(
@@ -235,7 +249,8 @@ object NickKindCatalog {
                 key = "body.npc", labelEn = "NPC Body Nick", labelPt = "Nick de Corpo NPC",
                 descEn = "Character + dialogue + routines",
                 descPt = "Character + diálogo + rotinas",
-                group = NickKindGroup.CORPOS, iconKey = "body.npc"
+                group = NickKindGroup.CORPOS, iconKey = "body.npc",
+                status = NickKindStatus.SEM_FUNCAO, visivel = false
             )
         )
         // ---------------- ÁREAS E SINAIS (ZONA) ----------------
@@ -252,7 +267,8 @@ object NickKindCatalog {
                 key = "area.signal", labelEn = "Signal Nick", labelPt = "Nick de Sinal",
                 descEn = "Emits and receives named events (wires into LINKERF)",
                 descPt = "Emite e recebe eventos nomeados (liga no LINKERF)",
-                group = NickKindGroup.AREAS, iconKey = "area.signal"
+                group = NickKindGroup.AREAS, iconKey = "area.signal",
+                status = NickKindStatus.SEM_FUNCAO, visivel = false
             )
         )
         NickKindRegistry.register(
