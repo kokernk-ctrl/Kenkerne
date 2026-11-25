@@ -45,6 +45,7 @@ object DiagNomesChecagem {
         "release" to R.string.diag_check_release,
         "layout" to R.string.diag_check_layout,
         "joystick" to R.string.diag_check_joystick,
+        "lua-api" to R.string.diag_check_lua_api,
         "jogo" to R.string.diag_check_jogo
     )
 

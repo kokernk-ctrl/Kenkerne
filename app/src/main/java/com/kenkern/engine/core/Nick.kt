@@ -5,7 +5,8 @@ package com.kenkern.engine.core
  * Tem id estável (ReferenceId), TIPO (chave estável do NickKindRegistry —
  * DECISIONS #24/#25), nome OPCIONAL (null = exibe o rótulo do tipo no idioma
  * atual — DECISIONS #26; renomeação do usuário nunca é traduzida),
- * ativo/inativo, pai e filhos, transform e uma lista de CLASSES (dados + funções).
+ * ativo/inativo, tags de lógica, pai e filhos, transform e uma lista de
+ * CLASSES (dados + funções).
  */
 class Nick(
     val id: ReferenceId = ReferenceId.generate(),
@@ -18,16 +19,31 @@ class Nick(
 
     /** Chave estável do tipo (ex.: "body.player"); o .ck CK2 guarda isto. */
     var kind: String = kind
-
     var active: Boolean = active
     var visible: Boolean = true
-
+    val tags = LinkedHashSet<String>()
     var parent: Nick? = null
         internal set
-
     val children = ArrayList<Nick>()
     val transform = Transform()
     val classes = ArrayList<NickClassInstance>()
+
+    fun hasTag(tag: String): Boolean {
+        val clean = tag.trim()
+        return clean.isNotEmpty() && tags.contains(clean)
+    }
+
+    fun addTag(tag: String): Boolean {
+        val clean = tag.trim()
+        if (clean.isEmpty()) return false
+        return tags.add(clean)
+    }
+
+    fun removeTag(tag: String): Boolean {
+        val clean = tag.trim()
+        if (clean.isEmpty()) return false
+        return tags.remove(clean)
+    }
 
     /**
      * Nome EXIBIDO: texto do usuário se houver; senão o rótulo do TIPO no

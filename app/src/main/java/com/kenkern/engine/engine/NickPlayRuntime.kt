@@ -178,7 +178,7 @@ class NickPlayRuntime(private val scene: Scene) {
         // M1.2: GATILHOS (áreas) — borda de ENTRADA dispara on_trigger 1 vez;
         // sair e voltar dispara de novo. Colisor da área (se houver) define o
         // volume; sem Colisor, o cubo de 1 m do Area Nick é o volume.
-        checarGatilhos()
+        checarGatilhos(deltaTime)
 
         // M1.2/S2: evento de COLISÃO — cada corpo que PAROU contra um
         // obstáculo neste step dispara on_collision NO SEU script.
@@ -228,7 +228,7 @@ class NickPlayRuntime(private val scene: Scene) {
         ) return false
         scene.updateWorldTransforms()
         readPlayerBounds()
-        unitCubeWorldBounds(area, obstacleBounds)
+        areaWorldBounds(area, obstacleBounds)
         return overlaps(playerBounds, obstacleBounds)
     }
 
@@ -389,32 +389,62 @@ class NickPlayRuntime(private val scene: Scene) {
      * jogador dispara on_trigger UMA VEZ na entrada (sai e volta = dispara
      * de novo). O volume é o Colisor da área (se houver) ou o cubo de 1 m.
      */
-    private fun checarGatilhos() {
+    private fun areaWorldBounds(area: Nick, out: FloatArray) {
+        val collider = findClass(area, MalhaNick.CLASSE_COLISOR)
+        val center = collider?.fields?.get("centro") as? NickValue.Vec3Value
+        val size = collider?.fields?.get("tamanho") as? NickValue.Vec3Value
+        val hx = abs(size?.x ?: 1f) * 0.5f
+        val hy = abs(size?.y ?: 1f) * 0.5f
+        val hz = abs(size?.z ?: 1f) * 0.5f
+        val cx = center?.x ?: 0f
+        val cy = center?.y ?: 0f
+        val cz = center?.z ?: 0f
+        when (collider?.getString("forma", "box")) {
+            "sphere" -> {
+                val r = (hx + hy + hz) / 3f
+                setWorldBounds(area, cx, cy, cz, r, r, r, out)
+            }
+            "capsule" -> {
+                val r = (hx + hz) * 0.5f
+                setWorldBounds(area, cx, cy, cz, r, hy, r, out)
+            }
+            else -> setWorldBounds(area, cx, cy, cz, hx, hy, hz, out)
+        }
+    }
+
+    private fun checarGatilhos(dt: Float) {
         val activePlayer = player ?: return
+        val playerAtivo = isEffectivelyActive(activePlayer)
         val pilha = traversal
         pilha.clear()
         pushRootsInTreeOrder()
         while (pilha.isNotEmpty()) {
             val area = pilha.removeAt(pilha.lastIndex)
-            if (!area.active) continue
+            if (!area.active) {
+                if (dentroDoGatilho[area] == true) {
+                    dentroDoGatilho[area] = false
+                    scripts?.emitirAreaExit(area, activePlayer)
+                }
+                continue
+            }
             if (area.children.isNotEmpty()) pushChildrenInTreeOrder(area)
             if (area.kind != "area.volume") continue
-            val collider = findClass(area, MalhaNick.CLASSE_COLISOR)
-            val center = collider?.fields?.get("centro") as? NickValue.Vec3Value
-            val size = collider?.fields?.get("tamanho") as? NickValue.Vec3Value
-            val hx = abs(size?.x ?: 1f) * 0.5f
-            val hy = abs(size?.y ?: 1f) * 0.5f
-            val hz = abs(size?.z ?: 1f) * 0.5f
-            setWorldBounds(area, center?.x ?: 0f, center?.y ?: 0f, center?.z ?: 0f, hx, hy, hz, obstacleBounds)
-            val dentro = overlaps(playerBounds, obstacleBounds)
+            areaWorldBounds(area, obstacleBounds)
+            val dentro = playerAtivo && overlaps(playerBounds, obstacleBounds)
             val antes = dentroDoGatilho[area]
+            dentroDoGatilho[area] = dentro
             if (dentro && antes != true) {
                 val nomeArea = area.displayName("pt")
-                // evento no script do JOGADOR (self) e no script da ÁREA.
+                // evento legado on_trigger + novo callback on_enter(outro)
                 scripts?.emitirGatilho(activePlayer, nomeArea)
                 scripts?.emitirGatilho(area, nomeArea)
+                scripts?.emitirAreaEnter(area, activePlayer)
+            } else if (!dentro && antes == true) {
+                scripts?.emitirAreaExit(area, activePlayer)
             }
-            dentroDoGatilho[area] = dentro
+            if (dentro) {
+                scripts?.emitirAreaStay(area, activePlayer, dt)
+            }
         }
     }
 

@@ -100,6 +100,24 @@ object InputJogo {
  * mover (vetor −1..1), pular, atacar.
  */
 class EstadoInputJogo {
+    private val acoesExtras = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    fun definirAcao(nome: String, pressionada: Boolean) {
+        val chave = nome.trim().lowercase()
+        if (chave.isEmpty()) return
+        when (chave) {
+            "pular", "jump" -> pularPressionado = pressionada
+            "atacar", "attack" -> atacarPressionado = pressionada
+            else -> acoesExtras[chave] = pressionada
+        }
+    }
+
+    fun estaPressionada(nome: String): Boolean = when (nome.trim().lowercase()) {
+        "pular", "jump" -> pularPressionado
+        "atacar", "attack" -> atacarPressionado
+        else -> acoesExtras[nome.trim().lowercase()] == true
+    }
+
     @JvmField var moverX: Float = 0f
     @JvmField var moverY: Float = 0f
     @JvmField var pularPressionado: Boolean = false
@@ -124,5 +142,6 @@ class EstadoInputJogo {
         pularPressionado = false; atacarPressionado = false
         pularBorda = false; atacarBorda = false
         pularAntes = false; atacarAntes = false
+        acoesExtras.clear()
     }
 }

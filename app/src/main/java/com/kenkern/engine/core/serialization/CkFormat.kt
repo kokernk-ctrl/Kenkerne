@@ -65,8 +65,9 @@ object CkFormat {
         val parentId = nick.parent?.id?.value ?: PARENT_NONE
         // CK2: kind SEMPRE; name só quando o usuário renomeou (null = rótulo do tipo).
         val namePart = nick.name?.let { " name=${quote(it)}" } ?: ""
+        val tagsPart = if (nick.tags.isNotEmpty()) " tags=${quote(nick.tags.joinToString(","))}" else ""
         out.appendLine(
-            "NICK id=${nick.id.value} kind=${nick.kind}$namePart active=${nick.active} visible=${nick.visible} parent=$parentId"
+            "NICK id=${nick.id.value} kind=${nick.kind}$namePart active=${nick.active} visible=${nick.visible} parent=$parentId$tagsPart"
         )
         val t = nick.transform
         out.appendLine(
@@ -206,6 +207,9 @@ object CkFormat {
                         kind ?: com.kenkern.engine.core.NickKindRegistry.NICK_EMPTY
                     )
                     nick.visible = visible
+                    tokenValue(tokens, "tags")?.let { rawTags ->
+                        for (tag in unescape(rawTags).split(',')) nick.addTag(tag)
+                    }
                     nicks[id] = nick
                     if (parent != null && parent != PARENT_NONE) parents[id] = parent
                     currentNick = nick

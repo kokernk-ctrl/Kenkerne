@@ -422,6 +422,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                         ViewportSession.gestureHintDismissed = true
                                         hintVisible = false
                                     },
+                                    projectRootProvider = { vm.project.value?.root },
                                     onNickPicked = { id -> vm.select(id) },
                                     onGizmoDragEnd = { id, start, end ->
                                         vm.commitGizmoDrag(id, start, end)

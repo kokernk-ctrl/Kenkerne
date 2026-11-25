@@ -285,6 +285,7 @@
     <string name="diag_check_materiais">Materiais PBR — .KERN v3 (5 mapas + fatores) + compat v2</string>
     <string name="diag_check_luz">Luz do LUME — quad branco + luz vermelha (o pixel muda)</string>
     <string name="diag_check_layout">Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável</string>
+    <string name="diag_check_lua_api">API Lua (L2) — eventos, timers, área on_enter/exit/stay, tags, prefab, classes, input, ui, storage, log</string>
     <string name="diag_check_joystick">Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)</string>
     <string name="diag_check_jogo">Jogo Coletar moedas — template real, 300 ticks com input sintético, contador de pelo menos 1 e jogador no chão</string>
     <!-- S1 (v0.1.24): botão de copiar relatório -->

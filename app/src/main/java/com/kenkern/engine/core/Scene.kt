@@ -51,6 +51,35 @@ class Scene(var name: String = "Cena") {
         return null
     }
 
+    fun findNickByTagAnywhere(tag: String): Nick? {
+        val clean = tag.trim()
+        if (clean.isEmpty()) return null
+        val pilha = ArrayList<Nick>(16)
+        for (r in roots) pilha.add(r)
+        var i = 0
+        while (i < pilha.size) {
+            val n = pilha[i++]
+            if (n.hasTag(clean)) return n
+            for (c in n.children) pilha.add(c)
+        }
+        return null
+    }
+
+    fun findAllNicksByTag(tag: String): List<Nick> {
+        val clean = tag.trim()
+        if (clean.isEmpty()) return emptyList()
+        val out = ArrayList<Nick>()
+        val pilha = ArrayList<Nick>(16)
+        for (r in roots) pilha.add(r)
+        var i = 0
+        while (i < pilha.size) {
+            val n = pilha[i++]
+            if (n.hasTag(clean)) out.add(n)
+            for (c in n.children) pilha.add(c)
+        }
+        return out
+    }
+
     fun findNick(id: ReferenceId): Nick? = references.resolve(id)
 
     /** Remove o nick e toda a sua subárvore. Retorna true se removeu. */

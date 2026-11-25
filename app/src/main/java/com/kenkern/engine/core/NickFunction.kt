@@ -179,6 +179,7 @@ object KenkernBuiltInClasses {
                 "Script",
                 "Script Lua do Nick (LUA_API mínima: nick/scene/engine/params)",
                 listOf(
+                    NickFieldDefinition("arquivo", "STRING", NickValue.StringValue("")),
                     NickFieldDefinition("fonte", "STRING", NickValue.StringValue(""))
                 ),
                 categoria = "logica"

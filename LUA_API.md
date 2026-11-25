@@ -1,54 +1,122 @@
 # KENKERN — LUA_API
 
-**RASCUNHO** — a API oficial nasce na Fase 3. Este arquivo documenta a API
-exposta aos scripts do jogo (runtime LuaJ atrás de `ScriptRuntime`). Nada aqui
-está implementado ainda; a seção abaixo é o contrato planejado, que será
-congelado na Fase 3 com testes JVM.
+Documentação oficial da API Lua da engine Kenkern (L2, v0.1.25). Esta mesma especificação é embutida offline no autocompletar do Editor de Lua (`LuaApiCatalog.kt`).
 
-## Contrato planejado (Fase 3)
+Regras de runtime:
+- Erros de sintaxe ou execução são registrados no Console (`KenkernLog` com `arquivo:linha`) e desativam apenas o script defeituoso — o jogo continua.
+- Limites: orçamento de 4 ms por tick e teto de instruções por chamada (8 M).
+- Fonte do script: classe `Script` (`arquivo` aponta para `scripts/*.lua`; quando vazio, usa o campo `fonte`). Demais campos da classe entram em `params.<nome>`.
+
+---
+
+## Ciclo de vida e callbacks
+
+| Função | Assinatura | Descrição |
+| --- | --- | --- |
+| `on_start` | `function on_start()` | Executada ao iniciar Play. |
+| `on_update` | `function on_update(dt)` | Executada a cada frame com delta `dt` (s). |
+| `on_enter` | `function on_enter(outro)` | Corpo/jogador entrou em uma área (`area.volume`). |
+| `on_exit` | `function on_exit(outro)` | Corpo/jogador saiu da área. |
+| `on_stay` | `function on_stay(outro, dt)` | Chamada todo tick enquanto dentro da área. |
+| `on_collision` | `function on_collision(nomeOutro)` | Chamada ao colidir/parar contra corpo bloqueante. |
+| `on_trigger` | `function on_trigger(nomeOutro)` | Callback legado de entrada em área. |
+
+---
+
+## `nick` (self e handles retornados pela cena)
+
+- `nick.id() -> string` · `nick.kind() -> string`
+- `nick.name() -> string` · `nick.set_name(nome)`
+- `nick.position() -> {x, y, z}` · `nick.set_position(x, y, z)`
+- `nick.rotation() -> {x, y, z, w}` · `nick.set_rotation(qx, qy, qz, qw)`
+- `nick.scale() -> {x, y, z}` · `nick.set_scale(x, y, z)`
+- `nick.active() -> boolean` · `nick.set_active(bool)`
+- `nick.has_tag(tag) -> boolean` · `nick.add_tag(tag) -> boolean` · `nick.remove_tag(tag) -> boolean` · `nick.tags() -> table`
+- `nick.get(classe, campo) -> valor|nil` (lê propriedade de qualquer classe do Nick)
+- `nick.set(classe, campo, valor) -> boolean` (escreve propriedade em classe do Nick)
+- `nick.class_data(classe) -> table|nil` (alias `nick.class`)
+- `nick.destroy()`
+
+---
+
+## `scene` (cena, eventos, tags, prefabs)
+
+- `scene.find(nome) -> handle|nil`
+- `scene.find_by_tag(tag) -> handle|nil`
+- `scene.find_all_by_tag(tag) -> {handle1, ...}`
+- `scene.spawn(x, y, z) -> handle` (cria cubo padrão 1 m)
+- `scene.spawn_prefab(nome, x, y, z) -> handle|nil` (instancia `prefabs/<nome>.ck`)
+- `scene.destroy(handle)`
+- `scene.on(evento, fn)` · `scene.off(evento, [fn])` · `scene.emit(evento, dados)` (suporta múltiplos ouvintes e dados/tabelas)
+- `scene.log(mensagem)`
+
+---
+
+## `timer`
+
+- `timer.after(segundos, fn) -> id`
+- `timer.every(segundos, fn) -> id`
+- `timer.cancel(id) -> boolean`
+
+---
+
+## `engine` e `log`
+
+- `engine.time() -> number` (segundos em Play)
+- `engine.dt() -> number` (delta do último tick)
+- `engine.log(mensagem)` · `log(mensagem)`
+
+---
+
+## `input`
+
+- `input.joystick() -> {x, y, ativo}`
+- `input.action(nome) -> boolean` (alias `input.acao(nome)`)
+
+---
+
+## `ui`
+
+- `ui.text(id, texto)` / `ui.texto(id, texto)`
+- `ui.counter(id, valor)` / `ui.contador(id, valor)`
+- `ui.count(id, delta)` / `ui.contagem(id, delta)` / `ui.add_count(id, delta)`
+- `ui.get_count(id)` / `ui.contagem_atual(id) -> int`
+- `ui.clear()` / `ui.limpar()`
+
+---
+
+## `storage` (salvar e carregar dados do jogo)
+
+- `storage.save(chave, valor) -> boolean` (string, número, booleano ou tabela)
+- `storage.load(chave, padrao) -> valor`
+- `storage.has(chave) -> boolean`
+- `storage.delete(chave) -> boolean`
+- `storage.clear()`
+
+---
+
+## Exemplo completo (verificado pela checagem `"lua-api"` do Diagnóstico)
 
 ```lua
--- Ciclo de vida
-function on_start() end      -- Nick entra em Play
-function on_update(dt) end   -- todo tick (dt em segundos)
+local t_after, t_every = false, 0
 
--- Nick dono do script (self)
-nick.position = Vec3.new(0, 1, 0)   -- posição local
-nick.rotation = Quat.new(0, 0, 0, 1)
-nick.scale    = Vec3.new(1, 1, 1)
-nick.name     = "Cubo"
-nick.active   = true
-
--- Cena
-local outro = scene.find("Cubo 2")
-scene.log("mensagem")               -- Logcat tag Kenkern/Lua
-
--- Tempo
-engine.time                          -- segundos desde o Play
-engine.dt                            -- delta do tick
-
--- Campos de classes do Nick (dados .ck)
-local spin = nick.class("Spin")
-if spin then spin.speed = 90.0 end
+function on_start()
+  nick.add_tag("heroi")
+  local alvo = scene.find_by_tag("alvo")
+  if alvo then
+    alvo.set("Spin", "speed", 120.0)
+  end
+  scene.on("ponto", function(dados)
+    ui.count("pontos", dados.qtd or 1)
+    storage.save("melhor", ui.get_count("pontos"))
+  end)
+  t_after = timer.after(0.1, function()
+    scene.emit("ponto", { qtd = 2 })
+  end)
+  local rep = timer.every(0.1, function()
+    t_every = t_every + 1
+  end)
+  timer.cancel(rep)
+  scene.log("lua-api ok")
+end
 ```
-
-Regras: script nunca derruba o app (erro de runtime vira log + desativa o
-script do Nick); orçamento de tempo por tick; zero alocação na ponte de
-chamada frequente.
-
-## Subconjunto IMPLEMENTADO (M1.1, v0.1.21)
-
-O M1.1 entregou a API MÍNIMA ligada aos Nicks (o contrato completo acima
-continua planejado até a Fase 5):
-
-- Script = CLASSE do Nick ("Script"; campo `fonte`); os demais campos da
-  classe são VARIÁVEIS PÚBLICAS (`params.<nome>`; editáveis no Inspetor).
-- `nick`: set_position(x,y,z) · position() → {x,y,z} · set_scale(x,y,z) ·
-  set_active(bool) · name() · destroy()
-- `scene`: find(nome) → handle (mesmas funções) · destroy(handle) ·
-  spawn(x,y,z) → cubo de 1 m (prefab simples) · log(msg) · emit(evento,valor) ·
-  on(evento,fn)
-- `engine.time()` (segundos desde o início do Play) · on_update(dt)
-- Eventos do M1.2: on_collision(nomeDoCorpo) · on_trigger(nomeDaArea)
-- Limites: orçamento de tempo (4 ms/tick) + LIMITE DE INSTRUÇÕES
-  (8 M/chamada, hook do LuaJ) — estourou = script desativado, jogo continua.

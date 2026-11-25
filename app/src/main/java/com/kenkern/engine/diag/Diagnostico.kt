@@ -127,6 +127,7 @@ class Diagnostico(private val appContext: Context) {
             Checagem("release", "Release minificado — classes críticas + operações mínimas"),
             Checagem("layout", "Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável"),
             Checagem("joystick", "Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)"),
+            Checagem("lua-api", "API Lua (L2) — eventos, timers, área, tags, prefab, classes, input, ui, storage, log"),
             Checagem("jogo", "Jogo 'Coletar moedas' — template real, 300 ticks com input sintético, contador ≥ 1 e jogador no chão")
         )
 
@@ -226,6 +227,129 @@ class Diagnostico(private val appContext: Context) {
         }
 
         /** S7: conveniência — o TEMPLATE real da checagem "jogo". */
+
+        /**
+         * L2: Núcleo PURO da checagem "lua-api" — executa um script de exemplo
+         * cobrindo TODA a API Lua L2 (eventos emit/on, timers after/every/cancel,
+         * on_enter/on_stay/on_exit, busca por tag/nome, spawn_prefab, destroy,
+         * leitura/escrita de classes, input.action, ui, storage.save/load, log).
+         */
+        fun avaliarLuaApi(): Pair<Boolean, String> {
+            com.kenkern.engine.core.KenkernBuiltInClasses.registerAll()
+            val cena = Scene("DiagLuaApi")
+            val chao = cena.createRootNick("Chao", kind = "body.static")
+            chao.transform.setLocalPosition(0f, -0.5f, 0f)
+            chao.transform.scale.set(10f, 1f, 10f)
+
+            val player = cena.createRootNick("Heroi", kind = "body.player")
+            player.transform.setLocalPosition(0f, 0.5f, 0f)
+            player.addTag("jogador")
+            NickClassRegistry.createInstance("Spin")?.let { player.addClassInstance(it) }
+
+            val moedaPrefab = com.kenkern.engine.core.Nick(name = "MoedaPrefab", kind = NickKindRegistry.NICK_MESH)
+            moedaPrefab.addTag("coletavel")
+
+            val area = cena.createRootNick("Portal", kind = "area.volume")
+            area.transform.setLocalPosition(2f, 0.5f, 0f)
+            area.addTag("portal")
+
+            val scriptArea = NickClassRegistry.createInstance("Script")!!
+            scriptArea.fields["fonte"] = NickValue.StringValue(
+                """
+                entrou, ficou, saiu = 0, 0, 0
+                on_enter = function(outro)
+                  if outro.has_tag("jogador") then entrou = entrou + 1 end
+                end
+                on_stay = function(outro, dt)
+                  ficou = ficou + 1
+                end
+                on_exit = function(outro)
+                  saiu = saiu + 1
+                end
+                """.trimIndent()
+            )
+            area.addClassInstance(scriptArea)
+
+            val scriptHeroi = NickClassRegistry.createInstance("Script")!!
+            scriptHeroi.fields["fonte"] = NickValue.StringValue(
+                """
+                evento_val, tick_after, tick_every, acao_ok, prop_ok, save_ok = 0, 0, 0, false, false, false
+                on_start = function()
+                  scene.on("bonus", function(d) evento_val = evento_val + (d.qtd or 0) end)
+                  scene.on("bonus", function(d) evento_val = evento_val + (d.qtd or 0) end)
+                  timer.after(0.05, function()
+                    tick_after = tick_after + 1
+                    scene.emit("bonus", { qtd = 5 })
+                  end)
+                  local rep = timer.every(0.04, function() tick_every = tick_every + 1 end)
+                  local dead = timer.every(0.04, function() tick_every = tick_every + 100 end)
+                  timer.cancel(dead)
+                  local achou_nome = scene.find("Portal")
+                  local achou_tag = scene.find_by_tag("portal")
+                  local todos = scene.find_all_by_tag("portal")
+                  local p = scene.spawn_prefab("moeda", 5, 1, 0)
+                  if p and #todos == 1 and achou_nome and achou_tag then
+                    scene.destroy(p)
+                  end
+                  nick.set("Spin", "speed", 77.5)
+                  prop_ok = (nick.get("Spin", "speed") == 77.5)
+                  ui.text("hud", "ok")
+                  ui.count("score", 3)
+                  storage.save("score", ui.get_count("score"))
+                  save_ok = (storage.load("score", 0) == 3)
+                  scene.log("diag lua-api ok")
+                end
+                on_update = function(dt)
+                  if input.action("jump") then acao_ok = true end
+                end
+                """.trimIndent()
+            )
+            player.addClassInstance(scriptHeroi)
+
+            val store = com.kenkern.engine.engine.MemoryGameSaveStore()
+            val inputEstado = com.kenkern.engine.engine.EstadoInputJogo().apply { definirAcao("jump", true) }
+            val runtime = com.kenkern.engine.engine.NickPlayRuntime(cena)
+            val lua = com.kenkern.engine.engine.NickLuaScripts(
+                cena,
+                saveStore = store,
+                prefabProvider = { nome -> if (nome == "moeda") moedaPrefab else null }
+            ).also {
+                it.estadoInput = inputEstado
+                it.iniciarTodos()
+            }
+            runtime.scripts = lua
+
+            // Anda para dentro e depois para fora da área
+            for (i in 0 until 25) {
+                val mx = if (i < 18) 1f else -1f
+                runtime.step(0.05f, mx, 0f)
+                lua.atualizar(0.05f)
+            }
+
+            val gHeroi = (lua.instanciaDe("Heroi")?.runtime as? com.kenkern.engine.core.script.LuaJScriptRuntime)?.ambiente()
+                ?: return false to "runtime de Herói não iniciou"
+            val gArea = (lua.instanciaDe("Portal")?.runtime as? com.kenkern.engine.core.script.LuaJScriptRuntime)?.ambiente()
+                ?: return false to "runtime de Portal não iniciou"
+
+            val problemas = ArrayList<String>()
+            if (gHeroi.get("evento_val").toint() != 10) problemas.add("emit/on=${gHeroi.get("evento_val").toint()}")
+            if (gHeroi.get("tick_after").toint() != 1) problemas.add("timer.after=${gHeroi.get("tick_after").toint()}")
+            if (gHeroi.get("tick_every").toint() < 5 || gHeroi.get("tick_every").toint() >= 100) problemas.add("timer.every/cancel=${gHeroi.get("tick_every").toint()}")
+            if (!gHeroi.get("prop_ok").toboolean()) problemas.add("nick.get/set falhou")
+            if (!gHeroi.get("acao_ok").toboolean()) problemas.add("input.action falhou")
+            if (!gHeroi.get("save_ok").toboolean()) problemas.add("storage/ui falhou")
+            if (gArea.get("entrou").toint() < 1) problemas.add("on_enter=${gArea.get("entrou").toint()}")
+            if (gArea.get("ficou").toint() < 1) problemas.add("on_stay=${gArea.get("ficou").toint()}")
+            if (gArea.get("saiu").toint() < 1) problemas.add("on_exit=${gArea.get("saiu").toint()}")
+            if (!lua.logsEmitidos().contains("diag lua-api ok")) problemas.add("scene.log falhou")
+
+            return if (problemas.isEmpty()) {
+                true to "API Lua L2 validada (emit/on · timers · on_enter/stay/exit · tags · prefab · classes · input · ui · storage · log)"
+            } else {
+                false to problemas.joinToString("; ")
+            }
+        }
+
         fun avaliarJogoTemplate(): ResultadoJogo {
             val cena = com.kenkern.engine.core.Scene("Coletar moedas")
             com.kenkern.engine.projects.ProjectManager.montarTemplateColetarMoedas(cena)
@@ -341,7 +465,7 @@ class Diagnostico(private val appContext: Context) {
      */
     suspend fun executar(onAtualiza: (Checagem) -> Unit) {
         cancelado = false
-        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "materiais", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout", "joystick", "jogo")
+        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "materiais", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout", "joystick", "lua-api", "jogo")
         val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "luz", "astc")
         // E2: ids já FINALIZADAS nesta rodada — no cancel, só o que NÃO rodou vira
         // CANCELADA (aprovadas/falhas anteriores permanecem com o resultado delas).
@@ -455,6 +579,7 @@ class Diagnostico(private val appContext: Context) {
                             "release" -> checarRelease(c)
                             "layout" -> checarLayout(c)
                             "joystick" -> checarJoystick(c)
+                            "lua-api" -> checarLuaApi(c)
                             "jogo" -> checarJogo(c)
                         }
                     }.onFailure {
@@ -2379,6 +2504,11 @@ class Diagnostico(private val appContext: Context) {
      * crescente, TRAVAR EM 8 DIREÇÕES (45°) e borda de 1 tick dos botões.
      * Os toques sintéticos são entradas da matemática (a mesma que a UI usa).
      */
+    private fun checarLuaApi(c: Checagem) {
+        val (ok, msg) = avaliarLuaApi()
+        if (ok) c.aprovado(msg) else c.falhou(msg)
+    }
+
     private fun checarJoystick(c: Checagem) {
         val saida = FloatArray(2)
         val problemas = ArrayList<String>(4)

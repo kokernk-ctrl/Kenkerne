@@ -248,7 +248,8 @@ class KenkernSurfaceView(
     private val onNickPicked: (ReferenceId?) -> Unit = {},
     private val onGizmoDragEnd: (ReferenceId, TransformSnapshot, TransformSnapshot) -> Unit = { _, _, _ -> },
     private val onGizmoLiveUpdate: () -> Unit = {},
-    private val onFirstTouch: () -> Unit = {}
+    private val onFirstTouch: () -> Unit = {},
+    private val projectRootProvider: (() -> java.io.File?)? = null
 ) : GLSurfaceView(context) {
 
     val camera = OrbitCamera()
@@ -1131,7 +1132,9 @@ class KenkernSurfaceView(
                 // M1.1/M1.2: ponte Lua/nick — 1 runtime por Nick com classe
                 // "Script"; o runtime de física usa a ponte para os eventos
                 // on_collision/on_trigger.
-                playScripts = copy?.let { c -> NickLuaScripts(c).also { s -> s.iniciarTodos() } }
+                playScripts = copy?.let { c ->
+                    NickLuaScripts(c, projectRoot = projectRootProvider?.invoke()).also { s -> s.iniciarTodos() }
+                }
                 playScripts?.estadoInput = estadoInput
                 playRuntime?.scripts = playScripts
             }
