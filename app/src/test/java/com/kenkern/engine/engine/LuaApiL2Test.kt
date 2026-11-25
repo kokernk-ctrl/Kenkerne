@@ -102,14 +102,15 @@ class LuaApiL2Test {
         val scene = Scene()
         val floor = scene.createRootNick("Chao", kind = "body.static")
         floor.transform.setLocalPosition(0f, -0.5f, 0f)
-        floor.transform.scale.set(12f, 1f, 12f)
+        floor.transform.scale.set(20f, 1f, 20f)
 
         val player = scene.createRootNick("Player", kind = "body.player")
-        player.transform.setLocalPosition(0f, 0.5f, 0f)
+        player.transform.setLocalPosition(-2f, 0.5f, 0f)
         player.addTag("heroi")
 
         val area = scene.createRootNick("Zona", kind = "area.volume")
-        area.transform.setLocalPosition(2.0f, 0.5f, 0f)
+        area.transform.setLocalPosition(0f, 0.5f, 0f)
+        area.transform.scale.set(2f, 2f, 2f)
         attachScript(
             area,
             """
@@ -131,9 +132,9 @@ class LuaApiL2Test {
         val lua = NickLuaScripts(scene).also { it.iniciarTodos() }
         rt.scripts = lua
 
-        // Anda para dentro (x ~ 2.0) e depois volta para fora
+        // Move o player de x = -2 para x = +2 (passando por x = 0 onde está a área) e volta
         for (i in 0 until 30) {
-            val dir = if (i < 16) 1f else -1f
+            val dir = if (i < 15) 1f else -1f
             rt.step(0.05f, dir, 0f)
             lua.atualizar(0.05f)
         }
@@ -154,7 +155,6 @@ class LuaApiL2Test {
         val m2 = scene.createRootNick("MoedaB", kind = NickKindRegistry.NICK_MESH)
         m2.addTag("moeda")
 
-        // Roundtrip .ck preserva tags
         val ckText = CkFormat.writeToString(scene)
         val recarregada = CkFormat.parseToNewScene(ckText, "Tags")!!
         assertEquals(2, recarregada.findAllNicksByTag("moeda").size)
@@ -284,7 +284,6 @@ class LuaApiL2Test {
         val g = (lua.instanciaDe("Persist")?.runtime as LuaJScriptRuntime).ambiente()!!
         assertTrue(g.get("interagiu").toboolean())
 
-        // Recarrega do disco em nova instância e confirma persistência
         val scene2 = Scene()
         val n2 = scene2.createRootNick("Loader")
         attachScript(
