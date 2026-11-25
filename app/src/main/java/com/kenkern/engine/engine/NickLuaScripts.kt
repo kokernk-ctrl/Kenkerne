@@ -625,7 +625,7 @@ class NickLuaScripts(
         copia.visible = orig.visible
         copia.tags.addAll(orig.tags)
         copia.parent = novoPai
-        copia.transform.applySnapshot(orig.transform.snapshot())
+        copia.transform.apply(orig.transform.snapshot())
         for (c in orig.classes) {
             val classCopy = NickClassInstance(c.typeName)
             for ((k, v) in c.fields) {
