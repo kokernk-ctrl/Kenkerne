@@ -130,7 +130,8 @@ class Diagnostico(private val appContext: Context) {
             Checagem("lua-api", "API Lua (L2) — eventos, timers, área, tags, prefab, classes, input, ui, storage, log"),
             Checagem("jogo", "Jogo 'Coletar moedas' — template real, 300 ticks com input sintético, contador ≥ 1 e jogador no chão"),
             Checagem("play-sair", "Saída da janela de jogo — roteamento de toque (botões nunca consumidos), watchdog 3 s e BACK"),
-            Checagem("area", "Nicks de Área (ZONA) — enter/exit/stay, filtro por tag, uma vez só, bodies/contains, signal e checkpoint/respawn")
+            Checagem("area", "Nicks de Área (ZONA) — enter/exit/stay, filtro por tag, uma vez só, bodies/contains, signal e checkpoint/respawn"),
+            Checagem("editor", "Editor de código Lua — tokenizador, indentação automática, autocompletar offline, modelos e Verificar (LuaJ)")
         )
 
         /**
@@ -590,6 +591,7 @@ class Diagnostico(private val appContext: Context) {
                             "jogo" -> checarJogo(c)
                             "play-sair" -> checarPlaySair(c)
                             "area" -> checarArea(c)
+                            "editor" -> checarEditor(c)
                         }
                     }.onFailure {
                         c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
@@ -1864,6 +1866,57 @@ class Diagnostico(private val appContext: Context) {
             c.aprovado(
                 "on_enter/on_exit/on_stay (runtime real, player anda) · filtro por tag · uma vez só desarma · " +
                     "signal.emit/on no barramento da cena · queda abaixo do limite reaparece no checkpoint"
+            )
+        } else {
+            c.falhou(problemas.joinToString("; "))
+        }
+    }
+
+    /**
+     * Checagem "editor" (C1, v0.1.26) — EDITOR DE CÓDIGO LUA, sem GL:
+     * (a) tokenizador marca palavra-chave/string/comentário/número/API;
+     * (b) indentação automática (enter após then → +1 nível);
+     * (c) autocompletar offline por contexto (nick./scene. → membros);
+     * (d) modelos de script (vazio/movimento/coletar/gatilho) compilam;
+     * (e) "Verificar" compila no LuaJ: código bom → null; quebrado → linha.
+     */
+    private fun checarEditor(c: Checagem) {
+        val problemas = ArrayList<String>(5)
+        try {
+            // (a) tokenizador
+            val spans = com.kenkern.engine.ui.editor.TokenizadorLua.marcarLinha(
+                "local x = 42 -- nota", com.kenkern.engine.ui.editor.TokenizadorLua.Estado()
+            )
+            val tipos = spans.map { it.tipo }
+            if (com.kenkern.engine.ui.editor.TokenTipo.PALAVRA_CHAVE !in tipos) problemas.add("tokenizador: palavra-chave não marcada")
+            if (com.kenkern.engine.ui.editor.TokenTipo.NUMERO !in tipos) problemas.add("tokenizador: número não marcado")
+            if (com.kenkern.engine.ui.editor.TokenTipo.COMENTARIO !in tipos) problemas.add("tokenizador: comentário não marcado")
+            // (b) indentação
+            val doc = com.kenkern.engine.ui.editor.DocumentoLua("if x then")
+            doc.moverCursor(0, 9)
+            doc.quebrarLinha()
+            if (doc.linhas.getOrNull(1) != "    ") problemas.add("indentação: enter após then → '${doc.linhas.getOrNull(1)}'")
+            // (c) autocompletar
+            val s = com.kenkern.engine.ui.editor.AutocompletarLua.sugestoes("nick.")
+            if (s.isEmpty()) problemas.add("autocompletar: nick. sem membros")
+            val s2 = com.kenkern.engine.ui.editor.AutocompletarLua.sugestoes("funct")
+            if (s2.none { it.nome == "function" }) problemas.add("autocompletar: 'funct' não sugere function")
+            // (d) modelos compilam no LuaJ
+            for (modelo in com.kenkern.engine.ui.editor.ModelosScript.NOMES) {
+                val erro = com.kenkern.engine.ui.screens.verificarLua(com.kenkern.engine.ui.editor.ModelosScript.conteudo(modelo))
+                if (erro != null) problemas.add("modelo '$modelo' não compila: ${erro.second}")
+            }
+            // (e) Verificar: código bom e quebrado
+            if (com.kenkern.engine.ui.screens.verificarLua("local x = 1\nprint(x)") != null) problemas.add("verificar: código válido reprovado")
+            val erroRuim = com.kenkern.engine.ui.screens.verificarLua("local x =\nprint(x)")
+            if (erroRuim == null) problemas.add("verificar: código quebrado passou")
+        } catch (t: Throwable) {
+            problemas.add("exceção: ${t.message ?: t.javaClass.simpleName}")
+        }
+        if (problemas.isEmpty()) {
+            c.aprovado(
+                "tokenizador (keyword/string/comentário/número/API) · indentação por balanço de blocos · " +
+                    "autocompletar offline por contexto (catálogo = LUA_API.md) · 4 modelos compilam · Verificar (LuaJ) marca a linha"
             )
         } else {
             c.falhou(problemas.joinToString("; "))

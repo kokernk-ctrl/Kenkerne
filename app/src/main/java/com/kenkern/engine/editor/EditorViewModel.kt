@@ -1034,6 +1034,73 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    // ---------- C1 (v0.1.26): EDITOR DE CÓDIGO LUA ----------
+
+    /** C1: arquivo de script <projeto>/scripts/[nome]. */
+    fun scriptFile(nome: String): java.io.File? {
+        val raiz = project.value?.root ?: return null
+        return java.io.File(raiz, "scripts/$nome")
+    }
+
+    /** C1.2: lista dos arquivos .lua de scripts/ (ordenados). */
+    fun scriptsDoProjeto(): List<String> {
+        val raiz = project.value?.root ?: return emptyList()
+        val dir = java.io.File(raiz, "scripts")
+        return dir.listFiles { f -> f.isFile && f.name.endsWith(".lua") }
+            ?.map { it.name }
+            ?.sorted()
+            ?: emptyList()
+    }
+
+    /** C1.7: cria um script novo a partir de um MODELO (vazio/movimento/coletar/gatilho). */
+    fun criarScriptModelo(modelo: String): String {
+        val nome = "script_${modelo}_${System.currentTimeMillis() % 100000}.lua"
+        val f = scriptFile(nome)
+        if (f == null) {
+            com.kenkern.engine.diag.KenkernLog.e(TAG, "criarScriptModelo: projeto sem raiz — nada criado")
+            return ""
+        }
+        try {
+            f.parentFile?.mkdirs()
+            f.writeText(com.kenkern.engine.ui.editor.ModelosScript.conteudo(modelo))
+            com.kenkern.engine.diag.KenkernLog.w(TAG, "script novo: scripts/$nome (modelo $modelo)")
+        } catch (e: Exception) {
+            com.kenkern.engine.diag.KenkernLog.e(TAG, "criarScriptModelo falhou ($nome)", e)
+            return ""
+        }
+        return nome
+    }
+
+    /** C1: fonte INLINE da classe Script de um Nick (null = Nick sem Script). */
+    fun fonteInline(nickId: com.kenkern.engine.core.ReferenceId): String? {
+        val s = sceneRef ?: return null
+        val nick = s.findNick(nickId) ?: return null
+        val inst = nick.findClassInstance("Script") ?: return null
+        return (inst.fields["fonte"] as? com.kenkern.engine.core.NickValue.StringValue)?.value
+    }
+
+    /** C1: rótulo do alvo inline (nome do Nick com Script). */
+    fun fonteInlineNome(nickId: com.kenkern.engine.core.ReferenceId): String {
+        val s = sceneRef ?: return "fonte"
+        val nick = s.findNick(nickId) ?: return "fonte"
+        return "${nick.displayName("pt")}.lua"
+    }
+
+    /** C1: salva a fonte inline na classe Script (UM Command + espelho em Play). */
+    fun salvarFonteInline(nickId: com.kenkern.engine.core.ReferenceId, fonte: String) {
+        val s = sceneRef ?: return
+        val nick = s.findNick(nickId) ?: return
+        val inst = nick.findClassInstance("Script") ?: return
+        val atual = (inst.fields["fonte"] as? com.kenkern.engine.core.NickValue.StringValue)?.value ?: ""
+        if (atual == fonte) return
+        run(
+            SetClassFieldCommand(
+                s, nickId, "Script", "fonte", com.kenkern.engine.core.NickValue.StringValue(fonte)
+            )
+        )
+        espelharSeEmPlay(nickId)
+    }
+
     companion object {
         private const val TAG = "Kenkern/EditorVM"
 

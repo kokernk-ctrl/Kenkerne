@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
@@ -78,7 +79,10 @@ import com.kenkern.engine.ui.theme.KenkernTextMid
  * eixo e campos numéricos de 28dp (#1E1E1E, borda 1px).
  */
 @Composable
-fun InspectorPanel(vm: EditorViewModel) {
+fun InspectorPanel(
+    vm: EditorViewModel,
+    onAbrirEditorLua: (com.kenkern.engine.ui.screens.AlvoEditorLua) -> Unit
+) {
     vm.revision.intValue
     val scene = vm.scene.value
     val selection = vm.selection.value
@@ -412,7 +416,7 @@ fun InspectorPanel(vm: EditorViewModel) {
         CollapsibleSection(stringResource(R.string.inspector_classes)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (inst in nick.classes.toList()) {
-                    ClassCard(vm, nick.id, inst)
+                    ClassCard(vm, nick.id, inst, onAbrirEditorLua)
                 }
 
                 var addMenu by remember { mutableStateOf(false) }
@@ -497,7 +501,12 @@ private fun categoriaLocalizada(categoria: String): String = stringResource(
 )
 
 @Composable
-private fun ClassCard(vm: EditorViewModel, nickId: ReferenceId, inst: NickClassInstance) {
+private fun ClassCard(
+    vm: EditorViewModel,
+    nickId: ReferenceId,
+    inst: NickClassInstance,
+    onAbrirEditorLua: (com.kenkern.engine.ui.screens.AlvoEditorLua) -> Unit
+) {
     var expanded by remember(inst.typeName) { mutableStateOf(true) }
 
     Column(
@@ -533,6 +542,28 @@ private fun ClassCard(vm: EditorViewModel, nickId: ReferenceId, inst: NickClassI
         }
 
         if (expanded) {
+            // C1 (v0.1.26): classe SCRIPT — botão "Abrir no editor" abre o
+            // editor de código Lua (retrato) na fonte inline ou no arquivo.
+            if (inst.typeName == "Script") {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        val arquivo = (inst.fields["arquivo"] as? com.kenkern.engine.core.NickValue.StringValue)?.value ?: ""
+                        if (arquivo.isNotBlank()) {
+                            onAbrirEditorLua(com.kenkern.engine.ui.screens.AlvoEditorLua.Arquivo(arquivo))
+                        } else {
+                            onAbrirEditorLua(com.kenkern.engine.ui.screens.AlvoEditorLua.Inline(nickId))
+                        }
+                    }
+                ) {
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.width(16.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(stringResource(R.string.editor_lua_abrir), fontSize = 12.sp)
+                }
+            }
             for ((fieldName, value) in inst.fields.toList()) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

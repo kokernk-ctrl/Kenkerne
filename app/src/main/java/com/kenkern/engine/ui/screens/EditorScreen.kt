@@ -354,6 +354,9 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     }
     // P1.4: overlay de toque da janela de jogo (último ponto, alvo, consumidor).
     var debugToqueJogo by remember { mutableStateOf(false) }
+    // C1 (v0.1.26): EDITOR DE CÓDIGO LUA — alvo aberto (arquivo ou fonte inline).
+    var alvoEditorLua by remember { mutableStateOf<com.kenkern.engine.ui.screens.AlvoEditorLua?>(null) }
+    val abrirEditorLua: (com.kenkern.engine.ui.screens.AlvoEditorLua) -> Unit = { alvoEditorLua = it }
     // P1.3: watchdog — sem frame renderizado por WATCHDOG_MS em Play → "Forçar saída".
     var watchdogAlerta by remember { mutableStateOf(false) }
     LaunchedEffect(janelaDeJogo) {
@@ -381,6 +384,18 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
             }
         }
     }
+    // C1 (v0.1.26): quando o EDITOR DE CÓDIGO LUA está aberto, a tela inteira
+    // é dele (retrato) — nada do editor de cena é composto.
+    if (alvoEditorLua != null) {
+        EditorLuaScreen(
+            vm = vm,
+            alvo = alvoEditorLua!!,
+            onFechar = { alvoEditorLua = null },
+            onAbrir = abrirEditorLua
+        )
+        return
+    }
+
     // P1.3: BACK do sistema SEMPRE sai da janela de jogo (PLAYING ou PAUSED → STOPPED).
     BackHandler(enabled = janelaDeJogo) {
         com.kenkern.engine.diag.KenkernLog.w("EditorScreen", "BACK: saída da janela de jogo")
@@ -902,7 +917,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     inspector.visible.value = false
                                     persistInspector()
                                 }
-                            ) { InspectorPanel(vm) }
+                            ) { InspectorPanel(vm, abrirEditorLua) }
                         }
 
                         // Modo flutuante (exceção): contido no viewport
@@ -940,7 +955,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     inspector.visible.value = false
                                     persistInspector()
                                 }
-                            ) { InspectorPanel(vm) }
+                            ) { InspectorPanel(vm, abrirEditorLua) }
                         }
                     }
 
@@ -966,7 +981,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 inspector.visible.value = false
                                 persistInspector()
                             }
-                        ) { InspectorPanel(vm) }
+                        ) { InspectorPanel(vm, abrirEditorLua) }
                     }
                 }
             }
