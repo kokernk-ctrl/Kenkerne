@@ -61,6 +61,7 @@ import com.kenkern.engine.R
 import com.kenkern.engine.ui.components.KChip
 import com.kenkern.engine.core.NickKindGroup
 import com.kenkern.engine.core.NickKindRegistry
+import com.kenkern.engine.core.NickKindStatus
 import com.kenkern.engine.editor.AddNickLayout
 import com.kenkern.engine.editor.AddNickStore
 import com.kenkern.engine.editor.EditorViewModel
@@ -322,6 +323,7 @@ fun AddNickPanel(
                         KindCard(
                             kind = kind,
                             favorito = kind in favoritos,
+                            habilitado = NickKindRegistry.find(kind)?.criavel() == true,
                             onCriar = {
                                 AddNickStore.registrarCriacao(context, kind)
                                 vm.addNickOfKind(kind, comoFilho, spawnXz)
@@ -337,11 +339,15 @@ fun AddNickPanel(
     }
 }
 
-/** Cartão de tipo: ícone + nome localizado + descrição + estrela de favorito. */
+/** Cartão de tipo: ícone + nome localizado + descrição + estrela de favorito.
+ *  P3 (v0.1.25): kinds NÃO completos (PARCIAL) mostram o selo "Em breve" e
+ *  ficam DESABILITADOS (não criam Nick — a criação é recusada duas vezes:
+ *  aqui e no guard do ViewModel). */
 @Composable
 private fun KindCard(
     kind: String,
     favorito: Boolean,
+    habilitado: Boolean,
     onCriar: () -> Unit,
     onAlternarFavorito: () -> Unit
 ) {
@@ -350,13 +356,13 @@ private fun KindCard(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onCriar)
+            .clickable(enabled = habilitado, onClick = onCriar)
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Icon(
             nickKindIcon(kind),
             contentDescription = null,
-            tint = KenkernAmber,
+            tint = if (habilitado) KenkernAmber else KenkernTextLow,
             modifier = Modifier.size(22.dp)
         )
         Spacer(Modifier.width(10.dp))
@@ -365,7 +371,7 @@ private fun KindCard(
                 nickKindLabelLocalizado(kind),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                color = KenkernTextHigh,
+                color = if (habilitado) KenkernTextHigh else KenkernTextLow,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -378,6 +384,21 @@ private fun KindCard(
             )
         }
         Spacer(Modifier.width(6.dp))
+        if (!habilitado) {
+            // SELO "Em breve" (P3) — não cria Nick.
+            Text(
+                stringResource(R.string.hub_shortcut_soon),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = KenkernTextMid,
+                maxLines = 1,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .border(1.dp, KenkernTextLow, RoundedCornerShape(999.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+        }
         Text(
             kind,
             fontSize = 9.sp,

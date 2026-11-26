@@ -52,6 +52,16 @@ class NickKind(
     fun label(language: String): String = if (language == "pt") labelPt else labelEn
 
     fun description(language: String): String = if (language == "pt") descPt else descEn
+
+    /**
+     * P3 (v0.1.25) — REGRA DE NICK COMPLETO: um Nick só é CRIÁVEL na janela
+     * "Adicionar Nick" quando completo (as 5 exigências do contrato —
+     * NICKS.md): representação no viewport; classes padrão + Inspetor editável
+     * com efeito ao vivo; comportamento em Play; API Lua ou porta LINKERF;
+     * teste e checagem no Diagnóstico. PARCIAL aparece com selo "Em breve"
+     * e DESABILITADO (não cria Nick); SEM_FUNCAO fica fora da janela.
+     */
+    fun criavel(): Boolean = status == NickKindStatus.FUNCIONAL
 }
 
 /** Registro global dos tipos de Nick conhecidos pela engine. */
@@ -257,9 +267,13 @@ object NickKindCatalog {
         NickKindRegistry.register(
             NickKind(
                 key = "area.volume", labelEn = "Area Nick", labelPt = "Nick de Área",
-                descEn = "3D detection volume (who is inside)",
-                descPt = "Volume 3D de detecção (quem está dentro)",
-                group = NickKindGroup.AREAS, iconKey = "area.volume"
+                descEn = "3D detection volume (on_enter/exit/stay — Parada 2)",
+                descPt = "Volume 3D de detecção (on_enter/exit/stay — Parada 2)",
+                group = NickKindGroup.AREAS, iconKey = "area.volume",
+                // P3 (v0.1.25): PARCIAL — o gatilho on_trigger 1× existe, mas a
+                // regra de NICK COMPLETO exige on_enter/on_exit/on_stay,
+                // area.bodies()/contains() e respawn — Parada 2 (C2).
+                status = NickKindStatus.PARCIAL
             )
         )
         NickKindRegistry.register(
@@ -274,9 +288,13 @@ object NickKindCatalog {
         NickKindRegistry.register(
             NickKind(
                 key = "area.spawn", labelEn = "Spawn Point Nick", labelPt = "Nick de Ponto de Surgimento",
-                descEn = "Where players and objects spawn",
-                descPt = "Onde jogadores e objetos surgem",
-                group = NickKindGroup.AREAS, iconKey = "area.spawn"
+                descEn = "Where players and objects spawn (respawn/checkpoint — Parada 2)",
+                descPt = "Onde jogadores e objetos surgem (respawn/checkpoint — Parada 2)",
+                group = NickKindGroup.AREAS, iconKey = "area.spawn",
+                // P3 (v0.1.25): PARCIAL — o nascimento funciona, mas o contrato
+                // completo (respawn() do jogador + checkpoint + queda abaixo do
+                // limite) entra na Parada 2 (C2.3).
+                status = NickKindStatus.PARCIAL
             )
         )
     }

@@ -589,6 +589,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun addNickOfKind(kind: String, comoFilhoDoSelecionado: Boolean, spawnXz: FloatArray?) {
         val s = sceneRef ?: return
         val def = NickKindRegistry.find(kind)
+        // P3 (v0.1.25): REGRA DE NICK COMPLETO — kinds PARCIAIS/SEM_FUNCAO não
+        // são criáveis (a janela já mostra "Em breve" desabilitado; o guard
+        // aqui é a segunda barreira, SEM engolir: erro no Console).
+        if (def != null && !def.criavel()) {
+            com.kenkern.engine.diag.KenkernLog.e(
+                TAG,
+                "addNickOfKind recusado: '$kind' tem status " + def.status +
+                    " — só Nicks COMPLETOS são criáveis (NICKS.md, P3)"
+            )
+            return
+        }
         val parent = if (comoFilhoDoSelecionado) {
             selection.value?.let { s.findNick(it) } ?: s.roots.firstOrNull()
         } else {

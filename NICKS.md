@@ -102,7 +102,56 @@ M1/FORJA darem forma própria. Auxiliares NÃO contam como malha na StatusBar
 
 ### Contrato de Nick C0 (v0.1.25) — TODOS os kinds do catálogo
 
-Status oficial por kind: **FUNCIONAL** (Play + Inspetor + Lua completos e testados), **PARCIAL** (funcionalidade parcial em transição) ou **SEM FUNÇÃO** (oculto em Adicionar Nick via `visivel = false`, mantido no registro para projetos antigos).
+**REGRA DE NICK COMPLETO (P3, v0.1.25)** — um Nick só é COMPLETO (e portanto
+CRIÁVEL na janela "Adicionar Nick") com as 5 exigências:
+1. representação no viewport (malha, auxiliar ou moldura 2D);
+2. classes padrão aplicadas + Inspetor editável com EFEITO AO VIVO;
+3. comportamento em Play (simulado pelo runtime);
+4. API Lua (`nick.*`, área, input, ui) ou porta LINKERF;
+5. teste de JVM e checagem no Diagnóstico.
+
+Estados: **COMPLETO** (as 5 exigências — criável) · **PARCIAL** (funciona em
+parte; aparece na janela com selo **"Em breve"** e DESABILITADO — não cria
+Nick; o guard `addNickOfKind` recusa e registra no Console) · **PLACEHOLDER**
+(SEM_FUNCAO; oculto em Adicionar Nick via `visivel = false`, mantido no
+registro para projetos antigos).
+
+**Tabela de completude — TODO kind do catálogo e a fase em que fica completo** (P3.2):
+
+| Chave | Estado v0.1.25 | Fica COMPLETO na | Falta para completar |
+|-------|----------------|------------------|----------------------|
+| `nick.empty` | COMPLETO | — (já) | — |
+| `nick.group` | COMPLETO | — (já) | — |
+| `nick.mesh` | COMPLETO | — (já) | — |
+| `nick.prefab` | PLACEHOLDER | Parada 2 (N5) | instâncias + variantes |
+| `light.directional` | COMPLETO | — (já) | — |
+| `light.point` | COMPLETO | — (já) | — |
+| `light.spot` | COMPLETO | — (já) | — |
+| `camera.basic` | COMPLETO | — (já) | — |
+| `camera.follow` | COMPLETO | — (já) | — |
+| `camera.cinematic` | PLACEHOLDER | fase de animação/timeline | trajetória |
+| `body.static` | COMPLETO | — (já) | — |
+| `body.rigid` | COMPLETO | — (já) | — |
+| `body.kinematic` | PLACEHOLDER | fase de física | movimento por script |
+| `body.collider` | COMPLETO | — (já) | — |
+| `body.character` | COMPLETO | — (já) | — |
+| `body.player` | COMPLETO | — (já) | — |
+| `body.enemy` | PLACEHOLDER | Parada 4 | IA/rotinas |
+| `body.npc` | PLACEHOLDER | Parada 4 | rotina + diálogo |
+| `body.car` | PLACEHOLDER | fase RODANTE | corpo de veículo |
+| `body.bike` | PLACEHOLDER | fase RODANTE | corpo de veículo |
+| `body.ragdoll` | PLACEHOLDER | fase de OSSATURA | ossatura |
+| `area.volume` | PARCIAL | Parada 2 (C2.1) | on_enter/on_exit/on_stay + area.bodies()/contains() |
+| `area.signal` | PLACEHOLDER | Parada 2 (C2.2) | emitir/receber sinais nomeados |
+| `area.spawn` | PARCIAL | Parada 2 (C2.3) | respawn()/queda abaixo do limite + checkpoint |
+| `area.checkpoint` | PLACEHOLDER | Parada 2 (C2.3) | reaparecimento no último checkpoint |
+| `area.navigation` | PLACEHOLDER | fase de Mundo | navegação |
+| `ai.behavior` | PLACEHOLDER | Parada 4 | IA |
+| `ui.joystick` | COMPLETO | — (já; migra para TELAR na Parada 3 sem perder dados) | — |
+
+Guard em código: `NickKind.criavel()` (FUNCIONAL ⇒ criável) + recusa no
+`EditorViewModel.addNickOfKind` (KenkernLog.e — nunca silencioso). Teste:
+`NickKindsCompletudeTest` (nenhum kind não-completo é criável).
 
 | Chave | Grupo | Status C0 | Visível em Adicionar Nick | Forma no Viewport | Play / Inspetor / Lua |
 |-------|-------|-----------|---------------------------|-------------------|------------------------|
