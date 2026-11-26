@@ -17,6 +17,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -100,6 +101,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -110,6 +113,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.zIndex
+import com.kenkern.engine.ui.jogo.AlvoToque
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -325,6 +333,57 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     // desenham em jogo (renderer). Pausa/Sair ficam na mão do usuário.
     val janelaDeJogo = vm.playState.value != PlayState.STOPPED
 
+    // ---- P1 (v0.1.25): roteamento de toque da janela de jogo ----
+    // Coordenadas do Box do viewport (== espaço px da SurfaceView) e regiões
+    // dos botões, publicadas à SurfaceView quando o layout muda (NUNCA por frame).
+    val coordsDoViewport = remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val regioesJogo = remember { HashMap<AlvoToque, Rect>() }
+    val publicarRegioes = {
+        val box = coordsDoViewport.value
+        val sv = surfaceView
+        if (box != null && sv != null) {
+            sv.definirRegioesReservadas(
+                regioesJogo.map { (alvo, r) ->
+                    com.kenkern.engine.ui.jogo.RegiaoBotao(alvo, r.left, r.top, r.right, r.bottom)
+                }
+            )
+        }
+    }
+    // P1.4: overlay de toque da janela de jogo (último ponto, alvo, consumidor).
+    var debugToqueJogo by remember { mutableStateOf(false) }
+    // P1.3: watchdog — sem frame renderizado por WATCHDOG_MS em Play → "Forçar saída".
+    var watchdogAlerta by remember { mutableStateOf(false) }
+    LaunchedEffect(janelaDeJogo) {
+        if (!janelaDeJogo) {
+            if (watchdogAlerta) {
+                watchdogAlerta = false
+                surfaceView?.alertaWatchdog(false)
+            }
+            surfaceView?.definirRegioesReservadas(emptyList())
+        } else {
+            while (true) {
+                kotlinx.coroutines.delay(500)
+                val sv = surfaceView ?: continue
+                val emAlerta = sv.milissegundosSemFrame() > com.kenkern.engine.ui.jogo.RoteadorToqueJogo.WATCHDOG_MS
+                if (emAlerta != watchdogAlerta) {
+                    watchdogAlerta = emAlerta
+                    sv.alertaWatchdog(emAlerta)
+                    if (emAlerta) {
+                        com.kenkern.engine.diag.KenkernLog.w(
+                            "EditorScreen",
+                            "watchdog: sem frame por " + sv.milissegundosSemFrame() + " ms em Play — botão Forçar saída exibido"
+                        )
+                    }
+                }
+            }
+        }
+    }
+    // P1.3: BACK do sistema SEMPRE sai da janela de jogo (PLAYING ou PAUSED → STOPPED).
+    BackHandler(enabled = janelaDeJogo) {
+        com.kenkern.engine.diag.KenkernLog.w("EditorScreen", "BACK: saída da janela de jogo")
+        vm.setPlayState(com.kenkern.engine.ui.jogo.RoteadorToqueJogo.acaoBack(vm.playState.value))
+    }
+
     Box(Modifier.fillMaxSize().background(KenkernBackground)) {
         Column(
             Modifier
@@ -405,8 +464,14 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                     }
 
                     // ---------- Viewport (sempre dominante) ----------
+                    // P1 (v0.1.25): onGloballyPositioned captura as coordenadas
+                    // do Box (== espaço px da SurfaceView fillMaxSize) para o
+                    // roteador de toque da janela de jogo.
                     Box(
-                        Modifier.weight(1f).fillMaxHeight()
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .onGloballyPositioned { coordsDoViewport.value = it }
                     ) {
                         AndroidView(
                             factory = { ctx ->
@@ -443,10 +508,15 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                         // S6 (v0.1.24): BOTÕES DA JANELA DE JOGO — Pausar/
                         // Continuar e Sair (Stop) sobre o jogo em tela cheia.
                         // Sair restaura a cena do editor exatamente (M1.6).
+                        // P1 (v0.1.25): zIndex acima do AndroidView + alvos de
+                        // toque 48dp + regiões publicadas ao roteador — a cena
+                        // NUNCA consome toque sobre eles (KenkernSurfaceView
+                        // consulta RoteadorToqueJogo antes de consumir).
                         if (janelaDeJogo) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier
+                                    .zIndex(4f)
                                     .align(Alignment.TopCenter)
                                     .padding(top = 8.dp)
                                     .clip(RoundedCornerShape(8.dp))
@@ -459,7 +529,18 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                             if (vm.playState.value == PlayState.PLAYING) PlayState.PAUSED
                                             else PlayState.PLAYING
                                         )
-                                    }
+                                    },
+                                    modifier = Modifier
+                                        .defaultMinSize(minHeight = 48.dp)
+                                        .onGloballyPositioned { coords ->
+                                            val box = coordsDoViewport.value ?: return@onGloballyPositioned
+                                            val off = coords.positionInWindow() - box.positionInWindow()
+                                            regioesJogo[AlvoToque.BOTAO_PAUSAR] = Rect(
+                                                off.x, off.y,
+                                                off.x + coords.size.width, off.y + coords.size.height
+                                            )
+                                            publicarRegioes()
+                                        }
                                 ) {
                                     Text(
                                         if (vm.playState.value == PlayState.PAUSED) stringResource(R.string.jogo_continuar)
@@ -470,7 +551,18 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     )
                                 }
                                 TextButton(
-                                    onClick = { vm.setPlayState(PlayState.STOPPED) }
+                                    onClick = { vm.setPlayState(PlayState.STOPPED) },
+                                    modifier = Modifier
+                                        .defaultMinSize(minHeight = 48.dp)
+                                        .onGloballyPositioned { coords ->
+                                            val box = coordsDoViewport.value ?: return@onGloballyPositioned
+                                            val off = coords.positionInWindow() - box.positionInWindow()
+                                            regioesJogo[AlvoToque.BOTAO_SAIR] = Rect(
+                                                off.x, off.y,
+                                                off.x + coords.size.width, off.y + coords.size.height
+                                            )
+                                            publicarRegioes()
+                                        }
                                 ) {
                                     Text(
                                         stringResource(R.string.jogo_sair),
@@ -479,6 +571,64 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                         color = KenkernError
                                     )
                                 }
+                            }
+
+                            // P1.3: WATCHDOG — loop travado (sem frame por 3 s)
+                            // → botão "Forçar saída" na FRENTE de tudo.
+                            if (watchdogAlerta) {
+                                Box(
+                                    modifier = Modifier
+                                        .zIndex(6f)
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 64.dp)
+                                ) {
+                                    TextButton(
+                                        onClick = {
+                                            com.kenkern.engine.diag.KenkernLog.e(
+                                                "EditorScreen",
+                                                "Forçar saída acionado pelo usuário (watchdog em alerta)"
+                                            )
+                                            vm.setPlayState(PlayState.STOPPED)
+                                        },
+                                        modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                                    ) {
+                                        Text(
+                                            stringResource(R.string.jogo_forcar_saida),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = KenkernError
+                                        )
+                                    }
+                                }
+                            }
+
+                            // P1.4: botão de debug de toque da janela de jogo.
+                            IconButton(
+                                onClick = { debugToqueJogo = !debugToqueJogo },
+                                modifier = Modifier
+                                    .zIndex(5f)
+                                    .align(Alignment.TopEnd)
+                                    .padding(end = 8.dp, top = 52.dp)
+                                    .size(40.dp)
+                                    .background(
+                                        if (debugToqueJogo) KenkernAmber.copy(alpha = 0.25f) else KenkernSurface.copy(alpha = 0.6f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                            ) {
+                                Icon(
+                                    Icons.Filled.CenterFocusStrong,
+                                    contentDescription = stringResource(R.string.jogo_debug_toque_botao),
+                                    tint = if (debugToqueJogo) KenkernAmber else KenkernTextMid
+                                )
+                            }
+                            if (debugToqueJogo) {
+                                OverlayToqueJogo(
+                                    sv = surfaceView,
+                                    modifier = Modifier
+                                        .zIndex(5f)
+                                        .align(Alignment.TopEnd)
+                                        .padding(top = 96.dp, end = 10.dp)
+                                )
                             }
                         }
 
@@ -1656,6 +1806,64 @@ private fun buildDebugLines(sv: KenkernSurfaceView, viewPx: android.util.Size): 
         }
     }
     return lines
+}
+
+/**
+ * P1.4 (v0.1.25): OVERLAY DE TOQUE da JANELA DE JOGO — mostra o último ponto
+ * tocado (px da view), o alvo decidido pelo RoteadorToqueJogo e quem consumiu
+ * (cena do jogo ou botão Compose). Ligado pelo botão TouchApp no canto superior
+ * direito da janela de jogo. SEM pointerInput: o overlay NÃO intercepta toques.
+ */
+@Composable
+private fun OverlayToqueJogo(sv: KenkernSurfaceView?, modifier: Modifier = Modifier) {
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(100)
+            tick++
+        }
+    }
+    if (sv == null) return
+    val alvo = sv.ultimoAlvoToque
+    Column(
+        modifier
+            .widthIn(max = 300.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.Black.copy(alpha = 0.72f))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Text(
+            stringResource(R.string.jogo_debug_toque_titulo),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = KenkernAmber
+        )
+        Text(
+            stringResource(
+                R.string.jogo_debug_toque_ponto,
+                String.format(java.util.Locale.US, "%.0f", sv.ultimoToqueX),
+                String.format(java.util.Locale.US, "%.0f", sv.ultimoToqueY)
+            ),
+            fontSize = 10.sp,
+            lineHeight = 13.sp,
+            fontFamily = FontFamily.Monospace,
+            color = KenkernTextHigh
+        )
+        Text(
+            stringResource(R.string.jogo_debug_toque_alvo, alvo?.name ?: "—"),
+            fontSize = 10.sp,
+            lineHeight = 13.sp,
+            fontFamily = FontFamily.Monospace,
+            color = KenkernTextHigh
+        )
+        Text(
+            stringResource(R.string.jogo_debug_toque_consumidor, sv.ultimoConsumidorToque),
+            fontSize = 10.sp,
+            lineHeight = 13.sp,
+            fontFamily = FontFamily.Monospace,
+            color = KenkernTextHigh
+        )
+    }
 }
 
 // ============================== Câmera de VOO ==============================

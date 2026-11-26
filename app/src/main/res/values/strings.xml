@@ -204,6 +204,13 @@
     <string name="jogo_pausar">Pause</string>
     <string name="jogo_continuar">Resume</string>
     <string name="jogo_sair">Exit game</string>
+    <string name="jogo_forcar_saida">Force exit</string>
+    <string name="jogo_debug_toque_botao">Touch debug of the game window</string>
+    <string name="jogo_debug_toque_titulo">Touch debug</string>
+    <string name="jogo_debug_toque_ponto">Last touch: (%s, %s)px</string>
+    <string name="jogo_debug_toque_alvo">Target: %s</string>
+    <string name="jogo_debug_toque_consumidor">Consumed by: %s</string>
+    <string name="editor_status_watchdog">stalled</string>
     <!-- S2 (v0.1.24): physics debug overlay during Play -->
     <string name="play_debug_titulo">PHYSICS (Play)</string>
     <string name="play_debug_botao">Toggle physics debug overlay</string>
@@ -287,6 +294,7 @@
     <string name="diag_check_layout">Landscape layout 800×360 — TopBar fits + Add Nick window reachable</string>
     <string name="diag_check_lua_api">Lua API (L2) — events, timers, area enter/exit/stay, tags, prefab, classes, input, ui, storage, log</string>
     <string name="diag_check_joystick">On-screen joystick — math (normalization, dead zone, 8 directions, actions)</string>
+    <string name="diag_check_play_sair">Game window exit — touch routing (buttons never consumed), 3 s watchdog and BACK</string>
     <string name="diag_check_jogo">Collect-coins game — real template, 300 ticks with synthetic input, counter at least 1 and player on the ground</string>
     <!-- S1 (v0.1.24): copy report button -->
     <string name="diag_copy_report">Copy report</string>

@@ -128,7 +128,8 @@ class Diagnostico(private val appContext: Context) {
             Checagem("layout", "Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável"),
             Checagem("joystick", "Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)"),
             Checagem("lua-api", "API Lua (L2) — eventos, timers, área, tags, prefab, classes, input, ui, storage, log"),
-            Checagem("jogo", "Jogo 'Coletar moedas' — template real, 300 ticks com input sintético, contador ≥ 1 e jogador no chão")
+            Checagem("jogo", "Jogo 'Coletar moedas' — template real, 300 ticks com input sintético, contador ≥ 1 e jogador no chão"),
+            Checagem("play-sair", "Saída da janela de jogo — roteamento de toque (botões nunca consumidos), watchdog 3 s e BACK")
         )
 
         /**
@@ -581,6 +582,7 @@ class Diagnostico(private val appContext: Context) {
                             "joystick" -> checarJoystick(c)
                             "lua-api" -> checarLuaApi(c)
                             "jogo" -> checarJogo(c)
+                            "play-sair" -> checarPlaySair(c)
                         }
                     }.onFailure {
                         c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
@@ -1672,6 +1674,69 @@ class Diagnostico(private val appContext: Context) {
                 "300 ticks · moedas=${r.moedasColetadas} · jogador NO CHÃO (pé=${r.peDoJogador} m) · " +
                     "andou ${r.metrosAndados} m com input sintético — o jogo é jogável"
             )
+        }
+    }
+
+    /**
+     * Checagem "play-sair" (P1, v0.1.25) — SAÍDA GARANTIDA DA JANELA DE JOGO,
+     * SEM GL: valida o RoteadorToqueJogo (a MESMA fonte única usada pela
+     * SurfaceView.onTouchEvent e pelos botões da janela):
+     *  (1) toque sobre Pausar/Sair em PLAYING e PAUSED → botão recebe e a cena
+     *      NUNCA consome (causa raiz do bug do toque preso);
+     *  (2) toque fora dos botões → a cena consome (controle do jogo);
+     *  (3) watchdog em alerta → "Forçar saída" tem prioridade;
+     *  (4) BACK do sistema → SEMPRE sai (PLAYING/PAUSED → STOPPED);
+     *  (5) WATCHDOG_MS = 3000 e regiões com alvo ≥ 48dp.
+     * As regiões simulam a geometria real dos botões (topo central, 48dp).
+     */
+    private fun checarPlaySair(c: Checagem) {
+        val problemas = ArrayList<String>(6)
+        val pausar = com.kenkern.engine.ui.jogo.RegiaoBotao(
+            com.kenkern.engine.ui.jogo.AlvoToque.BOTAO_PAUSAR, 310f, 8f, 430f, 60f
+        )
+        val sair = com.kenkern.engine.ui.jogo.RegiaoBotao(
+            com.kenkern.engine.ui.jogo.AlvoToque.BOTAO_SAIR, 440f, 8f, 520f, 60f
+        )
+        val forcar = com.kenkern.engine.ui.jogo.RegiaoBotao(
+            com.kenkern.engine.ui.jogo.AlvoToque.BOTAO_FORCAR, 280f, 70f, 520f, 122f
+        )
+        val regioes = listOf(pausar, sair)
+        val d = com.kenkern.engine.ui.jogo.RoteadorToqueJogo
+
+        val dpPausar = d.decidir(com.kenkern.engine.engine.PlayState.PLAYING, 370f, 30f, regioes, false)
+        if (dpPausar.alvo != com.kenkern.engine.ui.jogo.AlvoToque.BOTAO_PAUSAR || dpPausar.cenaConsome) {
+            problemas.add("Pausar em PLAYING: alvo=${dpPausar.alvo} cenaConsome=${dpPausar.cenaConsome}")
+        }
+        val dSair = d.decidir(com.kenkern.engine.engine.PlayState.PLAYING, 480f, 30f, regioes, false)
+        if (dSair.alvo != com.kenkern.engine.ui.jogo.AlvoToque.BOTAO_SAIR || dSair.cenaConsome) {
+            problemas.add("Sair em PLAYING: alvo=${dSair.alvo} cenaConsome=${dSair.cenaConsome}")
+        }
+        val dPausado = d.decidir(com.kenkern.engine.engine.PlayState.PAUSED, 370f, 30f, regioes, false)
+        if (dPausado.alvo != com.kenkern.engine.ui.jogo.AlvoToque.BOTAO_PAUSAR || dPausado.cenaConsome) {
+            problemas.add("Pausar em PAUSED: alvo=${dPausado.alvo} cenaConsome=${dPausado.cenaConsome}")
+        }
+        val dCena = d.decidir(com.kenkern.engine.engine.PlayState.PLAYING, 100f, 200f, regioes, false)
+        if (dCena.alvo != com.kenkern.engine.ui.jogo.AlvoToque.CENA || !dCena.cenaConsome) {
+            problemas.add("fora dos botões: alvo=${dCena.alvo} cenaConsome=${dCena.cenaConsome}")
+        }
+        val dForcar = d.decidir(com.kenkern.engine.engine.PlayState.PLAYING, 400f, 100f, regioes + forcar, true)
+        if (dForcar.alvo != com.kenkern.engine.ui.jogo.AlvoToque.BOTAO_FORCAR || dForcar.cenaConsome) {
+            problemas.add("watchdog: alvo=${dForcar.alvo} cenaConsome=${dForcar.cenaConsome}")
+        }
+        if (d.acaoBack(com.kenkern.engine.engine.PlayState.PLAYING) != com.kenkern.engine.engine.PlayState.STOPPED || d.acaoBack(com.kenkern.engine.engine.PlayState.PAUSED) != com.kenkern.engine.engine.PlayState.STOPPED) {
+            problemas.add("BACK não sai da janela de jogo")
+        }
+        if (d.WATCHDOG_MS != 3000L) problemas.add("WATCHDOG_MS=${d.WATCHDOG_MS} ≠ 3000")
+        for (r2 in regioes) {
+            if (r2.baixo - r2.topo < 48f) problemas.add("região ${r2.alvo} com ${r2.baixo - r2.topo}dp < 48dp")
+        }
+        if (problemas.isEmpty()) {
+            c.aprovado(
+                "botões Pausar/Sair recebem o toque em PLAYING e PAUSED (cena nunca consome) · " +
+                    "fora deles a cena consome · Forçar saída na frente do watchdog · BACK sempre sai · WATCHDOG=3s · alvos ≥48dp"
+            )
+        } else {
+            c.falhou(problemas.joinToString("; "))
         }
     }
 

@@ -204,6 +204,13 @@
     <string name="jogo_pausar">Pausar</string>
     <string name="jogo_continuar">Continuar</string>
     <string name="jogo_sair">Sair do jogo</string>
+    <string name="jogo_forcar_saida">Forçar saída</string>
+    <string name="jogo_debug_toque_botao">Debug de toque da janela de jogo</string>
+    <string name="jogo_debug_toque_titulo">Debug de toque</string>
+    <string name="jogo_debug_toque_ponto">Último toque: (%s, %s)px</string>
+    <string name="jogo_debug_toque_alvo">Alvo: %s</string>
+    <string name="jogo_debug_toque_consumidor">Consumido por: %s</string>
+    <string name="editor_status_watchdog">travado</string>
     <!-- S2 (v0.1.24): overlay de debug de física durante o Play -->
     <string name="play_debug_titulo">FÍSICA (Play)</string>
     <string name="play_debug_botao">Alternar overlay de debug de física</string>
@@ -287,6 +294,7 @@
     <string name="diag_check_layout">Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável</string>
     <string name="diag_check_lua_api">API Lua (L2) — eventos, timers, área on_enter/exit/stay, tags, prefab, classes, input, ui, storage, log</string>
     <string name="diag_check_joystick">Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)</string>
+    <string name="diag_check_play_sair">Saída da janela de jogo — roteamento de toque (botões nunca consumidos), watchdog 3 s e BACK</string>
     <string name="diag_check_jogo">Jogo Coletar moedas — template real, 300 ticks com input sintético, contador de pelo menos 1 e jogador no chão</string>
     <!-- S1 (v0.1.24): botão de copiar relatório -->
     <string name="diag_copy_report">Copiar relatório</string>

@@ -25,6 +25,10 @@ import com.kenkern.engine.engine.NickLuaScripts
 import com.kenkern.engine.engine.EspelhoNick
 import com.kenkern.engine.engine.NickPlayRuntime
 import com.kenkern.engine.engine.PlayState
+import com.kenkern.engine.ui.jogo.AlvoToque
+import com.kenkern.engine.ui.jogo.RegiaoBotao
+import com.kenkern.engine.ui.jogo.RoteadorToqueJogo
+import android.os.SystemClock
 import javax.microedition.khronos.egl.EGL10
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.egl.EGLDisplay
@@ -537,9 +541,67 @@ class KenkernSurfaceView(
     }.onFailure { KenkernLog.w(TAG, "detecção de GLES3 falhou — assumindo que o aparelho suporta", it) }
         .getOrDefault(true)
 
+    // ---- P1 (v0.1.25): roteamento de toque da janela de jogo ----
+
+    /**
+     * Regiões dos botões da janela de jogo em px da VIEW (mesmo espaço do
+     * MotionEvent). Fixadas quando o layout dos botões muda (não por frame) —
+     * ZERO alocação por evento de toque.
+     */
+    @Volatile private var regioesReservadas: List<RegiaoBotao> = emptyList()
+
+    /** Watchdog ligado pelo editor quando o loop de render trava (sem frame por WATCHDOG_MS). */
+    @Volatile private var watchdogEmAlerta: Boolean = false
+
+    /** Último frame renderizado (uptimeMillis) — heartbeat escrito no onDrawFrame (escrita volátil, zero alocação). */
+    @Volatile private var ultimoFrameMs: Long = 0L
+
+    // Overlay de toque (P1.4): último ponto tocado, alvo decidido e quem consumiu.
+    @Volatile var ultimoToqueX: Float = -1f
+        private set
+    @Volatile var ultimoToqueY: Float = -1f
+        private set
+    @Volatile var ultimoAlvoToque: AlvoToque? = null
+        private set
+    @Volatile var ultimoConsumidorToque: String = "—"
+        private set
+
+    /** P1.2: o editor publica as regiões dos botões (px da view) quando o layout muda. */
+    fun definirRegioesReservadas(regioes: List<RegiaoBotao>) {
+        regioesReservadas = regioes
+    }
+
+    /** P1.3: o editor liga o alerta do watchdog (Forçar saída entra na frente). */
+    fun alertaWatchdog(emAlerta: Boolean) {
+        watchdogEmAlerta = emAlerta
+    }
+
+    /** P1.3: ms desde o último frame renderizado (o editor consulta a cada 500 ms). */
+    fun milissegundosSemFrame(): Long = SystemClock.uptimeMillis() - ultimoFrameMs
+
     override fun onTouchEvent(event: MotionEvent?): Boolean {
         if (event == null) return false
-        if (requestedPlayState != PlayState.STOPPED) return true
+        if (requestedPlayState != PlayState.STOPPED) {
+            // P1 (v0.1.25): CAUSA RAIZ ERA AQUI — na v0.1.24 (linha única
+            // `return true`) a SurfaceView consumia TODO toque em Play e os
+            // botões Pausar/Sair (Compose, acima da View nativa) nunca
+            // recebiam dispatch — usuário preso na Janela de Jogo. Agora o
+            // roteador decide: toque sobre um botão reservado DELEGA (false →
+            // o Compose entrega ao botão com zIndex acima do AndroidView);
+            // fora dos botões, a cena consome (controle do jogo).
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                ultimoToqueX = event.x
+                ultimoToqueY = event.y
+                val decisao = RoteadorToqueJogo.decidir(
+                    requestedPlayState, event.x, event.y,
+                    regioesReservadas, watchdogEmAlerta
+                )
+                ultimoAlvoToque = decisao.alvo
+                ultimoConsumidorToque = if (decisao.cenaConsome) "cena (jogo)" else "botão " + decisao.alvo.name
+                if (!decisao.cenaConsome) return false
+            }
+            return true
+        }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             onFirstTouch()
         }
@@ -1208,6 +1270,8 @@ class KenkernSurfaceView(
         }
 
         override fun onDrawFrame(gl: javax.microedition.khronos.opengles.GL10?) {
+            // P1.3 (v0.1.25): heartbeat do watchdog — escrita volátil, ZERO alocação.
+            ultimoFrameMs = SystemClock.uptimeMillis()
             try {
                 val scene = sceneForFrame(sceneProvider())
                 // Instrumentação: ms de update (timestep fixo + world transforms).
