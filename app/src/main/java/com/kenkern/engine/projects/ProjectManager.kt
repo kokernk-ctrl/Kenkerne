@@ -390,6 +390,21 @@ object ProjectManager {
         }
     }
 
+    /**
+     * U1.8 (v0.1.27): o template "Coletar moedas" ganha a TELA DE UI feita no
+     * TELAR (contador + botão de pausa + joystick) — grava ui/coletar-moedas.kui.
+     */
+    fun montarUiTemplate(scene: com.kenkern.engine.core.Scene, raiz: File) {
+        try {
+            val doc = com.kenkern.engine.ui.telar.TemplateUiMoedas.montar()
+            val dir = java.io.File(raiz, "ui")
+            dir.mkdirs()
+            java.io.File(dir, doc.nome + ".kui").writeText(com.kenkern.engine.ui.telar.KuiFormat.salvar(doc))
+        } catch (e: Exception) {
+            com.kenkern.engine.diag.KenkernLog.e("Kenkern/Projeto", "montarUiTemplate falhou", e)
+        }
+    }
+
     private fun uniqueDirectory(parent: File, base: String): File {
         var candidate = File(parent, base)
         var i = 2

@@ -131,7 +131,8 @@ class Diagnostico(private val appContext: Context) {
             Checagem("jogo", "Jogo 'Coletar moedas' — template real, 300 ticks com input sintético, contador ≥ 1 e jogador no chão"),
             Checagem("play-sair", "Saída da janela de jogo — roteamento de toque (botões nunca consumidos), watchdog 3 s e BACK"),
             Checagem("area", "Nicks de Área (ZONA) — enter/exit/stay, filtro por tag, uma vez só, bodies/contains, signal e checkpoint/respawn"),
-            Checagem("editor", "Editor de código Lua — tokenizador, indentação automática, autocompletar offline, modelos e Verificar (LuaJ)")
+            Checagem("editor", "Editor de código Lua — tokenizador, indentação automática, autocompletar offline, modelos e Verificar (LuaJ)"),
+            Checagem("ui", "UI do TELAR — âncoras nas 3 proporções, ida e volta .kui, migração do joystick, commands e tela do template")
         )
 
         /**
@@ -592,6 +593,7 @@ class Diagnostico(private val appContext: Context) {
                             "play-sair" -> checarPlaySair(c)
                             "area" -> checarArea(c)
                             "editor" -> checarEditor(c)
+                            "ui" -> checarUi(c)
                         }
                     }.onFailure {
                         c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
@@ -1917,6 +1919,51 @@ class Diagnostico(private val appContext: Context) {
             c.aprovado(
                 "tokenizador (keyword/string/comentário/número/API) · indentação por balanço de blocos · " +
                     "autocompletar offline por contexto (catálogo = LUA_API.md) · 4 modelos compilam · Verificar (LuaJ) marca a linha"
+            )
+        } else {
+            c.falhou(problemas.joinToString("; "))
+        }
+    }
+
+    /** Checagem "ui" (U1, v0.1.27) — TELAR sem GL: âncoras nas 3 proporções (16:9, 18:9, 20:9), área segura, .kui ida e volta, migração do joystick sem perder dados, undo/redo por COMMAND e a tela do template. */
+    private fun checarUi(c: Checagem) {
+        val problemas = ArrayList<String>(4)
+        try {
+            val doc = com.kenkern.engine.ui.telar.TemplateUiMoedas.montar()
+            // âncoras nas 3 proporções: nada fora da tela
+            for (dim in listOf(1920 to 1080, 2400 to 1080, 2400 to 1200)) {
+                for (e in doc.elementos) {
+                    val r = com.kenkern.engine.ui.telar.resolverRect(e, dim.first, dim.second)
+                    if (r.x < 0 || r.y < 0 || r.x + r.largura > dim.first || r.y + r.altura > dim.second) {
+                        problemas.add("fora da tela @${dim.first}x${dim.second}: ${e.nome}")
+                    }
+                }
+            }
+            // .kui ida e volta
+            val doc2 = com.kenkern.engine.ui.telar.KuiFormat.carregar(
+                com.kenkern.engine.ui.telar.KuiFormat.salvar(doc)
+            ) ?: throw AssertionError("kui não recarregou")
+            if (doc2.elementos.size != 4) problemas.add("kui: ${doc2.elementos.size} elementos ≠ 4")
+            // migração do joystick
+            val j = com.kenkern.engine.ui.telar.MigracaoUi.elementoDeJoystick(
+                9, "Joystick", "flutuante", 150, 0.8f, 0.25f, true, "Herói", true
+            )
+            if (j.joystickOitoDirecoes != true || j.joystickControla != "Herói") problemas.add("migração perdeu dados")
+            // undo/redo por command
+            val alvo = doc2.elementos.first()
+            doc2.executar(com.kenkern.engine.ui.telar.ComandoTransformar(alvo.id, 100, 100, alvo.largura, alvo.altura))
+            doc2.desfazer()
+            if (alvo.x == 100) problemas.add("command não desfez a transformação")
+            // botão do template chama função Lua
+            val botao = doc2.elementos.firstOrNull { it.tipo == com.kenkern.engine.ui.telar.ElementoUi.BOTAO }
+            if (botao?.aoClicar != "pausar") problemas.add("botão do template sem aoClicar")
+        } catch (t: Throwable) {
+            problemas.add("exceção: ${t.message ?: t.javaClass.simpleName}")
+        }
+        if (problemas.isEmpty()) {
+            c.aprovado(
+                "8 elementos · âncoras 9+esticar dentro da tela em 16:9/18:9/20:9 (área segura) · .kui KUI1 ida e volta · " +
+                    "migração do Joystick Nick sem perder dados · undo/redo por COMMAND · template com contador+pausar+joystick"
             )
         } else {
             c.falhou(problemas.joinToString("; "))

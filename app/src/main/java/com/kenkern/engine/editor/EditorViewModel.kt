@@ -1101,6 +1101,67 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         espelharSeEmPlay(nickId)
     }
 
+    // ---------- U1 (v0.1.27): TELAR — documento de UI por projeto ----------
+
+    /** U1: carrega o .kui do projeto (ui/coletar-moedas.kui ou ui/ui.kui). */
+    fun carregarUiDoc(): com.kenkern.engine.ui.telar.DocumentoUi? {
+        val raiz = project.value?.root ?: return null
+        for (nome in listOf("coletar-moedas.kui", "ui.kui")) {
+            val f = java.io.File(raiz, "ui/$nome")
+            if (f.exists()) {
+                try {
+                    val doc = com.kenkern.engine.ui.telar.KuiFormat.carregar(f.readText())
+                    if (doc != null) return doc
+                } catch (e: Exception) {
+                    com.kenkern.engine.diag.KenkernLog.e(TAG, "carregarUiDoc falhou ($nome)", e)
+                }
+            }
+        }
+        // U1.4: MIGRAÇÃO — ui.joystick da árvore 3D vira elemento de UI
+        val s = sceneRef ?: return null
+        val joysticks = ArrayList<com.kenkern.engine.core.Nick>(2)
+        val pilha = ArrayDeque<com.kenkern.engine.core.Nick>()
+        for (raizN in s.roots) pilha.addLast(raizN)
+        while (!pilha.isEmpty()) {
+            val n = pilha.removeLast()
+            if (n.kind == "ui.joystick") joysticks.add(n)
+            for (filho in n.children) pilha.addLast(filho)
+        }
+        if (joysticks.isEmpty()) return null
+        val doc = com.kenkern.engine.ui.telar.DocumentoUi("ui")
+        for (j in joysticks) {
+            val inst = j.findClassInstance("Joystick")
+            doc.executar(
+                com.kenkern.engine.ui.telar.ComandoAdicionar(
+                    com.kenkern.engine.ui.telar.MigracaoUi.elementoDeJoystick(
+                        doc.proximoId(), j.displayName("pt"),
+                        inst?.getString("tipo", "fixo") ?: "fixo",
+                        (inst?.getFloat("tamanho", 112f) ?: 112f).toInt(),
+                        inst?.getFloat("opacidade", 0.9f) ?: 0.9f,
+                        inst?.getFloat("zonaMorta", 0.15f) ?: 0.15f,
+                        inst?.getBool("oitoDirecoes", false) ?: false,
+                        inst?.getString("controla", "") ?: "",
+                        inst?.getBool("seguirNick", false) ?: false
+                    )
+                )
+            )
+        }
+        com.kenkern.engine.diag.KenkernLog.w(TAG, "TELAR: " + joysticks.size + " Joystick Nick migrado(s) para a UI sem perder dados")
+        return doc
+    }
+
+    /** U1.5: grava o documento de UI em ui/ui.kui. */
+    fun salvarUiDoc(doc: com.kenkern.engine.ui.telar.DocumentoUi) {
+        val raiz = project.value?.root ?: return
+        try {
+            val dir = java.io.File(raiz, "ui")
+            dir.mkdirs()
+            java.io.File(dir, doc.nome + ".kui").writeText(com.kenkern.engine.ui.telar.KuiFormat.salvar(doc))
+        } catch (e: Exception) {
+            com.kenkern.engine.diag.KenkernLog.e(TAG, "salvarUiDoc falhou", e)
+        }
+    }
+
     companion object {
         private const val TAG = "Kenkern/EditorVM"
 

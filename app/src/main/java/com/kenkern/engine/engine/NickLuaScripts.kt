@@ -232,6 +232,28 @@ class NickLuaScripts(
         timers.removeAll { it.cancelled }
     }
 
+    /**
+     * U1.5 (v0.1.27): TELAR — chama uma função GLOBAL Lua pelo nome
+     * (botão de UI com on_click → aoclicar). Erro no Console, nunca silencioso.
+     */
+    fun chamarFuncaoGlobal(nome: String): Boolean {
+        if (nome.isBlank()) return false
+        for (inst in instancias.toList()) {
+            val globals = (inst.runtime as? LuaJScriptRuntime)?.ambiente() ?: continue
+            val f = globals.get(nome)
+            if (f.isfunction()) {
+                try {
+                    (f as LuaFunction).call()
+                    return true
+                } catch (e: Throwable) {
+                    KenkernLog.e(TAG, "função '$nome' falhou: ${e.message}")
+                    return false
+                }
+            }
+        }
+        return false
+    }
+
     fun emitirColisao(nick: Nick, nomeOutro: String) {
         chamarComString(nick, "on_collision", nomeOutro)
     }

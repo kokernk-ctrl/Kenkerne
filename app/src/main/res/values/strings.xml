@@ -310,6 +310,17 @@
     <string name="editor_lua_desfazer">Undo</string>
     <string name="editor_lua_refazer">Redo</string>
     <string name="editor_lua_erro_linha">Line %1$d: %2$s</string>
+    <string name="telar_titulo">UI editor</string>
+    <string name="telar_voltar">Back to 3D editor</string>
+    <string name="telar_adicionar">Add</string>
+    <string name="telar_camadas">Layers</string>
+    <string name="telar_selecione">Select a UI element</string>
+    <string name="telar_nome">Name</string>
+    <string name="telar_texto">Text</string>
+    <string name="telar_remover">Remove</string>
+    <string name="editor_inspector_oculto">hidden</string>
+    <string name="editor_inspector_travado">locked</string>
+    <string name="diag_check_ui">TELAR UI — anchors at 3 ratios, kui roundtrip, joystick migration, commands and template screen</string>
     <string name="diag_check_editor">Lua code editor — tokenizer, auto-indent, offline autocomplete, templates and Check (LuaJ)</string>
     <string name="diag_check_area">Area Nicks (ZONA) — enter/exit/stay, tag filter, once, bodies/contains, signal and checkpoint/respawn</string>
     <string name="diag_check_play_sair">Game window exit — touch routing (buttons never consumed), 3 s watchdog and BACK</string>

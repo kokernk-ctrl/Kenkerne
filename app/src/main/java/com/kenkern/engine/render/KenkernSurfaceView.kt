@@ -566,6 +566,14 @@ class KenkernSurfaceView(
     @Volatile var ultimoConsumidorToque: String = "—"
         private set
 
+    /** U1.5 (v0.1.27): ponte Lua publicada pela cópia de Play (para os botões do TELAR). */
+    @Volatile private var ponteUiPlay: NickLuaScripts? = null
+
+    /** U1.5 (v0.1.27): botão de UI do TELAR → função Lua no thread GL (queueEvent). */
+    fun chamarFuncaoUi(nome: String) {
+        queueEvent { ponteUiPlay?.chamarFuncaoGlobal(nome) }
+    }
+
     /** P1.2: o editor publica as regiões dos botões (px da view) quando o layout muda. */
     fun definirRegioesReservadas(regioes: List<RegiaoBotao>) {
         regioesReservadas = regioes
@@ -1197,6 +1205,7 @@ class KenkernSurfaceView(
                 playScripts = copy?.let { c -> NickLuaScripts(c, projectRoot = projectRootProvider?.invoke()) }
                 playScripts?.estadoInput = estadoInput
                 playRuntime?.scripts = playScripts
+                ponteUiPlay = playScripts
                 // C2 (v0.1.26): consultor de área/respawn — a ponte Lua usa o
                 // MESMO runtime de Play para bounds (bodies/contains) e respawn.
                 // ANTES de iniciarTodos: on_start pode chamar bodies()/contains().

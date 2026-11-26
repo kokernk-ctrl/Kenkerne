@@ -310,6 +310,17 @@
     <string name="editor_lua_desfazer">Desfazer</string>
     <string name="editor_lua_refazer">Refazer</string>
     <string name="editor_lua_erro_linha">Linha %1$d: %2$s</string>
+    <string name="telar_titulo">Editor de UI</string>
+    <string name="telar_voltar">Voltar ao editor 3D</string>
+    <string name="telar_adicionar">Adicionar</string>
+    <string name="telar_camadas">Camadas</string>
+    <string name="telar_selecione">Selecione um elemento de UI</string>
+    <string name="telar_nome">Nome</string>
+    <string name="telar_texto">Texto</string>
+    <string name="telar_remover">Remover</string>
+    <string name="editor_inspector_oculto">oculto</string>
+    <string name="editor_inspector_travado">travado</string>
+    <string name="diag_check_ui">UI do TELAR — âncoras nas 3 proporções, ida e volta .kui, migração do joystick, commands e tela do template</string>
     <string name="diag_check_editor">Editor de código Lua — tokenizador, indentação automática, autocompletar offline, modelos e Verificar (LuaJ)</string>
     <string name="diag_check_area">Nicks de Área (ZONA) — enter/exit/stay, filtro por tag, uma vez só, bodies/contains, signal e checkpoint/respawn</string>
     <string name="diag_check_play_sair">Saída da janela de jogo — roteamento de toque (botões nunca consumidos), watchdog 3 s e BACK</string>

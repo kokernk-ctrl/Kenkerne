@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.border
@@ -152,6 +153,7 @@ import com.kenkern.engine.ui.theme.KenkernOutline
 import com.kenkern.engine.ui.theme.KenkernSuccess
 import com.kenkern.engine.ui.theme.KenkernSurface
 import com.kenkern.engine.ui.theme.KenkernSurfaceOverlay
+import com.kenkern.engine.ui.theme.KenkernSingCobre
 import com.kenkern.engine.ui.theme.KenkernTextHigh
 import com.kenkern.engine.ui.theme.KenkernTextLow
 import com.kenkern.engine.ui.theme.KenkernTextMid
@@ -384,6 +386,13 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
             }
         }
     }
+    // U1 (v0.1.27): ABA "UI" — o TELAR ocupa a tela inteira quando ligado.
+    var telaTelar by remember { mutableStateOf(false) }
+    if (telaTelar) {
+        TelarScreen(vm, onVoltarEditor = { telaTelar = false })
+        return
+    }
+
     // C1 (v0.1.26): quando o EDITOR DE CÓDIGO LUA está aberto, a tela inteira
     // é dele (retrato) — nada do editor de cena é composto.
     if (alvoEditorLua != null) {
@@ -603,6 +612,24 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 }
                             }
 
+                            // U1 (v0.1.27): ABA "UI" — abre o TELAR (árvore 2D
+                            // própria, .kui, camadas e Inspetor de UI).
+                            IconButton(
+                                onClick = { telaTelar = true },
+                                modifier = Modifier
+                                    .zIndex(5f)
+                                    .align(Alignment.TopEnd)
+                                    .padding(end = 8.dp, top = 96.dp)
+                                    .size(40.dp)
+                                    .background(KenkernSurface.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                            ) {
+                                Icon(
+                                    Icons.Filled.GridOn,
+                                    contentDescription = stringResource(R.string.telar_titulo),
+                                    tint = KenkernTextMid
+                                )
+                            }
+
                             // P1.4: botão de debug de toque da janela de jogo.
                             IconButton(
                                 onClick = { debugToqueJogo = !debugToqueJogo },
@@ -784,6 +811,18 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             // M1.5: UI DE JOGO mínima — textos/contadores do Lua
                             // (ui.texto/ui.contador), lidos ~2 Hz (fpsTick).
                             var uiJogo by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+                            // U1.6 (v0.1.27): UI DO TELAR em Play — o .kui do projeto
+                            // desenhado SOBRE o jogo (Compose) com toque sem conflito:
+                            // só botão/joystick/área reclamam toque.
+                            val docTelar = remember(vm.scene.value, sceneRevision) { vm.carregarUiDoc() }
+                            if (docTelar != null) {
+                                UiJogoTelar(
+                                    doc = docTelar,
+                                    valores = uiJogo,
+                                    aoClicar = { nome -> svForPlay.chamarFuncaoUi(nome) },
+                                    estado = estadoInput
+                                )
+                            }
                             LaunchedEffect(svForPlay, fpsTick) {
                                 uiJogo = svForPlay.snapshotUiJogo()
                             }
@@ -2622,5 +2661,104 @@ private fun DialogosImportacao(vm: EditorViewModel) {
                 }
             }
         )
+    }
+}
+
+
+/**
+ * U1.6 (v0.1.27): a UI do TELAR desenhada SOBRE o jogo em Play (Compose) —
+ * textos ligados a variáveis (ligaTexto → ui.contagem/ui.texto), botões com
+ * on_click → função Lua e joystick do documento no EstadoInputJogo. NÃO
+ * interativo não reclama toque (o jogo continua recebendo); só botão/joystick.
+ */
+@Composable
+fun UiJogoTelar(
+    doc: com.kenkern.engine.ui.telar.DocumentoUi,
+    valores: Map<String, String>,
+    aoClicar: (String) -> Unit,
+    estado: com.kenkern.engine.engine.EstadoInputJogo
+) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val w = maxWidth
+        val h = maxHeight
+        val escX = w.value / com.kenkern.engine.ui.telar.LARGURA_REF
+        val escY = h.value / com.kenkern.engine.ui.telar.ALTURA_REF
+        for (e in doc.elementos) {
+            if (e.oculto) continue
+            val r = com.kenkern.engine.ui.telar.resolverRect(e, w.value.toInt(), h.value.toInt())
+            Box(
+                Modifier
+                    .graphicsLayer {
+                        translationX = r.x * escX
+                        translationY = r.y * escY
+                        alpha = e.estilo.opacidade
+                    }
+                    .width((r.largura * escX).dp)
+                    .height((r.altura * escY).dp)
+            ) {
+                when (e.tipo) {
+                    com.kenkern.engine.ui.telar.ElementoUi.BOTAO -> {
+                        Text(
+                            e.texto.conteudo,
+                            fontSize = ((e.texto.tamanho * escX).coerceIn(10f, 26f)).sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0x9914100C))
+                                .border(1.dp, KenkernSingCobre)
+                                .clickable {
+                                    if (e.aoClicar.isNotBlank()) {
+                                        KenkernLog.w("Telar", "botão de UI → função Lua '" + e.aoClicar + "'")
+                                        aoClicar(e.aoClicar)
+                                    }
+                                }
+                                .padding(4.dp)
+                        )
+                    }
+                    com.kenkern.engine.ui.telar.ElementoUi.JOYSTICK -> {
+                        var acc by remember { mutableStateOf(Offset.Zero) }
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(Color(0x33D98040))
+                                .border(2.dp, KenkernAmber, androidx.compose.foundation.shape.CircleShape)
+                                .pointerInput(e.id) {
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        down.consume()
+                                        while (true) {
+                                            val ev = awaitPointerEvent()
+                                            val mudanca = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                            if (!mudanca.pressed) break
+                                            mudanca.consume()
+                                            val centro = Offset(size.width / 2f, size.height / 2f)
+                                            val raio = size.width * 0.27f
+                                            val saida = FloatArray(2)
+                                            com.kenkern.engine.engine.InputJogo.aplicar(
+                                                mudanca.position.x - centro.x,
+                                                mudanca.position.y - centro.y,
+                                                raio, e.joystickZonaMorta, e.joystickOitoDirecoes, saida
+                                            )
+                                            estado.moverX = saida[0]
+                                            estado.moverY = saida[1]
+                                        }
+                                    }
+                                }
+                        )
+                    }
+                    else -> {
+                        val valor = if (e.ligaTexto.isNotEmpty()) (valores[e.ligaTexto] ?: "0") else e.texto.conteudo
+                        Text(
+                            if (e.ligaTexto.isNotEmpty()) e.texto.conteudo.substringBefore(':') + ": " + valor else valor,
+                            fontSize = ((e.texto.tamanho * escX).coerceIn(10f, 30f)).sp,
+                            fontWeight = if (e.texto.peso == "bold") FontWeight.Bold else FontWeight.Normal,
+                            color = Color.White,
+                            modifier = Modifier.padding(4.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
