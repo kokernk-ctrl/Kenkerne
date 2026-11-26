@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kenkern.engine.R
+import com.kenkern.engine.ui.components.KToggle
 import com.kenkern.engine.core.LenteNick
 import com.kenkern.engine.core.LuzNick
 import com.kenkern.engine.core.MalhaNick
@@ -148,15 +149,19 @@ fun InspectorPanel(vm: EditorViewModel) {
             TextButton(onClick = { vm.select(nick.id) }) { Text(stringResource(R.string.inspector_revert), fontSize = 12.sp) }
         }
 
-        // Flags
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.inspector_active), fontSize = 13.sp, modifier = Modifier.weight(1f))
-            Switch(checked = nick.active, onCheckedChange = { vm.setNickActive(nick.id, it) })
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.inspector_visible), fontSize = 13.sp, modifier = Modifier.weight(1f))
-            Switch(checked = nick.visible, onCheckedChange = { vm.setNickVisible(nick.id, it) })
-        }
+        // Flags — P2 (v0.1.25): toggles do visual Singularidade.
+        KToggle(
+            rotulo = stringResource(R.string.inspector_active),
+            checked = nick.active,
+            onCheckedChange = { vm.setNickActive(nick.id, it) },
+            modifier = Modifier.weight(1f)
+        )
+        KToggle(
+            rotulo = stringResource(R.string.inspector_visible),
+            checked = nick.visible,
+            onCheckedChange = { vm.setNickVisible(nick.id, it) },
+            modifier = Modifier.weight(1f)
+        )
 
         // ---------- TRANSFORM (seção recolhível) ----------
         CollapsibleSection(stringResource(R.string.inspector_transform)) {

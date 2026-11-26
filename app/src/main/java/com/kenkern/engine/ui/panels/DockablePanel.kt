@@ -229,7 +229,7 @@ fun FloatingPanel(
 
     Card(
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = KenkernSurface.copy(alpha = 0.98f)),
+        colors = CardDefaults.cardColors(containerColor = KenkernSurface), // P2.3: OPAQUE
         elevation = CardDefaults.cardElevation(defaultElevation = if (active) 12.dp else 6.dp),
         modifier = Modifier
             .zIndex(if (emFoco) 2f else 1f)
@@ -238,7 +238,7 @@ fun FloatingPanel(
             .height(state.floatH.value.dp)
             .border(
                 width = if (active) 1.5.dp else 1.dp,
-                color = if (active) KenkernAmber.copy(alpha = 0.7f) else KenkernOutlineSoft,
+                color = if (active) KenkernAmber.copy(alpha = 0.7f) else com.kenkern.engine.ui.theme.KenkernSingCobre.copy(alpha = 0.45f),
                 shape = RoundedCornerShape(12.dp)
             )
             // E4: barreira de toque do card — hit-testável em TODA a área: o
@@ -252,7 +252,7 @@ fun FloatingPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(40.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .background(com.kenkern.engine.ui.theme.KenkernSurfaceHigh)
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = {

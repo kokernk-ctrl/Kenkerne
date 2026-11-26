@@ -83,6 +83,9 @@ import com.kenkern.engine.projects.ProjectHandle
 import com.kenkern.engine.projects.ProjectManager
 import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.ui.AppLanguage
+import com.kenkern.engine.ui.components.KButton
+import com.kenkern.engine.ui.components.KChip
+import com.kenkern.engine.ui.components.KIconButton
 import com.kenkern.engine.ui.theme.KenkernAmber
 import com.kenkern.engine.ui.theme.KenkernBackground
 import com.kenkern.engine.ui.theme.KenkernError
@@ -237,40 +240,24 @@ fun HomeScreen(
                 // T0.1: SELETOR DE IDIOMA (en/pt/padrão do aparelho; troca imediata)
                 LanguageSelector()
                 // Importar .kernpack (SAF OPEN_DOCUMENT)
-                IconButton(
-                    onClick = { importarLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.Folder,
-                        contentDescription = stringResource(R.string.hub_import_cd),
-                        tint = KenkernTextMid
-                    )
-                }
+                KIconButton(
+                    icon = Icons.Filled.Folder,
+                    contentDescription = stringResource(R.string.hub_import_cd),
+                    onClick = { importarLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
+                )
                 // Diagnóstico: checagens da engine no aparelho (tela da Fase 2)
-                IconButton(
-                    onClick = onAbrirDiagnostico,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.BugReport,
-                        contentDescription = stringResource(R.string.hub_diagnostico_cd),
-                        tint = KenkernTextMid
-                    )
-                }
-                Button(
+                KIconButton(
+                    icon = Icons.Filled.BugReport,
+                    contentDescription = stringResource(R.string.hub_diagnostico_cd),
+                    onClick = onAbrirDiagnostico
+                )
+                KButton(
+                    texto = stringResource(R.string.hub_new_project),
                     onClick = { showNewDialog = true },
                     enabled = !isLoading,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = KenkernAmber,
-                        contentColor = Color(0xFF1E1E1E)
-                    ),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                    modifier = Modifier.height(40.dp)
-                ) {
-                    Text(stringResource(R.string.hub_new_project), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
+                    primario = true,
+                    modifier = Modifier.height(44.dp)
+                )
             }
 
             HorizontalDivider(thickness = 1.dp, color = KenkernOutlineSoft)
@@ -294,18 +281,13 @@ fun HomeScreen(
                     R.string.hub_shortcut_animar,
                     R.string.hub_shortcut_texturizar
                 )) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = KenkernSurface.copy(alpha = 0.58f),
-                        border = BorderStroke(1.dp, KenkernOutlineSoft.copy(alpha = 0.5f))
-                    ) {
-                        Text(
-                            stringResource(R.string.hub_shortcut_disabled_fmt, stringResource(atalho), emBreve),
-                            fontSize = 12.sp,
-                            color = KenkernTextLow,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-                        )
-                    }
+                    // P2 (v0.1.25): chips do visual Singularidade, desabilitados
+                    // com selo "Em breve" (não criam nada).
+                    KChip(
+                        texto = stringResource(R.string.hub_shortcut_disabled_fmt, stringResource(atalho), emBreve),
+                        onClick = {},
+                        enabled = false
+                    )
                 }
             }
 
@@ -363,9 +345,7 @@ fun HomeScreen(
                 containerColor = KenkernSurfaceHigh,
                 contentColor = KenkernTextHigh,
                 action = {
-                    TextButton(onClick = onConsumeStatus) {
-                        Text(stringResource(R.string.hub_ok), color = KenkernAmber)
-                    }
+                    KButton(texto = stringResource(R.string.hub_ok), onClick = onConsumeStatus)
                 }
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -424,18 +404,14 @@ fun HomeScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                KButton(texto = stringResource(R.string.hub_delete), onClick = {
                     val toDelete = project
                     pendingDelete = null
                     onDeleteProject(toDelete)
-                }) {
-                    Text(stringResource(R.string.hub_delete), color = KenkernError, fontWeight = FontWeight.SemiBold)
-                }
+                })
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) {
-                    Text(stringResource(R.string.hub_cancel), color = KenkernTextMid)
-                }
+                KButton(texto = stringResource(R.string.hub_cancel), onClick = { pendingDelete = null })
             }
         )
     }
@@ -532,19 +508,12 @@ private fun EmptyProjectsState(isLoading: Boolean, onCreate: () -> Unit) {
             color = KenkernTextMid
         )
         Spacer(Modifier.height(12.dp))
-        Button(
+        KButton(
+            texto = stringResource(R.string.hub_create_project),
             onClick = onCreate,
             enabled = !isLoading,
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = KenkernAmber,
-                contentColor = Color(0xFF1E1E1E)
-            ),
-            contentPadding = PaddingValues(horizontal = 12.dp),
-            modifier = Modifier.height(40.dp)
-        ) {
-            Text(stringResource(R.string.hub_create_project), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-        }
+            primario = true
+        )
     }
 }
 

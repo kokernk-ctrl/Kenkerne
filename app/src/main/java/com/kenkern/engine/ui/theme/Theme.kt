@@ -52,6 +52,19 @@ val KenkernInfo = Color(0xFF9D9D9D)
 // Alcance global (usado nas telas fora do MaterialTheme)
 val KenkernAccent = KenkernAmber
 
+// ---- Visual "Singularidade" (P2, v0.1.25) — cores EXTRAÍDAS do shader do
+// buraco negro do Hub (HubCena2D.kt: disco de acreção + anel de fótons):
+//   hotInner/midAmber/coolRed (disco), vec3(1.15, 0.86, 0.56) anel de fótons,
+//   vec3(0.85, 0.50, 0.25) borda interna, espaço profundo vec3(0.012, 0.013, 0.024).
+// ÚNICA fonte de hex do visual — os componentes K* (KButton/KIconButton/
+// KChip/KToggle/KPanel) NÃO usam hex fora deste arquivo.
+val KenkernSingPreto = Color(0xFF14100C)      // preto quente (fundo translúcido dos botões)
+val KenkernSingCobre = Color(0xFFD98040)      // cobre — aro de 1dp (borda interna do disco)
+val KenkernSingCobreClaro = Color(0xFFFFDB8F) // cobre claro do anel de fótons — brilho ao pressionar/focar
+// âmbar: KenkernAmber acima é o token canônico (midAmber do disco harmonizado
+// com o âmbar da engine) — botão primário cheio com texto escuro.
+
+
 private val KenkernColors = darkColorScheme(
     primary = KenkernAmber,
     onPrimary = Color(0xFF1E1E1E),
@@ -71,6 +84,14 @@ private val KenkernColors = darkColorScheme(
     surfaceVariant = KenkernSurfaceHigh,
     onSurfaceVariant = KenkernTextMid,
     surfaceTint = Color.Transparent,
+    // P2.4 (v0.1.25): DIÁLOGOS no visual Singularidade — contêineres dos
+    // AlertDialogs com o preto quente translúcido do shader do Hub
+    // (transparência real do diálogo depende da janela; a cor já é a do tema).
+    surfaceContainer = KenkernSingPreto,
+    surfaceContainerHigh = KenkernSingPreto,
+    surfaceContainerHighest = KenkernSingPreto,
+    surfaceContainerLow = KenkernSingPreto,
+    surfaceContainerLowest = KenkernSingPreto,
     inverseSurface = Color(0xFFCCCCCC),
     inverseOnSurface = Color(0xFF1E1E1E),
     outline = KenkernOutline,

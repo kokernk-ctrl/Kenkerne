@@ -48,6 +48,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kenkern.engine.R
+import com.kenkern.engine.ui.components.KButton
+import com.kenkern.engine.ui.components.KIconButton
 import com.kenkern.engine.diag.DiagNomesChecagem
 import com.kenkern.engine.diag.DiagRelatorioTexto
 import com.kenkern.engine.diag.Diagnostico
@@ -152,13 +154,11 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                 .heightIn(min = 48.dp)
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
-            IconButton(onClick = onVoltar, modifier = Modifier.size(48.dp)) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.editor_back_hub),
-                    tint = KenkernTextHigh
-                )
-            }
+            KIconButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.editor_back_hub),
+                onClick = onVoltar
+            )
             Column(Modifier.weight(1f)) {
                 Text(
                     stringResource(R.string.diag_title),
@@ -179,7 +179,8 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
             // S1 (v0.1.24): COPIAR RELATÓRIO — o texto COMPLETO das checagens
             // (título + estado + tempo + detalhe inteiro; FALHAS no topo) vai
             // para a área de transferência, pronto para colar em qualquer app.
-            Button(
+            KButton(
+                texto = stringResource(R.string.diag_copy_report),
                 onClick = {
                     val relatorio = DiagRelatorioTexto.montar(resultados) { id ->
                         context.getString(DiagNomesChecagem.resource(id))
@@ -187,44 +188,21 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                     clipboard.setText(AnnotatedString(relatorio))
                     copiadoAte = android.os.SystemClock.elapsedRealtime()
                 },
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = KenkernTextMid),
-                contentPadding = PaddingValues(horizontal = 12.dp),
                 modifier = Modifier
-                    .height(40.dp)
+                    .height(44.dp)
                     .padding(end = 8.dp)
-            ) {
-                Text(
-                    stringResource(R.string.diag_copy_report),
-                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
-            }
-            Button(
+            )
+            // P2 (v0.1.25): primário âmbar para Rodar; Cancelar em superficie
+            // escura (o estado de erro fica na cor do texto via KButton padrão).
+            KButton(
+                texto = if (rodando) stringResource(R.string.diag_cancel)
+                else stringResource(R.string.diag_run),
                 onClick = { if (rodando) cancelar() else rodar() },
-                shape = RoundedCornerShape(8.dp),
-                colors = if (rodando) {
-                    // CANCELAR (E2): interrompe a checagem corrente e marca o resto
-                    ButtonDefaults.outlinedButtonColors(
-                        contentColor = KenkernError
-                    )
-                } else {
-                    ButtonDefaults.buttonColors(
-                        containerColor = KenkernAmber,
-                        contentColor = Color(0xFF1E1E1E)
-                    )
-                },
-                contentPadding = PaddingValues(horizontal = 16.dp),
+                primario = !rodando,
                 modifier = Modifier
-                    .height(40.dp)
+                    .height(44.dp)
                     .padding(end = 8.dp)
-            ) {
-                Text(
-                    if (rodando) stringResource(R.string.diag_cancel)
-                    else stringResource(R.string.diag_run),
-                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold
-                )
-            }
+            )
         }
         HorizontalDivider(thickness = 1.dp, color = KenkernOutlineSoft)
 

@@ -5,6 +5,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.WindowInsets
@@ -118,6 +120,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.zIndex
 import com.kenkern.engine.ui.jogo.AlvoToque
+import com.kenkern.engine.ui.components.KButton
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -523,7 +526,10 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     .background(KenkernSurface.copy(alpha = 0.75f))
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
-                                TextButton(
+                                KButton(
+                                    texto = if (vm.playState.value == PlayState.PAUSED) {
+                                        stringResource(R.string.jogo_continuar)
+                                    } else stringResource(R.string.jogo_pausar),
                                     onClick = {
                                         vm.setPlayState(
                                             if (vm.playState.value == PlayState.PLAYING) PlayState.PAUSED
@@ -541,16 +547,9 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                             )
                                             publicarRegioes()
                                         }
-                                ) {
-                                    Text(
-                                        if (vm.playState.value == PlayState.PAUSED) stringResource(R.string.jogo_continuar)
-                                        else stringResource(R.string.jogo_pausar),
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = KenkernTextHigh
-                                    )
-                                }
-                                TextButton(
+                                )
+                                KButton(
+                                    texto = stringResource(R.string.jogo_sair),
                                     onClick = { vm.setPlayState(PlayState.STOPPED) },
                                     modifier = Modifier
                                         .defaultMinSize(minHeight = 48.dp)
@@ -563,14 +562,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                             )
                                             publicarRegioes()
                                         }
-                                ) {
-                                    Text(
-                                        stringResource(R.string.jogo_sair),
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = KenkernError
-                                    )
-                                }
+                                )
                             }
 
                             // P1.3: WATCHDOG — loop travado (sem frame por 3 s)
@@ -582,7 +574,8 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                         .align(Alignment.TopCenter)
                                         .padding(top = 64.dp)
                                 ) {
-                                    TextButton(
+                                    KButton(
+                                        texto = stringResource(R.string.jogo_forcar_saida),
                                         onClick = {
                                             com.kenkern.engine.diag.KenkernLog.e(
                                                 "EditorScreen",
@@ -591,14 +584,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                             vm.setPlayState(PlayState.STOPPED)
                                         },
                                         modifier = Modifier.defaultMinSize(minHeight = 48.dp)
-                                    ) {
-                                        Text(
-                                            stringResource(R.string.jogo_forcar_saida),
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = KenkernError
-                                        )
-                                    }
+                                    )
                                 }
                             }
 
@@ -1586,17 +1572,54 @@ private fun TopBarIcon(
     active: Boolean = false,
     onClick: () -> Unit
 ) {
+    // P2 (v0.1.25): visual "Singularidade" na TopBar — superfície escura
+    // translúcida + aro de 1dp em cobre + brilho ao pressionar; ativo em âmbar.
+    // 40dp visual (a TopBar tem 48dp) com o alvo de toque 48dp do M3.
+    val interacoes = remember { MutableInteractionSource() }
+    val pressionado by interacoes.collectIsPressedAsState()
     IconButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.size(40.dp),
-        colors = IconButtonDefaults.iconButtonColors(
-            containerColor = if (active) KenkernOutline else Color.Transparent,
-            contentColor = if (active) KenkernAmber else tint,
-            disabledContentColor = KenkernTextLow
-        )
+        interactionSource = interacoes,
+        modifier = Modifier.size(40.dp)
     ) {
-        Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(20.dp))
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    when {
+                        active -> KenkernAmber.copy(alpha = 0.25f)
+                        else -> com.kenkern.engine.ui.theme.KenkernSingPreto.copy(alpha = 0.72f)
+                    }
+                )
+                .border(
+                    1.dp,
+                    when {
+                        !enabled -> com.kenkern.engine.ui.theme.KenkernSingCobre.copy(alpha = 0.3f)
+                        active -> KenkernAmber
+                        else -> com.kenkern.engine.ui.theme.KenkernSingCobre.copy(alpha = 0.8f)
+                    },
+                    RoundedCornerShape(8.dp)
+                )
+                .then(
+                    if (pressionado) Modifier.background(
+                        com.kenkern.engine.ui.theme.KenkernSingCobreClaro.copy(alpha = 0.18f)
+                    ) else Modifier
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(20.dp),
+                tint = when {
+                    !enabled -> KenkernTextLow
+                    active -> KenkernAmber
+                    else -> tint
+                }
+            )
+        }
     }
 }
 

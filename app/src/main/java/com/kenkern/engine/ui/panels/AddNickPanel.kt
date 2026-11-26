@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kenkern.engine.R
+import com.kenkern.engine.ui.components.KChip
 import com.kenkern.engine.core.NickKindGroup
 import com.kenkern.engine.core.NickKindRegistry
 import com.kenkern.engine.editor.AddNickLayout
@@ -243,40 +244,17 @@ fun AddNickPanel(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.horizontalScroll(rememberScrollState())
                     ) {
-                        FilterChip(
-                            selected = comoFilho,
+                        // P2 (v0.1.25): chips do visual Singularidade.
+                        KChip(
+                            texto = stringResource(R.string.addnick_as_child),
                             onClick = { comoFilho = true },
-                            label = {
-                                Text(
-                                    stringResource(R.string.addnick_as_child),
-                                    fontSize = 11.sp,
-                                    maxLines = 1
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = KenkernSurface,
-                                selectedContainerColor = KenkernOutline,
-                                labelColor = KenkernTextHigh,
-                                selectedLabelColor = KenkernAmber
-                            ),
+                            selecionado = comoFilho,
                             modifier = Modifier.height(AddNickLayout.CHIP_DP.dp)
                         )
-                        FilterChip(
-                            selected = !comoFilho,
+                        KChip(
+                            texto = stringResource(R.string.addnick_at_root),
                             onClick = { comoFilho = false },
-                            label = {
-                                Text(
-                                    stringResource(R.string.addnick_at_root),
-                                    fontSize = 11.sp,
-                                    maxLines = 1
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = KenkernSurface,
-                                selectedContainerColor = KenkernOutline,
-                                labelColor = KenkernTextHigh,
-                                selectedLabelColor = KenkernAmber
-                            ),
+                            selecionado = !comoFilho,
                             modifier = Modifier.height(AddNickLayout.CHIP_DP.dp)
                         )
                     }
@@ -291,25 +269,14 @@ fun AddNickPanel(
                         modifier = Modifier.horizontalScroll(rememberScrollState())
                     ) {
                         for ((i, titulo) in titulosAbas.withIndex()) {
-                            FilterChip(
-                                selected = if (buscaAtiva) i == 0 else aba == i,
+                            // P2 (v0.1.25): chips do visual Singularidade.
+                            KChip(
+                                texto = titulo,
                                 onClick = {
                                     busca = ""
                                     aba = i
                                 },
-                                label = {
-                                    Text(
-                                        titulo,
-                                        fontSize = 11.sp,
-                                        maxLines = 1
-                                    )
-                                },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    containerColor = KenkernSurface,
-                                    selectedContainerColor = KenkernOutline,
-                                    labelColor = KenkernTextMid,
-                                    selectedLabelColor = KenkernAmber
-                                ),
+                                selecionado = if (buscaAtiva) i == 0 else aba == i,
                                 modifier = Modifier.height(AddNickLayout.CHIP_DP.dp)
                             )
                         }
