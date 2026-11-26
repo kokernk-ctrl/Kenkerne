@@ -267,34 +267,41 @@ object NickKindCatalog {
         NickKindRegistry.register(
             NickKind(
                 key = "area.volume", labelEn = "Area Nick", labelPt = "Nick de Área",
-                descEn = "3D detection volume (on_enter/exit/stay — Parada 2)",
-                descPt = "Volume 3D de detecção (on_enter/exit/stay — Parada 2)",
-                group = NickKindGroup.AREAS, iconKey = "area.volume",
-                // P3 (v0.1.25): PARCIAL — o gatilho on_trigger 1× existe, mas a
-                // regra de NICK COMPLETO exige on_enter/on_exit/on_stay,
-                // area.bodies()/contains() e respawn — Parada 2 (C2).
-                status = NickKindStatus.PARCIAL
+                descEn = "3D detection volume (on_enter/exit/stay, tag filter, once)",
+                descPt = "Volume 3D de detecção (on_enter/exit/stay, filtro por tag, uma vez só)",
+                group = NickKindGroup.AREAS, iconKey = "area.volume"
+                // C2 (v0.1.26): COMPLETO — on_enter/on_exit/on_stay + filtro por
+                // tag + uma vez só + area.bodies()/contains() + checagem "area".
             )
         )
         NickKindRegistry.register(
             NickKind(
                 key = "area.signal", labelEn = "Signal Nick", labelPt = "Nick de Sinal",
-                descEn = "Emits and receives named events (wires into LINKERF)",
-                descPt = "Emite e recebe eventos nomeados (liga no LINKERF)",
-                group = NickKindGroup.AREAS, iconKey = "area.signal",
-                status = NickKindStatus.SEM_FUNCAO, visivel = false
+                descEn = "Emits and receives named signals (signal.emit/on — LINKERF later)",
+                descPt = "Emite e recebe sinais nomeados (signal.emit/on — LINKERF depois)",
+                group = NickKindGroup.AREAS, iconKey = "area.signal"
+                // C2.2 (v0.1.26): COMPLETO — signal.emit(nome, dados)/signal.on
+                // no mesmo barramento dos eventos da cena.
             )
         )
         NickKindRegistry.register(
             NickKind(
                 key = "area.spawn", labelEn = "Spawn Point Nick", labelPt = "Nick de Ponto de Surgimento",
-                descEn = "Where players and objects spawn (respawn/checkpoint — Parada 2)",
-                descPt = "Onde jogadores e objetos surgem (respawn/checkpoint — Parada 2)",
-                group = NickKindGroup.AREAS, iconKey = "area.spawn",
-                // P3 (v0.1.25): PARCIAL — o nascimento funciona, mas o contrato
-                // completo (respawn() do jogador + checkpoint + queda abaixo do
-                // limite) entra na Parada 2 (C2.3).
-                status = NickKindStatus.PARCIAL
+                descEn = "Where players and objects spawn (respawn at last checkpoint)",
+                descPt = "Onde jogadores e objetos surgem (respawn no último checkpoint)",
+                group = NickKindGroup.AREAS, iconKey = "area.spawn"
+                // C2.3 (v0.1.26): COMPLETO — respawn() do jogador + queda abaixo
+                // do limite reaparece no último checkpoint.
+            )
+        )
+        NickKindRegistry.register(
+            NickKind(
+                key = "area.checkpoint", labelEn = "Checkpoint Nick", labelPt = "Nick de Checkpoint",
+                descEn = "Player respawns here after falling below the limit",
+                descPt = "O jogador reaparece aqui ao cair abaixo do limite",
+                group = NickKindGroup.AREAS, iconKey = "area.checkpoint"
+                // C2.3 (v0.1.26): COMPLETO — toca o volume → vira o último
+                // checkpoint do respawn (classe Checkpoint com "ligado").
             )
         )
     }

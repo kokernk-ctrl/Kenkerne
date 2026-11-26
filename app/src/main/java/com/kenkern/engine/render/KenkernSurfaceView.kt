@@ -1194,11 +1194,26 @@ class KenkernSurfaceView(
                 // M1.1/M1.2: ponte Lua/nick — 1 runtime por Nick com classe
                 // "Script"; o runtime de física usa a ponte para os eventos
                 // on_collision/on_trigger.
-                playScripts = copy?.let { c ->
-                    NickLuaScripts(c, projectRoot = projectRootProvider?.invoke()).also { s -> s.iniciarTodos() }
-                }
+                playScripts = copy?.let { c -> NickLuaScripts(c, projectRoot = projectRootProvider?.invoke()) }
                 playScripts?.estadoInput = estadoInput
                 playRuntime?.scripts = playScripts
+                // C2 (v0.1.26): consultor de área/respawn — a ponte Lua usa o
+                // MESMO runtime de Play para bounds (bodies/contains) e respawn.
+                // ANTES de iniciarTodos: on_start pode chamar bodies()/contains().
+                val rt = playRuntime
+                val ps = playScripts
+                if (rt != null && ps != null) {
+                    ps.consultorArea = object : NickLuaScripts.ConsultorArea {
+                        override fun boundsMundo(nick: Nick, out: FloatArray) = rt.boundsMundo(nick, out)
+                        override fun corposCena(): List<Nick> = rt.corposSimulados
+                        override fun respawnJogador(): Boolean = rt.respawnJogador()
+                        override fun boundsJogador(out: FloatArray) {
+                            val p = rt.player ?: return
+                            rt.boundsMundo(p, out)
+                        }
+                    }
+                }
+                playScripts?.iniciarTodos()
             }
             return playScene
         }

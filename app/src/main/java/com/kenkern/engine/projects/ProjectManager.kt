@@ -368,16 +368,24 @@ object ProjectManager {
             val moeda = scene.createNick("Moeda ${i + 1}", mundo, kind = "area.volume")
             moeda.transform.setLocalPosition(p.first, p.second, p.third)
             moeda.transform.scale.set(0.6f, 0.6f, 0.6f)
+            // C2.5 (v0.1.26): a moeda é um AREA NICK completo — classe Area
+            // (umaVezSo) + script on_enter (o legado on_trigger continua
+            // emitido pelo runtime para projetos antigos).
             val inst = NickClassRegistry.createInstance("Script")
             if (inst != null) {
                 inst.fields["fonte"] = NickValue.StringValue(
                     "-- coleta: soma no contador e desaparece\n" +
-                        "on_trigger = function(outro)\n" +
+                        "on_enter = function(outro)\n" +
                         "  ui.contagem(\"moedas\", 1)\n" +
                         "  nick.destroy()\n" +
                         "end"
                 )
                 moeda.addClassInstance(inst)
+            }
+            val areaInst = NickClassRegistry.createInstance("Area")
+            if (areaInst != null) {
+                areaInst.fields["umaVezSo"] = NickValue.BoolValue(true)
+                moeda.addClassInstance(areaInst)
             }
         }
     }

@@ -129,7 +129,8 @@ class Diagnostico(private val appContext: Context) {
             Checagem("joystick", "Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)"),
             Checagem("lua-api", "API Lua (L2) — eventos, timers, área, tags, prefab, classes, input, ui, storage, log"),
             Checagem("jogo", "Jogo 'Coletar moedas' — template real, 300 ticks com input sintético, contador ≥ 1 e jogador no chão"),
-            Checagem("play-sair", "Saída da janela de jogo — roteamento de toque (botões nunca consumidos), watchdog 3 s e BACK")
+            Checagem("play-sair", "Saída da janela de jogo — roteamento de toque (botões nunca consumidos), watchdog 3 s e BACK"),
+            Checagem("area", "Nicks de Área (ZONA) — enter/exit/stay, filtro por tag, uma vez só, bodies/contains, signal e checkpoint/respawn")
         )
 
         /**
@@ -188,7 +189,12 @@ class Diagnostico(private val appContext: Context) {
             )
 
             // TOPO do chão do template: estático em y=-0,5 com escala Y=1 → topo 0.
+            // C2.3 (v0.1.26): com respawn na queda, uma cena SEM chão não cai
+            // para sempre — o jogador reaparece (CAIU N×) e o passo continua
+            // dizendo a verdade sobre o porquê de NÃO ter coletado.
+            val quedas = runtime.respawnsNaSessao
             val falha = when {
+                quedas > 0 -> "CAIU — o jogador caiu $quedas× e reapareceu no checkpoint/surgimento (sem chão ou chão furado; pé em $pe m, andou $andados m, contador $moedas)"
                 pe < -0.5f -> "ATRAVESSOU O CHÃO — o jogador caiu para baixo do piso (pé em $pe m)"
                 pe < -0.05f -> "CAIU — o jogador não pousou no chão (pé em $pe m)"
                 andados < 1f -> "NÃO MOVEU — o input sintético não moveu o jogador ($andados m)"
@@ -583,6 +589,7 @@ class Diagnostico(private val appContext: Context) {
                             "lua-api" -> checarLuaApi(c)
                             "jogo" -> checarJogo(c)
                             "play-sair" -> checarPlaySair(c)
+                            "area" -> checarArea(c)
                         }
                     }.onFailure {
                         c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
@@ -1734,6 +1741,129 @@ class Diagnostico(private val appContext: Context) {
             c.aprovado(
                 "botões Pausar/Sair recebem o toque em PLAYING e PAUSED (cena nunca consome) · " +
                     "fora deles a cena consome · Forçar saída na frente do watchdog · BACK sempre sai · WATCHDOG=3s · alvos ≥48dp"
+            )
+        } else {
+            c.falhou(problemas.joinToString("; "))
+        }
+    }
+
+    /**
+     * Checagem "area" (C2, v0.1.26) — NICKS DE ÁREA FUNCIONAIS, SEM GL:
+     * (a) on_enter/on_exit/on_stay com o runtime REAL (player anda com input
+     *     sintético para dentro e para fora do volume);
+     * (b) filtro por tag (com a tag dispara; sem a tag não);
+     * (c) "uma vez só" desarma após a 1ª entrada;
+     * (d) signal.emit/on no mesmo barramento da cena;
+     * (e) checkpoint + respawn na queda abaixo do limite.
+     * A falha DIZ O PASSO.
+     */
+    private fun checarArea(c: Checagem) {
+        val problemas = ArrayList<String>(6)
+        try {
+            val scene = com.kenkern.engine.core.Scene()
+            val mundo = scene.createRootNick("Mundo")
+            val chao = scene.createNick("Chão", mundo, kind = "body.static")
+            chao.transform.setLocalPosition(0f, -0.5f, 0f)
+            chao.transform.scale.set(14f, 1f, 14f)
+            val player = scene.createNick("Herói", mundo, kind = "body.player")
+            player.transform.setLocalPosition(0f, 0.5f, 0f)
+            player.addTag("heroi")
+            scene.createNick(null, mundo, kind = "area.spawn").transform.setLocalPosition(0f, 1f, 0f)
+            fun novaArea(nome: String, filtro: String, umaVez: Boolean): com.kenkern.engine.core.Nick {
+                val area = scene.createNick(nome, mundo, kind = "area.volume")
+                area.transform.setLocalPosition(3f, 0.5f, 0f)
+                area.transform.scale.set(2f, 2f, 2f)
+                val inst = com.kenkern.engine.core.NickClassRegistry.createInstance("Area")!!
+                inst.fields["filtroTag"] = com.kenkern.engine.core.NickValue.StringValue(filtro)
+                inst.fields["umaVezSo"] = com.kenkern.engine.core.NickValue.BoolValue(umaVez)
+                area.addClassInstance(inst)
+                return area
+            }
+            novaArea("Zona", "", false).also { a ->
+                val i = com.kenkern.engine.core.NickClassRegistry.createInstance(com.kenkern.engine.engine.NickLuaScripts.CLASSE_SCRIPT)!!
+                i.fields[com.kenkern.engine.engine.NickLuaScripts.CAMPO_FONTE] = com.kenkern.engine.core.NickValue.StringValue(
+                    "entrou=0 saiu=0 dentro=0\non_enter=function(o) entrou=entrou+1 end\non_exit=function(o) saiu=saiu+1 end\non_stay=function(o,dt) dentro=dentro+1 end"
+                )
+                a.addClassInstance(i)
+            }
+            novaArea("SóInimigo", "inimigo", false).also { a ->
+                val i = com.kenkern.engine.core.NickClassRegistry.createInstance(com.kenkern.engine.engine.NickLuaScripts.CLASSE_SCRIPT)!!
+                i.fields[com.kenkern.engine.engine.NickLuaScripts.CAMPO_FONTE] = com.kenkern.engine.core.NickValue.StringValue("entrou=0\non_enter=function(o) entrou=entrou+1 end")
+                a.addClassInstance(i)
+            }
+            val umaVez = novaArea("UmaVez", "", true).also { a ->
+                val i = com.kenkern.engine.core.NickClassRegistry.createInstance(com.kenkern.engine.engine.NickLuaScripts.CLASSE_SCRIPT)!!
+                i.fields[com.kenkern.engine.engine.NickLuaScripts.CAMPO_FONTE] = com.kenkern.engine.core.NickValue.StringValue("entrou=0\non_enter=function(o) entrou=entrou+1 end")
+                a.addClassInstance(i)
+            }
+            val sinal = scene.createNick("Sirene", mundo, kind = "area.signal").also { a ->
+                val i = com.kenkern.engine.core.NickClassRegistry.createInstance(com.kenkern.engine.engine.NickLuaScripts.CLASSE_SCRIPT)!!
+                i.fields[com.kenkern.engine.engine.NickLuaScripts.CAMPO_FONTE] = com.kenkern.engine.core.NickValue.StringValue(
+                    "ouviu=0\nsignal.on(\"sirene\", function(d) ouviu=ouviu+d.v end)\non_start=function() signal.emit(\"sirene\", { v=5 }) end"
+                )
+                a.addClassInstance(i)
+            }
+            scene.updateWorldTransforms()
+            val runtime = com.kenkern.engine.engine.NickPlayRuntime(scene)
+            val scripts = com.kenkern.engine.engine.NickLuaScripts(scene)
+            runtime.scripts = scripts
+            scripts.consultorArea = object : com.kenkern.engine.engine.NickLuaScripts.ConsultorArea {
+                override fun boundsMundo(nick: com.kenkern.engine.core.Nick, out: FloatArray) =
+                    runtime.boundsMundo(nick, out)
+                override fun corposCena(): List<com.kenkern.engine.core.Nick> = runtime.corposSimulados
+                override fun respawnJogador(): Boolean = runtime.respawnJogador()
+                override fun boundsJogador(out: FloatArray) {
+                    val p = runtime.player ?: return
+                    runtime.boundsMundo(p, out)
+                }
+            }
+            scripts.iniciarTodos()
+            fun globals(nome: String) = scripts.instanciaDe(nome)?.let {
+                (it.runtime as com.kenkern.engine.core.script.LuaJScriptRuntime).ambiente()
+            }
+            // (a)+(b)+(c): anda para dentro, fica, volta, e volta de novo
+            repeat(40) { runtime.step(1f / 60f, 1f, 0f) }
+            repeat(3) { runtime.step(1f / 60f, 0f, 0f) }
+            repeat(40) { runtime.step(1f / 60f, -1f, 0f) }
+            repeat(40) { runtime.step(1f / 60f, 1f, 0f) }
+            val gz = globals("Zona")
+            if (gz == null) {
+                problemas.add("Zona: script não iniciou")
+            } else {
+                if (gz.get("entrou").toint() != 2) problemas.add("Zona: entrou=${gz.get("entrou")} ≠ 2 (1ª ida + volta após umaVez desarmada)")
+                if (gz.get("saiu").toint() != 1) problemas.add("Zona: saiu=${gz.get("saiu")} ≠ 1")
+                if (gz.get("dentro").toint() < 3) problemas.add("Zona: stay=${gz.get("dentro")} < 3")
+            }
+            val gi = globals("SóInimigo")
+            if (gi?.get("entrou")?.toint() != 0) problemas.add("filtro por tag FALHOU (entrou=${gi?.get("entrou")})")
+            val gu = globals("UmaVez")
+            if (gu?.get("entrou")?.toint() != 1) problemas.add("uma vez só: entrou=${gu?.get("entrou")} ≠ 1")
+            // (d) signal
+            val gs = globals("Sirene")
+            if (gs?.get("ouviu")?.toint() != 5) problemas.add("signal emit/on: ouviu=${gs?.get("ouviu")} ≠ 5")
+            // (e) checkpoint + respawn na queda
+            val checkpoint = scene.createNick("CP", mundo, kind = "area.checkpoint")
+            checkpoint.transform.setLocalPosition(5f, 0.5f, 0f)
+            checkpoint.transform.scale.set(2f, 2f, 2f)
+            scene.updateWorldTransforms()
+            val p = runtime.player ?: throw AssertionError("sem player")
+            repeat(80) { runtime.step(1f / 60f, 1f, 0f) }
+            repeat(50) { runtime.step(1f / 60f, 1f, 0f) } // sai da borda e cai
+            var voltou = false
+            repeat(1200) {
+                runtime.step(1f / 60f, 0f, 0f)
+                val x = p.transform.worldMatrix.m[12]
+                val y = p.transform.worldMatrix.m[13]
+                if (x > 4f && x < 6f && y > 0f) voltou = true
+            }
+            if (!voltou) problemas.add("queda abaixo do limite NÃO reapareceu no checkpoint")
+        } catch (t: Throwable) {
+            problemas.add("exceção: ${t.message ?: t.javaClass.simpleName}")
+        }
+        if (problemas.isEmpty()) {
+            c.aprovado(
+                "on_enter/on_exit/on_stay (runtime real, player anda) · filtro por tag · uma vez só desarma · " +
+                    "signal.emit/on no barramento da cena · queda abaixo do limite reaparece no checkpoint"
             )
         } else {
             c.falhou(problemas.joinToString("; "))

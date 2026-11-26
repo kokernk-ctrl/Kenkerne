@@ -294,6 +294,7 @@
     <string name="diag_check_layout">Layout paisagem 800×360 — TopBar fixa cabe + janela Adicionar Nick alcançável</string>
     <string name="diag_check_lua_api">API Lua (L2) — eventos, timers, área on_enter/exit/stay, tags, prefab, classes, input, ui, storage, log</string>
     <string name="diag_check_joystick">Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)</string>
+    <string name="diag_check_area">Nicks de Área (ZONA) — enter/exit/stay, filtro por tag, uma vez só, bodies/contains, signal e checkpoint/respawn</string>
     <string name="diag_check_play_sair">Saída da janela de jogo — roteamento de toque (botões nunca consumidos), watchdog 3 s e BACK</string>
     <string name="diag_check_jogo">Jogo Coletar moedas — template real, 300 ticks com input sintético, contador de pelo menos 1 e jogador no chão</string>
     <!-- S1 (v0.1.24): botão de copiar relatório -->

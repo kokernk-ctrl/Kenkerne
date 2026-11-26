@@ -5,6 +5,7 @@ import com.kenkern.engine.core.Nick
 import com.kenkern.engine.core.NickClassInstance
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.Scene
+import com.kenkern.engine.diag.KenkernLog
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -73,6 +74,14 @@ class NickPlayRuntime(private val scene: Scene) {
     private val apoiados: BooleanArray
     private val colisaoPorCorpo: Array<String?>
 
+    // C2 (v0.1.26): áreas "uma vez só" desarmadas nesta sessão de Play.
+    private val desarmadas = HashSet<Nick>()
+    // C2.3 (v0.1.26): último checkpoint tocado e posição de surgimento do
+    // jogador (para respawn na queda abaixo do limite ou player.respawn()).
+    private var ultimoCheckpoint: Nick? = null
+    private var posicaoSurgimento: FloatArray? = null
+    private var checkpointBounds = FloatArray(6)
+
     init {
         scene.updateWorldTransforms()
         traversal.clear()
@@ -105,13 +114,64 @@ class NickPlayRuntime(private val scene: Scene) {
         val activePlayer = player
         if (activePlayer != null) {
             val spawn = foundSpawn
-            if (spawn != null) setPlayerWorldPosition(
-                spawn.transform.worldMatrix.m[12],
-                spawn.transform.worldMatrix.m[13],
-                spawn.transform.worldMatrix.m[14]
-            )
+            if (spawn != null) {
+                posicaoSurgimento = floatArrayOf(
+                    spawn.transform.worldMatrix.m[12],
+                    spawn.transform.worldMatrix.m[13],
+                    spawn.transform.worldMatrix.m[14]
+                )
+                setPlayerWorldPosition(
+                    spawn.transform.worldMatrix.m[12],
+                    spawn.transform.worldMatrix.m[13],
+                    spawn.transform.worldMatrix.m[14]
+                )
+            }
             scene.updateWorldTransforms()
             readPlayerBounds()
+        }
+    }
+
+    /**
+     * C2.3 (v0.1.26): REAPARECER — o jogador volta ao ÚLTIMO checkpoint
+     * tocado (ou ao ponto de surgimento) com velocidade zerada. Chamado pela
+     * API `player.respawn()` e pela queda abaixo do limite.
+     */
+    fun respawnJogador(): Boolean {
+        val activePlayer = player ?: return false
+        val cp = ultimoCheckpoint
+        val destino = posicaoSurgimento
+        if (cp != null) {
+            setPlayerWorldPosition(
+                cp.transform.worldMatrix.m[12],
+                cp.transform.worldMatrix.m[13],
+                cp.transform.worldMatrix.m[14]
+            )
+        } else if (destino != null) {
+            setPlayerWorldPosition(destino[0], destino[1], destino[2])
+        } else {
+            setPlayerWorldPosition(0f, 1f, 0f)
+        }
+        val idx = playerIndex
+        if (idx >= 0) velocidadesY[idx] = 0f
+        scene.updateWorldTransforms()
+        readPlayerBounds()
+        respawnsNaSessao++
+        return true
+    }
+
+    /** C2.3: quantas vezes o jogador reapareceu nesta sessão (queda/respawn). */
+    var respawnsNaSessao: Int = 0
+        private set
+
+    /** C2.1: bounds de MUNDO de qualquer Nick (área/corpo) — usado por bodies()/contains(). */
+    fun boundsMundo(nick: Nick, out: FloatArray) {
+        if (nick.kind.startsWith("area.")) {
+            areaWorldBounds(nick, out)
+        } else {
+            // readBodyBounds já aplica a matriz de mundo em playerBounds
+            // (Colisor caixa > Malha AABB > cubo de 1 m) — basta copiar.
+            readBodyBounds(nick)
+            for (i in 0 until 6) out[i] = playerBounds[i]
         }
     }
 
@@ -428,14 +488,46 @@ class NickPlayRuntime(private val scene: Scene) {
                 continue
             }
             if (area.children.isNotEmpty()) pushChildrenInTreeOrder(area)
+            if (area.kind == "area.checkpoint") {
+                // C2.3: checkpoint — o jogador DENTRO do volume marca o
+                // reaparecimento (classe Checkpoint "ligado" respeitada).
+                val inst = area.findClassInstance("Checkpoint")
+                if (inst == null || (inst.fields["ligado"] as? NickValue.BoolValue)?.value != false) {
+                    areaWorldBounds(area, obstacleBounds)
+                    if (playerAtivo && overlaps(playerBounds, obstacleBounds) &&
+                        ultimoCheckpoint !== area
+                    ) {
+                        ultimoCheckpoint = area
+                        scene.updateWorldTransforms()
+                    }
+                }
+                continue
+            }
             if (area.kind != "area.volume") continue
+            // C2.1: classe ÁREA — "ligado" desliga os eventos sem destruir;
+            // "uma vez só" desarma para o resto da sessão após a 1ª entrada.
+            val areaInst = area.findClassInstance("Area")
+            val ligado = (areaInst?.fields?.get("ligado") as? NickValue.BoolValue)?.value ?: true
+            val umaVezSo = (areaInst?.fields?.get("umaVezSo") as? NickValue.BoolValue)?.value ?: false
+            if (!ligado || (umaVezSo && desarmadas.contains(area))) {
+                if (dentroDoGatilho[area] == true) {
+                    dentroDoGatilho[area] = false
+                    scripts?.emitirAreaExit(area, activePlayer)
+                }
+                continue
+            }
+            // C2.1: filtro por TAG — área vazia = tudo entra; com tag, só o
+            // corpo que TEM a tag dispara (nick.hasTag).
+            val filtroTag = (areaInst?.fields?.get("filtroTag") as? NickValue.StringValue)?.value ?: ""
+            val tagOk = filtroTag.isBlank() || activePlayer.hasTag(filtroTag.trim())
             areaWorldBounds(area, obstacleBounds)
-            val dentro = playerAtivo && overlaps(playerBounds, obstacleBounds)
+            val dentro = playerAtivo && tagOk && overlaps(playerBounds, obstacleBounds)
             val antes = dentroDoGatilho[area]
             dentroDoGatilho[area] = dentro
             if (dentro && antes != true) {
+                if (umaVezSo) desarmadas.add(area)
                 val nomeArea = area.displayName("pt")
-                // evento legado on_trigger + novo callback on_enter(outro)
+                // evento legado on_trigger + callbacks on_enter(outro)/on_exit
                 scripts?.emitirGatilho(activePlayer, nomeArea)
                 scripts?.emitirGatilho(area, nomeArea)
                 scripts?.emitirAreaEnter(area, activePlayer)
@@ -444,6 +536,19 @@ class NickPlayRuntime(private val scene: Scene) {
             }
             if (dentro) {
                 scripts?.emitirAreaStay(area, activePlayer, dt)
+            }
+        }
+        // C2.3: QUEDA ABAIXO DO LIMITE — o pé do jogador abaixo de
+        // (checkpoint/surgimento y − 10 m, ou −20 m sem referência)
+        // reaparece no último checkpoint.
+        if (playerAtivo) {
+            val pe = playerBounds[1]
+            val refY = ultimoCheckpoint?.transform?.worldMatrix?.m?.get(13)
+                ?: posicaoSurgimento?.get(1)
+            val limite = if (refY != null) refY - 10f else -20f
+            if (pe < limite) {
+                KenkernLog.w(TAG, "queda abaixo do limite (pé=" + pe + " m, limite=" + limite + " m) — respawn no último checkpoint")
+                respawnJogador()
             }
         }
     }
@@ -563,6 +668,7 @@ class NickPlayRuntime(private val scene: Scene) {
     }
 
     companion object {
+        private const val TAG = "Kenkern/PlayRuntime"
         private const val PLAYER_SPEED = 4f
         private const val GRAVITY = 20f
         /** M1.3: impulso do pulo (m/s) — pulo de ~1,6 m com gravidade 20. */

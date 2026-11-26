@@ -13,9 +13,10 @@ import org.junit.Test
  * Inspetor editável com efeito ao vivo; (3) comportamento em Play; (4) API
  * Lua ou porta LINKERF; (5) teste e checagem no Diagnóstico.
  *
- * O teste nasceu VERMELHO contra a v0.1.24: area.volume e area.spawn eram
- * FUNCIONAL (criáveis) sem on_enter/exit/stay e sem respawn/checkpoint — a
- * regra exige que fiquem PARCIAIS ("Em breve") até a Parada 2 (C2).
+ * Na v0.1.25 area.volume e area.spawn ficaram PARCIAIS ("Em breve") porque
+ * o contrato completo não existia; na v0.1.26 (C2) as áreas ficaram
+ * COMPLETAS e criáveis de novo — o teste continua guardando a regra: TODO
+ * kind não-completo é NÃO criável.
  */
 class NickKindsCompletudeTest {
 
@@ -44,19 +45,15 @@ class NickKindsCompletudeTest {
     }
 
     @Test
-    fun areasFicamParciaisAteAParada2() {
-        // Área, Sinal, Spawn e Checkpoint ficam completos na PARADA 2 (C2) —
-        // na v0.1.25 o volume e o spawn são PARCIAIS ("Em breve").
-        assertEquals(
-            NickKindStatus.PARCIAL,
-            NickKindRegistry.find("area.volume")?.status
-        )
-        assertEquals(
-            NickKindStatus.PARCIAL,
-            NickKindRegistry.find("area.spawn")?.status
-        )
-        assertFalse(NickKindRegistry.find("area.volume")!!.criavel())
-        assertFalse(NickKindRegistry.find("area.spawn")!!.criavel())
+    fun areasFicamCompletasNaParada2() {
+        // C2 (v0.1.26): Área/Sinal/Spawn/Checkpoint COMPLETOS (a Parada 2
+        // entregou on_enter/exit/stay + filtro + umaVezSo + bodies/contains +
+        // signal + checkpoint/respawn) — todos criáveis de novo.
+        for (chave in listOf("area.volume", "area.signal", "area.spawn", "area.checkpoint")) {
+            assertEquals(chave, NickKindStatus.FUNCIONAL, NickKindRegistry.find(chave)?.status)
+            assertTrue(chave, NickKindRegistry.find(chave)!!.criavel())
+            assertTrue(chave, NickKindRegistry.find(chave)!!.visivel)
+        }
     }
 
     @Test

@@ -141,10 +141,10 @@ registro para projetos antigos).
 | `body.car` | PLACEHOLDER | fase RODANTE | corpo de veículo |
 | `body.bike` | PLACEHOLDER | fase RODANTE | corpo de veículo |
 | `body.ragdoll` | PLACEHOLDER | fase de OSSATURA | ossatura |
-| `area.volume` | PARCIAL | Parada 2 (C2.1) | on_enter/on_exit/on_stay + area.bodies()/contains() |
-| `area.signal` | PLACEHOLDER | Parada 2 (C2.2) | emitir/receber sinais nomeados |
-| `area.spawn` | PARCIAL | Parada 2 (C2.3) | respawn()/queda abaixo do limite + checkpoint |
-| `area.checkpoint` | PLACEHOLDER | Parada 2 (C2.3) | reaparecimento no último checkpoint |
+| `area.volume` | COMPLETO | — (v0.1.26, C2.1) | — |
+| `area.signal` | COMPLETO | — (v0.1.26, C2.2) | — |
+| `area.spawn` | COMPLETO | — (v0.1.26, C2.3) | — |
+| `area.checkpoint` | COMPLETO | — (v0.1.26, C2.3) | — |
 | `area.navigation` | PLACEHOLDER | fase de Mundo | navegação |
 | `ai.behavior` | PLACEHOLDER | Parada 4 | IA |
 | `ui.joystick` | COMPLETO | — (já; migra para TELAR na Parada 3 sem perder dados) | — |

@@ -204,6 +204,33 @@ object KenkernBuiltInClasses {
                 categoria = "movimento"
             )
         )
+        // C2 (v0.1.26): classe ÁREA — filtro por tag, UMA VEZ SÓ e LIGADO
+        // (a forma/tamanho continua na classe Colisor da área; o Inspetor
+        // edita ao vivo e o runtime respeita no mesmo frame).
+        NickClassRegistry.register(
+            NickClassDefinition(
+                "Area",
+                "Comportamento de área (filtro por tag, uma vez só, ligado)",
+                listOf(
+                    NickFieldDefinition("filtroTag", "STRING", NickValue.StringValue("")),
+                    NickFieldDefinition("umaVezSo", "BOOL", NickValue.BoolValue(false)),
+                    NickFieldDefinition("ligado", "BOOL", NickValue.BoolValue(true))
+                ),
+                categoria = "areas"
+            )
+        )
+        // C2.3 (v0.1.26): classe CHECKPOINT — ponto de reaparecimento do
+        // jogador (queda abaixo do limite ou player.respawn()).
+        NickClassRegistry.register(
+            NickClassDefinition(
+                "Checkpoint",
+                "Ponto de reaparecimento do jogador (queda/respawn)",
+                listOf(
+                    NickFieldDefinition("ligado", "BOOL", NickValue.BoolValue(true))
+                ),
+                categoria = "areas"
+            )
+        )
         NickFunctionRegistry.register(SpinFunction)
         NickFunctionRegistry.register(BobFunction)
     }

@@ -64,14 +64,16 @@ class TemplateColetarMoedasTest {
         val runtime = com.kenkern.engine.engine.NickPlayRuntime(scene)
         val scripts = com.kenkern.engine.engine.NickLuaScripts(scene).also { it.iniciarTodos() }
         runtime.scripts = scripts
-        // jogador ENTRA nas moedas 1 e 2 (o evento dispara o script da ÁREA —
-        // self = moeda — e o do jogador)
+        // jogador ENTRA nas moedas 1 e 2 — C2 (v0.1.26): o script da moeda usa
+        // on_enter (handle) e o evento sai pelo mesmo caminho do runtime real
+        // (emitirAreaEnter chama on_enter na ÁREA e no JOGADOR)
         val moeda1 = scene.findNickByNameAnywhere("Moeda 1")!!
         val moeda2 = scene.findNickByNameAnywhere("Moeda 2")!!
-        scripts.emitirGatilho(moeda1, "Herói")
-        scripts.emitirGatilho(moeda2, "Herói")
-        // on_trigger dispara nos scripts do JOGADOR e da ÁREA — a moeda coleta
-        // em SEU script (self): a contagem acumula por ui.contagem compartilhada
+        val heroi = scene.findNickByNameAnywhere("Herói")!!
+        scripts.emitirAreaEnter(moeda1, heroi)
+        scripts.emitirAreaEnter(moeda2, heroi)
+        // a moeda coleta em SEU script (self): a contagem acumula por
+        // ui.contagem compartilhada
         val ui = scripts.snapshotUiJogo()
         assertTrue("contador 'moedas' existe no snapshot: $ui", ui.containsKey("moedas"))
         assertEquals(2, ui["moedas"]!!.toInt())

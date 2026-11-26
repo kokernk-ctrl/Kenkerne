@@ -46,11 +46,31 @@ class NickLuaScripts(
     /** Estado do input de jogo (setado na abertura do Play). */
     var estadoInput: EstadoInputJogo? = null
 
+    /**
+     * C2 (v0.1.26): consultor de área/respawn fornecido pelo NickPlayRuntime —
+     * bounds de MUNDO de qualquer Nick (para area.bodies()/contains()) e o
+     * reaparecer do jogador (player.respawn()).
+     */
+    var consultorArea: ConsultorArea? = null
+
+    /** Contrato mínimo que o runtime entrega à ponte Lua (sem ciclo de dependência). */
+    interface ConsultorArea {
+        fun boundsMundo(nick: Nick, out: FloatArray)
+        fun corposCena(): List<Nick>
+        fun respawnJogador(): Boolean
+        fun boundsJogador(out: FloatArray)
+    }
+
     /** Buffer de logs emitidos por Lua (útil para diagnósticos e testes). */
     private val logsRecentes = ArrayList<String>()
 
     private val textosUi = LinkedHashMap<String, String>()
     private val contagens = HashMap<String, Int>()
+
+    /** C2.2: ponte interna para signal.emit → o barramento de eventos da cena. */
+    internal var cenaEventosBridge: ((String, LuaValue) -> Unit)? = null
+    /** C2.2: ponte interna para signal.on → registro no barramento de eventos da cena. */
+    internal var cenaOnBridge: ((String, LuaFunction) -> Unit)? = null
 
     @Synchronized
     fun snapshotUi(): Map<String, String> = LinkedHashMap(textosUi)
@@ -398,6 +418,36 @@ class NickLuaScripts(
             }
         })
         runtime.instalarTabela("scene", cena)
+        // C2.2: as pontes do signal usam O MESMO barramento (dispararEvento/
+        // registro de ouvintes) das chamadas scene.emit/scene.on.
+        cenaEventosBridge = { nome, dados -> dispararEvento(nome, dados) }
+        cenaOnBridge = { nome, fn ->
+            if (nome.isNotBlank()) {
+                val lista = eventos.getOrPut(nome) { ArrayList() }
+                if (!lista.contains(fn)) lista.add(fn)
+            }
+        }
+
+        // ---------- C2.2 (v0.1.26): signal — SINAIS NOMEADOS do Signal Nick
+        // (signal.emit / signal.on no MESMO barramento dos eventos da cena;
+        // preparado para portas LINKERF na Parada 4).
+        val signalTbl = LuaTable()
+        signalTbl.set("emit", object : VarArgFunction() {
+            override fun invoke(args: Varargs): LuaValue {
+                val nome = args.arg1().optjstring("")
+                if (nome.isNotBlank()) cenaEventosBridge?.invoke(nome, args.arg(2))
+                return LuaValue.NIL
+            }
+        })
+        signalTbl.set("on", object : VarArgFunction() {
+            override fun invoke(args: Varargs): LuaValue {
+                val nome = args.arg1().optjstring("")
+                val fn = args.arg(2) as? LuaFunction ?: return LuaValue.NIL
+                if (nome.isNotBlank()) cenaOnBridge?.invoke(nome, fn)
+                return LuaValue.NIL
+            }
+        })
+        runtime.instalarTabela("signal", signalTbl)
 
         // ---------- timer ----------
         val timerTbl = LuaTable()
@@ -731,6 +781,10 @@ class NickLuaScripts(
     }
 
     /** Table Lua que envolve um Nick (transform, tags, classes e destroy). */
+    /** C2: sobreposição AABB (mesma regra dos gatilhos do runtime). */
+    private fun seSobrepoe(a: FloatArray, b: FloatArray): Boolean =
+        a[0] <= b[3] && a[3] >= b[0] && a[1] <= b[4] && a[4] >= b[1] && a[2] <= b[5] && a[5] >= b[2]
+
     fun tabelaNick(nick: Nick): LuaTable {
         val t = LuaTable()
         t.set("__nick", LuaValue.valueOf(System.identityHashCode(nick)))
@@ -839,6 +893,40 @@ class NickLuaScripts(
                 var idx = 1
                 for (tag in nick.tags) tbl.set(idx++, LuaValue.valueOf(tag))
                 return tbl
+            }
+        })
+        // ---- C2 (v0.1.26): área — bodies()/contains() e player.respawn() ----
+        t.set("bodies", object : LibFunction() {
+            override fun call(): LuaValue {
+                val consultor = consultorArea ?: return LuaTable()
+                val areaBounds = FloatArray(6)
+                consultor.boundsMundo(nick, areaBounds)
+                val tbl = LuaTable()
+                var idx = 1
+                for (corpo in consultor.corposCena()) {
+                    if (corpo === nick) continue
+                    val b = FloatArray(6)
+                    consultor.boundsMundo(corpo, b)
+                    if (seSobrepoe(areaBounds, b)) tbl.set(idx++, tabelaNick(corpo))
+                }
+                return tbl
+            }
+        })
+        t.set("contains", object : VarArgFunction() {
+            override fun invoke(args: Varargs): LuaValue {
+                val consultor = consultorArea ?: return LuaValue.FALSE
+                val outro = nickDe(args.arg1()) ?: return LuaValue.FALSE
+                val areaBounds = FloatArray(6)
+                consultor.boundsMundo(nick, areaBounds)
+                val b = FloatArray(6)
+                consultor.boundsMundo(outro, b)
+                return LuaValue.valueOf(seSobrepoe(areaBounds, b))
+            }
+        })
+        t.set("respawn", object : LibFunction() {
+            override fun call(): LuaValue {
+                val ok = consultorArea?.respawnJogador() ?: false
+                return LuaValue.valueOf(ok)
             }
         })
         t.set("get", object : VarArgFunction() {

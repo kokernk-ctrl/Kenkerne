@@ -294,6 +294,7 @@
     <string name="diag_check_layout">Landscape layout 800×360 — TopBar fits + Add Nick window reachable</string>
     <string name="diag_check_lua_api">Lua API (L2) — events, timers, area enter/exit/stay, tags, prefab, classes, input, ui, storage, log</string>
     <string name="diag_check_joystick">On-screen joystick — math (normalization, dead zone, 8 directions, actions)</string>
+    <string name="diag_check_area">Area Nicks (ZONA) — enter/exit/stay, tag filter, once, bodies/contains, signal and checkpoint/respawn</string>
     <string name="diag_check_play_sair">Game window exit — touch routing (buttons never consumed), 3 s watchdog and BACK</string>
     <string name="diag_check_jogo">Collect-coins game — real template, 300 ticks with synthetic input, counter at least 1 and player on the ground</string>
     <!-- S1 (v0.1.24): copy report button -->
