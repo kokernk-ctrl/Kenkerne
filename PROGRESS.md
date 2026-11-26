@@ -6,6 +6,19 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
+- **v0.1.25 — PARADA 1 (P1/P2/P3) COMPILADO**: P1 botões Pausar/Sair
+  respondem em Play (causa raiz KenkernSurfaceView.kt:541-542 — onTouchEvent
+  consumia TODO toque em Play; correção: fonte única RoteadorToqueJogo +
+  regiões reservadas + zIndex + 48dp + BACK sempre sai + watchdog 3 s com
+  "Forçar saída" + overlay de toque + checagem "play-sair"); P2 visual
+  "Singularidade" (tokens do shader do Hub no Theme.kt — preto quente/cobre/
+  âmbar — e componentes únicos KButton/KIconButton/KChip/KToggle/KPanel em
+  Hub/TopBar/painéis/diálogos/Diagnóstico/jogo; painéis OPAQUES; contraste
+  ≥4,5:1 provado por WCAG); P3 regra de NICK COMPLETO (5 exigências; tabela
+  de TODO kind no NICKS.md com a fase em que fica completo; PARCIAIS com
+  selo "Em breve" desabilitados + guard com KenkernLog). 388 testes JVM
+  verdes. **Release `v0.1.25-fase2-teste` publicada — aguardando aceite no
+  aparelho** (6 itens no TESTES_PENDENTES.md).
 - **v0.1.24 — ESTABILIZAÇÃO (S1–S8) COMPILADO**: nenhum recurso novo; cada
   correção nasceu de um teste VERMELHO (reprodução antes de corrigir). S1
   Diagnóstico (títulos trocados DiagnosticoScreen.kt:68-92; checagem

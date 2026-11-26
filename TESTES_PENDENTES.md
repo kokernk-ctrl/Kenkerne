@@ -1,5 +1,31 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## v0.1.25 — PARADA 1 (P1/P2/P3): 6 itens de aceite
+
+> 3 commits (P1, P2, P3) + fechamento, CI verde em cada; 388 testes JVM
+> verdes (P1 e P3 nasceram VERMELHOS). Fatos do aparelho valem mais que
+> testes de JVM.
+
+1. **JOGO EM PLAY — botões respondem (P1)**: entre no Play de qualquer cena
+   e toque em PAUSAR e SAIR — os DOIS respondem (antes ficavam mortos e o
+   usuário ficava preso). Voltar de PAUSED para o jogo também responde.
+2. **Saída garantida (P1.3)**: dentro da Janela de Jogo, o botão BACK do
+   sistema SEMPRE sai do jogo (jogando ou pausado). Nada fica preso.
+3. **Visual "Singularidade" (P2)**: Hub, TopBar, painéis, diálogos,
+   Diagnóstico e Janela de Jogo usam o novo estilo (superfície escura + aro
+   cobre + âmbar no primário); os painéis do editor continuam OPAQUES e
+   legíveis; NADA de shader animado fora do Hub.
+4. **Adicionar Nick com "Em breve" (P3)**: os Nicks de Área (volume/spawn)
+   aparecem com selo "Em breve" e DESABILITADOS (não criam Nick); todos os
+   demais (corpos, luzes, câmeras, joystick) continuam criáveis e os
+   placeholders continuam fora da lista.
+5. **Diagnóstico → Rodar tudo: 22 checagens, 0 falhas** — a nova
+   "Saída da janela de jogo" (roteamento de toque, watchdog 3 s e BACK)
+   fica APROVADA junto das 21 anteriores.
+6. **Debug de toque (P1.4)**: na Janela de Jogo, o botão novo no canto
+   superior direito mostra o ÚLTIMO toque (px), o alvo decidido e quem
+   consumiu (cena/botão) — mande o print se algo não responder.
+
 ## v0.1.24 — ESTABILIZAÇÃO (S1–S8): 8 itens de aceite
 
 > 8 commits (S1–S8), CI verde em cada. 356 testes JVM verdes (cada correção

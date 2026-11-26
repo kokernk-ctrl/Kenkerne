@@ -1,5 +1,71 @@
 # KENKERN — CHANGELOG
 
+## v0.1.25 — PARADA 1: toque preso na Janela de Jogo + visual "Singularidade" + regra de NICK COMPLETO
+
+> Um commit por ID (P1, P2, P3), reprodução ANTES de correção (teste vermelho
+> documentado), CI verde em cada. Fase 2 CONTINUA ABERTA (F2.11–F2.15); SEM
+> tag fase-ok.
+
+### P1 — botões Pausar/Sair NÃO respondiam em Play (usuário preso na Janela de Jogo)
+
+- **CAUSA RAIZ** `KenkernSurfaceView.kt:541-542` (v0.1.24): o `onTouchEvent`
+  devolvia `true` para TODO toque em Play (`requestedPlayState != STOPPED →
+  return true`) e a View nativa (AndroidView) ganha o dispatch de toque antes
+  dos botões Compose — Pausar/Sair nunca recebiam o evento.
+- **Correção (fonte única)**: `RoteadorToqueJogo` (puro, JVM) — toque sobre
+  botão reservado DELEGA (a SurfaceView devolve false; o Compose entrega ao
+  botão), fora deles a cena consome; ZERO alocação por evento (regiões fixadas
+  no layout, decisão só no DOWN). Os botões publicam suas regiões via
+  `onGloballyPositioned → definirRegioesReservadas` e ficam com `zIndex(4f)`
+  + alvos de 48dp.
+- **P1.3 saída garantida**: `BackHandler` do sistema SEMPRE sai (PLAYING/
+  PAUSED → STOPPED); watchdog de 3 s sem frame (heartbeat volátil escrito no
+  `onDrawFrame`) exibe o botão "Forçar saída" (zIndex 6) — KenkernLog.w/e nos
+  dois caminhos, nada silencioso.
+- **P1.4**: botão de debug de toque na janela de jogo mostra o último ponto
+  tocado (px), o alvo decidido e quem consumiu (cena/botão).
+- **Checagem "play-sair"** no Diagnóstico (sem GL) + `RoteadorToqueJogoTest`
+  (10 testes — inclui a REPRODUÇÃO: a regra antiga é o roteamento com regiões
+  VAZIAS, que consumia tudo).
+
+### P2 — visual "Singularidade" (o estilo do buraco negro do Hub em toda a engine)
+
+- **P2.1 tokens** (Theme.kt é a ÚNICA fonte de hex do visual): KenkernSingPreto
+  0xFF14100C (preto quente), KenkernSingCobre 0xFFD98040 (aro), KenkernSingCobreClaro
+  0xFFFFDB8F (brilho do anel de fótons) — extraídos do shader do Hub
+  (HubCena2D.kt: disco hotInner/midAmber/coolRed + anel de fótons + inner edge).
+- **P2.2 componentes únicos** (`ui/components/KComponentes.kt`, ZERO hex):
+  KButton (superfície escura translúcida + aro 1dp cobre + brilho ao pressionar;
+  primário âmbar cheio com texto escuro; desabilitado/pressionado/ativo), KIconButton,
+  KChip, KToggle, KPanel — alvos ≥ 48dp.
+- **P2.3 painéis OPAQUES e planos** (legibilidade e desempenho): DockablePanel
+  com fundo sólido e aro cobre; contraste mínimo 4,5:1 PROVADO por WCAG 2.1
+  (ContrasteSingularidadeTest): TextHigh/botão translúcido 11,42:1, TextHigh/painel
+  9,54:1, escuro/âmbar 8,73:1, âmbar/preto quente 9,92:1, cobre claro/preto 14,23:1,
+  TextMid/painel 5,65:1. SEM shader animado fora do Hub/tela inicial.
+- **P2.4 aplicação**: Hub (KIconButton/KButton primário/KChip "Em breve"/diálogos),
+  TopBar (TopBarIcon com aro cobre), painéis, Inspetor (KToggle), Adicionar Nick
+  (KChip), Diagnóstico (KButton/KIconButton), diálogos globais (surfaceContainer
+  do tema no preto quente), janela de jogo (KButton).
+
+### P3 — regra de NICK COMPLETO (auditoria e regra)
+
+- **P3.1 regra** (NICKS.md + `NickKind.criavel()`): completo = representação no
+  viewport + classes padrão/Inspetor com efeito ao vivo + comportamento em Play +
+  API Lua/LINKERF + teste e checagem no Diagnóstico.
+- **P3.2 tabela** em NICKS.md de TODO kind (completo/parcial/placeholder + fase
+  em que fica completo): Área/Sinal/Spawn/Checkpoint → Parada 2; UI → Parada 3;
+  NPC/Inimigo/Diálogo → Parada 4; veículos → RODANTE; ragdoll → OSSATURA.
+- **P3.3 selo**: janela "Adicionar Nick" mostra PARCIAIS com selo "Em breve" e
+  DESABILITADOS; guard no `addNickOfKind` recusa com KenkernLog.e (nada
+  silencioso). area.volume/area.spawn → PARCIAL (NickKind.kt:267-278/288-299).
+- **Testes**: NickKindsCompletudeTest (5) — nenhum não-completo criável;
+  placeholders fora da janela; FUNCIONAIS sempre com iconKey.
+
+**Fechamento (F)**: 388 testes JVM verdes; assembleRelease verde (APK ~2,4 MB);
+lint sem erros novos; check_i18n OK; UMA Release v0.1.25-fase2-teste; SEM tag
+fase-ok.
+
 ## v0.1.24 — ESTABILIZAÇÃO (S1–S8): nenhum recurso novo; REPRODUZIR ANTES DE CORRIGIR
 
 > 7 correções + fechamento, um commit por ID (S1–S7 + S8), CI verde em cada.
