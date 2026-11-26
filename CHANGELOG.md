@@ -1,5 +1,57 @@
 # KENKERN — CHANGELOG
 
+## v0.1.26 — PARADA 2: editor de código Lua em tela vertical + Nicks de Área funcionais (ZONA)
+
+> Dois commits (C1, C2), CI verde em cada; testes nasceram vermelhos quando o
+> bug era reproduzível (boundsMundo reconstruía bounds SEM a matriz de mundo —
+> o teste pegou a caixa na origem). Fase 2 CONTINUA ABERTA (F2.11–F2.15).
+
+### C1 — editor de código Lua (TELAR de scripts) em RETRATO
+
+- **C1.1**: abrir um script (Inspetor → "Abrir no editor de código" na classe
+  Script) muda para RETRATO e ao sair volta a PAISAGEM SEM recriar a Activity
+  (configChanges desde a D5) + adjustResize + imePadding.
+- **C1.2 modelo puro** (`ui/editor/LuaCodeModel.kt`): DocumentoLua (linhas,
+  cursor, undo/redo de 100 níveis, busca circular, substituir tudo, diff por
+  prefixo/sufixo com `aplicarLinha`), TokenizadorLua (palavras-chave, strings,
+  comentários de linha E bloco — estado atravessa linhas —, números, API) e
+  indentação automática por BALANÇO de blocos (function/do/repeat/then +1;
+  end/until −1).
+- **C1.3 teclas de apoio**: Tab, ( ) [ ] { } " ' = . , : _ # -- + undo/redo.
+- **C1.4 autocompletar OFFLINE** do LuaApiCatalog (o mesmo catálogo de
+  LUA_API.md — nome/assinatura/descrição en-pt): contexto `nick.`/`scene.`/
+  `input.`/`ui.`/`storage.`/`engine.`/`signal.`/`timer.` → membros do receptor.
+- **C1.5 erros**: "Verificar" compila SÓ no LuaJ e sublinha a linha com a
+  mensagem; o último erro de execução do Console abre o script na linha.
+- **C1.6 desempenho**: lista de linhas VIRTUALIZADA (LazyColumn, realce só nas
+  linhas visíveis, NUNCA um TextField gigante); aviso acima de 200 KB; SALVAR
+  AUTOMÁTICO (500 ms) em scripts/*.lua ou na fonte inline da classe Script.
+- **C1.7 scripts novos de modelos** (vazio, movimento, coletar, gatilho).
+- Checagem "editor" no Diagnóstico (23ª; sem GL). LuaCodeModelTest (17).
+
+### C2 — Nicks de Área funcionais (ZONA)
+
+- **C2.1 ÁREA**: classe ÁREA (filtroTag/umaVezSo/ligado — Inspetor ao vivo) +
+  on_enter/on_exit/on_stay + `area.bodies()` e `area.contains(nick)` —
+  `boundsMundo` usa `readBodyBounds` (a 1ª versão reconstruía bounds SEM a
+  matriz de mundo e o teste pegou a caixa na origem).
+- **C2.2 SIGNAL**: area.signal COMPLETO e criável — `signal.emit(nome, dados)`/
+  `signal.on(nome, fn)` no MESMO barramento de eventos da cena.
+- **C2.3 SPAWN + CHECKPOINT**: area.checkpoint completo (classe Checkpoint);
+  queda abaixo do limite (surgimento/checkpoint y − 10 m, ou −20 m) e
+  `player.respawn()` voltam ao ÚLTIMO checkpoint; a checagem "jogo" diz
+  "CAIU N×" com `respawnsNaSessao` (a cena SEM chão agora reaparece — o teste
+  S7 acompanha a mensagem real do novo comportamento).
+- **C2.4 viewport/Inspetor**: auxiliar em arame + campos editáveis com efeito
+  ao vivo. **C2.5 template**: moedas do "Coletar moedas" com classe ÁREA
+  (umaVezSo) + script on_enter.
+- Kinds: area.volume/signal/spawn/checkpoint → FUNCIONAL (NickKind.kt);
+  KindEmPlay + NICKS.md atualizados; 22ª checagem "area" (sem GL).
+  ZonaAreasC2Test (10).
+
+**Fechamento (F)**: 415 testes JVM verdes; assembleRelease verde; check_i18n
+OK; UMA Release v0.1.26-fase2-teste; SEM tag fase-ok.
+
 ## v0.1.25 — PARADA 1: toque preso na Janela de Jogo + visual "Singularidade" + regra de NICK COMPLETO
 
 > Um commit por ID (P1, P2, P3), reprodução ANTES de correção (teste vermelho

@@ -6,6 +6,16 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
+- **v0.1.26 — PARADA 2 (C1/C2) COMPILADO**: C1 editor de código Lua em
+  RETRATO (modelo puro LuaCodeModel: tokenizador/undo-redo/indentação por
+  balanço/busca/substituir; teclas de apoio; autocompletar offline do
+  LuaApiCatalog; Verificar no LuaJ com linha; LazyColumn virtualizada; salvar
+  automático; 4 modelos de script; checagem "editor") e C2 Nicks de Área
+  funcionais (classe ÁREA filtro/umaVezSo/ligado; on_enter/exit/stay;
+  bodies()/contains(); Signal emit/on; checkpoint/respawn na queda; template
+  Coletar moedas com classe ÁREA; checagem "area"). 415 testes JVM verdes.
+  **Release `v0.1.26-fase2-teste` publicada — aguardando aceite no aparelho**
+  (6 itens no TESTES_PENDENTES.md).
 - **v0.1.25 — PARADA 1 (P1/P2/P3) COMPILADO**: P1 botões Pausar/Sair
   respondem em Play (causa raiz KenkernSurfaceView.kt:541-542 — onTouchEvent
   consumia TODO toque em Play; correção: fonte única RoteadorToqueJogo +

@@ -1,5 +1,28 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## v0.1.26 — PARADA 2 (C1/C2): 6 itens de aceite
+
+> 2 commits (C1, C2) + fechamento, CI verde em cada; 415 testes JVM verdes.
+
+1. **Editor de código (C1)**: Inspetor → classe Script → "Abrir no editor de
+   código" — a tela vira RETRATO com números de linha, realce, teclas de
+   apoio sobre o teclado e "Verificar" que sublinha a linha do erro; ao sair,
+   volta PAISAGEM sem recarregar o projeto.
+2. **Autocompletar e modelos (C1)**: digitar `nick.` mostra os membros; o
+   botão + cria script novo dos modelos (vazio/movimento/coletar/gatilho);
+   edite e SAIA sem salvar — o SALVAR AUTOMÁTICO guardou (reabra e confira).
+3. **Desempenho (C1)**: buscar/substituir funcionam; arquivo > 200 KB mostra
+   o aviso; nada congela com o teclado aberto (linhas virtualizadas).
+4. **Área completa (C2)**: Adicionar Nick tem Área/Sinal/Ponto de Surgimento/
+   Checkpoint de volta (sem "Em breve"); área com classe ÁREA dispara
+   on_enter/on_exit/on_stay; "filtro por tag" e "uma vez só" funcionam;
+   `area.bodies()`/`area.contains(nick)` na Lua.
+5. **Checkpoint (C2)**: monte um chão com um buraco, um Checkpoint no meio e
+   caia pelo buraco — o jogador REAPARECE no último checkpoint; na Lua,
+   `player.respawn()` faz o mesmo.
+6. **Diagnóstico → Rodar tudo: 24 checagens, 0 falhas** — as novas "Nicks de
+   Área (ZONA)" e "Editor de código Lua" ficam APROVADAS.
+
 ## v0.1.25 — PARADA 1 (P1/P2/P3): 6 itens de aceite
 
 > 3 commits (P1, P2, P3) + fechamento, CI verde em cada; 388 testes JVM
