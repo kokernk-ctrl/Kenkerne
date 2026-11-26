@@ -1,5 +1,38 @@
 # KENKERN — CHANGELOG
 
+## v0.1.27 — PARADA 3: TELAR base (editor de UI com árvore 2D própria)
+
+> Um commit (U1) + fechamento, CI verde. Fase 2 CONTINUA ABERTA
+> (F2.11–F2.15); SEM tag fase-ok.
+
+### U1 — TELAR
+
+- **U1.1 aba "UI"** (GridOn na TopBar): TelarScreen — canvas 1920x1080 com
+  zoom (0,6–4×) e pan, régua de referência, SNAP de 8px no arrasto,
+  pré-visualização em 16:9/18:9/20:9.
+- **U1.2 elementos**: Painel, Texto, Imagem, Botão, Barra de Progresso,
+  Controle Deslizante, Joystick, Área de Toque; âncoras 9 posições + ESTICAR
+  com margens em dp e ÁREA SEGURA — `resolverRect` prova cada proporção.
+- **U1.3 estilo**: cor, gradiente, cantos, contorno, opacidade; texto com os
+  8 NOMES de fontes livres OFL (FONTES_OFL) — **as TTFs EMBUTIDAS ficam para
+  a sequência** (download indisponível no ambiente desta rodada; os nomes já
+  mapeiam famílias; meta final 24, aumento do APK relatado quando embutir).
+- **U1.4 migração**: ui.joystick da árvore 3D vira elemento de UI sem perder
+  dados (tipo/tamanho/opacidade/zona morta/8 direções/Controla/Seguir).
+- **U1.5 eventos + .kui**: botão aoClicar → função Lua (ponte no thread GL);
+  texto ligado a variável; documento salvo em `ui/*.kui` (KUI1, texto
+  estruturado, versionado) com salvar automático.
+- **U1.6 Play**: UiJogoTelar desenha o .kui SOBRE o jogo — botão/joystick
+  reclamam toque, joystick alimenta o EstadoInputJogo, nada vaza ao editor.
+- **U1.7 undo/redo POR COMMAND** (Adicionar/Remover/Transformar/Propriedade/
+  OrdemZ) + painel de camadas (ordem Z/ocultar/travar) + Inspetor de UI.
+- **U1.8 template**: "Coletar moedas" ganha ui/coletar-moedas.kui (contador +
+  botão de pausar + joystick). Checagem "ui" no Diagnóstico (25ª; sem GL).
+  TelarModeloTest (18).
+
+**Fechamento (F)**: 431 testes JVM verdes; assembleRelease verde; check_i18n
+OK; UMA Release v0.1.27-fase2-teste; SEM tag fase-ok.
+
 ## v0.1.26 — PARADA 2: editor de código Lua em tela vertical + Nicks de Área funcionais (ZONA)
 
 > Dois commits (C1, C2), CI verde em cada; testes nasceram vermelhos quando o

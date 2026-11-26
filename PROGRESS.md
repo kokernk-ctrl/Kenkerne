@@ -6,6 +6,15 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
+- **v0.1.27 — PARADA 3 (U1) COMPILADO**: TELAR base — aba "UI" com canvas
+  1920x1080 (zoom/pan/régua/snap 8px), 8 elementos, âncoras 9+esticar com
+  área segura nas 3 proporções, camadas (Z/ocultar/travar), Inspetor de UI,
+  undo/redo POR COMMAND, .kui (KUI1) com salvar automático, migração do
+  Joystick Nick sem perder dados, Play desenha a UI sobre o jogo com toque
+  sem conflito, template "Coletar moedas" com tela de UI, checagem "ui".
+  431 testes JVM verdes. **Release `v0.1.27-fase2-teste` publicada —
+  aguardando aceite no aparelho** (5 itens no TESTES_PENDENTES.md). Pendente
+  registrado: TTFs OFL embutidas (meta 24 fontes) — os 8 NOMES já no modelo.
 - **v0.1.26 — PARADA 2 (C1/C2) COMPILADO**: C1 editor de código Lua em
   RETRATO (modelo puro LuaCodeModel: tokenizador/undo-redo/indentação por
   balanço/busca/substituir; teclas de apoio; autocompletar offline do

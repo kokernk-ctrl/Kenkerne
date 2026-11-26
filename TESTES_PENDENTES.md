@@ -1,5 +1,26 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
+## v0.1.27 — PARADA 3 (U1): 5 itens de aceite
+
+> 1 commit (U1) + fechamento, CI verde; 431 testes JVM verdes.
+
+1. **Aba "UI" (TELAR)**: no editor, o ícone GridOn na TopBar abre o editor de
+   UI — canvas 1920x1080 com zoom/pan, régua, pré-visualização 16:9/18:9/20:9
+   (chips no topo) e voltar ao editor 3D sem perder nada.
+2. **Monte uma tela**: adicione PAINEL + TEXTO + BOTÃO; arraste com snap de
+   8px; troque a âncora (os 9 cantos/centros + esticar); camadas reordenam
+   (setas Z), ocultar e travar funcionam; Remover com undo/redo.
+3. **Joystick migra**: projetos com Joystick Nick abrem o TELAR com o
+   joystick JÁ como elemento de UI (tipo/tamanho/opacidade/zona morta/8
+   direções/"Controla"/"Seguir Nick" preservados).
+4. **UI em Play**: Play desenha o .kui SOBRE o jogo — o botão chama a função
+   Lua do campo aoClicar, o joystick move o jogador e os toques NÃO vazam
+   para o editor; Sair devolve tudo como estava.
+5. **Diagnóstico → Rodar tudo: 25 checagens, 0 falhas** — a nova "UI do
+   TELAR" (âncoras nas 3 proporções, .kui ida e volta, migração, commands,
+   tela do template) fica APROVADA. NOTA: as 8 fontes OFL estão como NOMES
+   no modelo (as TTFs embutidas entram na sequência — registrado).
+
 ## v0.1.26 — PARADA 2 (C1/C2): 6 itens de aceite
 
 > 2 commits (C1, C2) + fechamento, CI verde em cada; 415 testes JVM verdes.
