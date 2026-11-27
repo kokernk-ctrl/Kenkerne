@@ -1,5 +1,48 @@
 # KENKERN — CHANGELOG
 
+## v0.1.30 — PARADA 2 (parcial): projeto e arquivos — F1 (locais App × Aparelho) + F2 (árvore visível) + F6 (checagens)
+
+> 3 commits (F1+F2, F6, fechamento), CI verde em cada; 493 testes JVM
+> verdes. DECISÃO #8 registrada em DECISIONS.md. F3 (painel Projeto
+> explorador), F4 (importar de qualquer pasta) e F5 (referências estáveis)
+> FICAM PARA A SEQUÊNCIA da Parada 2 — o núcleo do armazenamento (interface,
+> guardas, migração e checagens) entrou. COMPILADO; aceite no aparelho no
+> TESTES_PENDENTES.md. SEM tag.
+
+### F1 — DOIS LOCAIS (ProjectStorage; DECISIONS #8)
+
+(a) "App" — filesDir/projects (o atual, rápido, sem permissão). (b) "Aparelho"
+— /storage/emulated/0/Kenkern/Projetos com java.io.File DIRETO e a permissão
+"Acesso a todos os arquivos" (MANAGE_EXTERNAL_STORAGE no API 30+;
+WRITE/READ_EXTERNAL_STORAGE no 26–29 — app distribuído por APK do GitHub).
+SEM a permissão o app SEGUE em (a) e mantém .kernpack e SAF — nada trava.
+Diálogo de novo projeto: nome + LOCAL (padrão "Aparelho" SE permitido) +
+PASTA PAI (subpastas da raiz); sem permissão o diálogo EXPLICA com o botão
+que ABRE A CONFIGURAÇÃO DO SISTEMA (re-checa ao voltar, ON_RESUME) e
+"Continuar no App". MOVER projeto (menu do cartão): CÓPIA VERIFICADA (mesmos
+caminhos + tamanhos), ORIGINAL MANTIDO até a confirmação. Guardas PURAS
+JVM-testadas: caminho dentro da raiz por CANÔNICO ("assets/../../outro"
+bloqueado; "assets/models/../audio" permitido), nomes ≤60, espaço livre.
+Auto-save IGUAL nos dois locais (o handle aponta a raiz real).
+
+### F2 — ESTRUTURA VISÍVEL
+
+Árvore completa ao criar: assets/{models,textures,materials,audio,fonts,
+video}, scenes, nicks, scripts, animations, shaders, ui, worlds, dialogues,
+build, .kenkern (cache e lixeira). PROJETOS ANTIGOS ganham o que falta na
+abertura (garantirArvore idempotente) — NADA apagado (testado: cena antiga e
+arquivos do usuário intactos).
+
+### F6 — TRÊS CHECAGENS NOVAS (catálogo 30 → 33)
+
+"armazenamento" (roundtrip atômico no App; permissão do Aparelho com
+roundtrip quando concedida — NEGADA não reprova, é o design F1), "pastas"
+(árvore nova + migração sem apagar) e "explorador" (5.000 sintéticos,
+listagem PAGINADA 25×200 no limite de 2000 ms com ms real — base do F3).
+ExploradorArquivos (puro) + GuardasCaminhoTest (guardas, árvore, migração,
+cópia verificada).
+
+
 ## v0.1.29 — PARADA 1: regressões e telas (luz, Verificar, editor de código, TELAR, Inspetor, mensagens, Hub)
 
 > 8 commits (R1–R7 + fechamento), CI verde em cada; 486 testes JVM verdes.
