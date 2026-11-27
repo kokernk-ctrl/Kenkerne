@@ -43,6 +43,8 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import com.kenkern.engine.assets.FontesKenkern
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -555,10 +557,21 @@ private fun corDe(hex: String): Color {
     }
 }
 
-private fun familiaDe(nome: String): FontFamily = when (nome) {
-    "RobotoMono", "JetBrainsMono" -> FontFamily.Monospace
-    "NotoSerif" -> FontFamily.Serif
-    else -> FontFamily.Default
+/**
+ * Onda 0 (v0.1.28, P5): família da fonte do elemento — AGORA REAL: carrega o
+ * .ttf OFL EMBUTIDO no APK (assets/fonts, via FontesKenkern; sem download —
+ * modo avião). ANTES os nomes eram rótulos devolvendo os 3 FontFamily
+ * genéricos. Asset ausente (não deveria) → genérico + Console acusa.
+ */
+@Composable
+private fun familiaDe(nome: String): FontFamily {
+    val ctx = LocalContext.current
+    val tf = remember(nome) { FontesKenkern.carregar(ctx, nome) }
+    return if (tf != null) FontFamily(tf) else when (nome) {
+        "RobotoMono", "JetBrainsMono" -> FontFamily.Monospace
+        "NotoSerif" -> FontFamily.Serif
+        else -> FontFamily.Default
+    }
 }
 
 

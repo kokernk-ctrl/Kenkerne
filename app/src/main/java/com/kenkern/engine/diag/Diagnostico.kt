@@ -1989,10 +1989,19 @@ class Diagnostico(private val appContext: Context) {
         }
     }
 
-    /** Checagem "ui" (U1, v0.1.27) — TELAR sem GL: âncoras nas 3 proporções (16:9, 18:9, 20:9), área segura, .kui ida e volta, migração do joystick sem perder dados, undo/redo por COMMAND e a tela do template. */
+    /** Checagem "ui" (U1, v0.1.27) — TELAR sem GL: âncoras nas 3 proporções (16:9, 18:9, 20:9), área segura, .kui ida e volta, migração do joystick sem perder dados, undo/redo por COMMAND e a tela do template. Onda 0 (v0.1.28, P5): também as FONTES OFL — carrega CADA uma do APK (assets/fonts, sem rede) e conta as que abriram. */
     private fun checarUi(c: Checagem) {
         val problemas = ArrayList<String>(4)
+        var fontesCarregadas = 0
         try {
+            // Onda 0 P5: as 8 fontes OFL carregam do APK (modo avião — nada de
+            // rede: Typeface.createFromAsset lê o pacote instalado).
+            for (nome in com.kenkern.engine.assets.FontesKenkern.NOMES) {
+                val tf = com.kenkern.engine.assets.FontesKenkern.carregar(appContext, nome)
+                if (tf == null) {
+                    problemas.add("fonte '$nome' não carregou do APK")
+                } else fontesCarregadas++
+            }
             val doc = com.kenkern.engine.ui.telar.TemplateUiMoedas.montar()
             // âncoras nas 3 proporções: nada fora da tela
             for (dim in listOf(1920 to 1080, 2400 to 1080, 2400 to 1200)) {
@@ -2027,7 +2036,8 @@ class Diagnostico(private val appContext: Context) {
         if (problemas.isEmpty()) {
             c.aprovado(
                 "8 elementos · âncoras 9+esticar dentro da tela em 16:9/18:9/20:9 (área segura) · .kui KUI1 ida e volta · " +
-                    "migração do Joystick Nick sem perder dados · undo/redo por COMMAND · template com contador+pausar+joystick"
+                    "migração do Joystick Nick sem perder dados · undo/redo por COMMAND · template com contador+pausar+joystick · " +
+                    "FONTES: $fontesCarregadas/8 OFL carregadas do APK (sem rede — modo avião)"
             )
         } else {
             c.falhou(problemas.joinToString("; "))
