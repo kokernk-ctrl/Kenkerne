@@ -98,6 +98,28 @@ class Diagnostico(private val appContext: Context) {
         const val TIMEOUT_CHECAGEM_MS = 30_000L
 
         /**
+         * L2 (v0.1.28) — AGENDA DA RODADA, PURA (sem Context): as checagens
+         * RÁPIDAS (sem GL) no pool Default, as checagens GL na thread EGL
+         * dedicada e a memória no fim. A JVM prova que TODO id do catálogo
+         * [novaListaDeChecagens] está agendado (DiagAgendaTest) — nada fica
+         * PENDENTE na tela do aparelho. A v0.1.27 agendava só 26 dos 30:
+         * play-sair/area/editor/ui existiam no catálogo e no `when`, mas
+         * NUNCA RODAVAM — ficavam PENDENTES para sempre (a "prova" nunca
+         * acontecia).
+         */
+        val AGENDA_RAPIDAS = listOf(
+            "nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "materiais",
+            "gltf", "fbx", "importar", "kimg", "picking", "toque", "release",
+            "layout", "joystick", "lua-api", "jogo",
+            "play-sair", "area", "editor", "ui"
+        )
+        val AGENDA_GL = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "luz", "astc")
+        const val AGENDA_MEMORIA = "memoria"
+
+        /** A agenda COMPLETA em ordem de execução (rapidas + gl + memória). */
+        fun agendaDeExecucao(): List<String> = AGENDA_RAPIDAS + AGENDA_GL + AGENDA_MEMORIA
+
+        /**
          * S1 (v0.1.24): catálogo de checagens PURO (sem Context) — a JVM prova
          * que todo id tem título único (DiagNomesChecagemTest). A instância
          * [novaLista] só delega aqui.
@@ -477,8 +499,10 @@ class Diagnostico(private val appContext: Context) {
      */
     suspend fun executar(onAtualiza: (Checagem) -> Unit) {
         cancelado = false
-        val rapidas = listOf("nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "materiais", "gltf", "fbx", "importar", "kimg", "picking", "toque", "release", "layout", "joystick", "lua-api", "jogo")
-        val gl = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "luz", "astc")
+        // L2 (v0.1.28): a agenda vem das constantes PURAS do companion — a JVM
+        // prova que TODO id do catálogo roda (DiagAgendaTest: nada PENDENTE).
+        val rapidas = AGENDA_RAPIDAS
+        val gl = AGENDA_GL
         // E2: ids já FINALIZADAS nesta rodada — no cancel, só o que NÃO rodou vira
         // CANCELADA (aprovadas/falhas anteriores permanecem com o resultado delas).
         val finalizadas = HashSet<String>()
@@ -512,12 +536,12 @@ class Diagnostico(private val appContext: Context) {
                 }
             }
 
-            rodarUma("memoria", onAtualiza, finalizadas)
+            rodarUma(AGENDA_MEMORIA, onAtualiza, finalizadas)
         } catch (e: CancellationException) {
             // Botão cancelar (Job cancelado): marca como CANCELADA só o que NÃO
             // finalizou — chamadas simples, sem suspensão dentro do catch — e
             // REPROPAGA o cancelamento.
-            val pendentes = (rapidas + gl + "memoria").filter { it !in finalizadas }
+            val pendentes = agendaDeExecucao().filter { it !in finalizadas }
             for (id in pendentes) {
                 val c = Checagem(id, nome(id))
                 c.cancelada("cancelada pelo usuário")
@@ -1740,6 +1764,41 @@ class Diagnostico(private val appContext: Context) {
         if (d.acaoBack(com.kenkern.engine.engine.PlayState.PLAYING) != com.kenkern.engine.engine.PlayState.STOPPED || d.acaoBack(com.kenkern.engine.engine.PlayState.PAUSED) != com.kenkern.engine.engine.PlayState.STOPPED) {
             problemas.add("BACK não sai da janela de jogo")
         }
+        // L2 (v0.1.28): FLUXO COMPLETO SIMULADO — toque → decisão → AÇÃO:
+        // o jogo pausa (PLAYING→PAUSED), continua (PAUSED→PLAYING) e sai
+        // (→STOPPED) AQUI no teste; o aceite do aparelho confirma o mesmo
+        // caminho no toque real (≤100 ms).
+        val aposPausar = d.acao(dpPausar.alvo, com.kenkern.engine.engine.PlayState.PLAYING)
+        if (aposPausar != com.kenkern.engine.engine.PlayState.PAUSED) {
+            problemas.add("tocar Pausar não PAUSA no teste (PLAYING→$aposPausar)")
+        }
+        val aposContinuar = d.acao(dPausado.alvo, com.kenkern.engine.engine.PlayState.PAUSED)
+        if (aposContinuar != com.kenkern.engine.engine.PlayState.PLAYING) {
+            problemas.add("tocar Continuar não retoma o jogo no teste (PAUSED→$aposContinuar)")
+        }
+        val aposSair = d.acao(dSair.alvo, com.kenkern.engine.engine.PlayState.PLAYING)
+        if (aposSair != com.kenkern.engine.engine.PlayState.STOPPED) {
+            problemas.add("tocar Sair não SAI no teste (PLAYING→$aposSair)")
+        }
+        val aposForcar = d.acao(dForcar.alvo, com.kenkern.engine.engine.PlayState.PLAYING)
+        if (aposForcar != com.kenkern.engine.engine.PlayState.STOPPED) {
+            problemas.add("Forçar saída (watchdog) não sai no teste (PLAYING→$aposForcar)")
+        }
+        // L2: NENHUM botão do editor (Focar/Grade) intercepta — o TIPO dos
+        // alvos da janela de jogo SÓ expressa controles do jogo; um botão do
+        // editor NÃO PODE ser alvo do roteador (não existe no enum) e a UI
+        // compõe Grade/Focar FORA do jogo (por estado — Onda 0): as regiões
+        // publicadas à SurfaceView vêm SÓ deste enum.
+        val alvosPossiveis = com.kenkern.engine.ui.jogo.AlvoToque.values().toSet()
+        if (alvosPossiveis != setOf(
+                com.kenkern.engine.ui.jogo.AlvoToque.BOTAO_PAUSAR,
+                com.kenkern.engine.ui.jogo.AlvoToque.BOTAO_SAIR,
+                com.kenkern.engine.ui.jogo.AlvoToque.BOTAO_FORCAR,
+                com.kenkern.engine.ui.jogo.AlvoToque.CENA
+            )
+        ) {
+            problemas.add("AlvoToque expressa alvo fora do jogo: $alvosPossiveis (botão do editor interceptando?)")
+        }
         if (d.WATCHDOG_MS != 3000L) problemas.add("WATCHDOG_MS=${d.WATCHDOG_MS} ≠ 3000")
         for (r2 in regioes) {
             if (r2.baixo - r2.topo < 48f) problemas.add("região ${r2.alvo} com ${r2.baixo - r2.topo}dp < 48dp")
@@ -1747,7 +1806,9 @@ class Diagnostico(private val appContext: Context) {
         if (problemas.isEmpty()) {
             c.aprovado(
                 "botões Pausar/Sair recebem o toque em PLAYING e PAUSED (cena nunca consome) · " +
-                    "fora deles a cena consome · Forçar saída na frente do watchdog · BACK sempre sai · WATCHDOG=3s · alvos ≥48dp"
+                    "toque simulado: Pausar PAUSA, Continuar RETOMA, Sair SAÍ (AÇÃO aplicada no teste) · " +
+                    "nenhum botão do editor é alvo possível (Grade/Focar fora do jogo) · " +
+                    "Forçar saída na frente do watchdog · BACK sempre sai · WATCHDOG=3s · alvos ≥48dp"
             )
         } else {
             c.falhou(problemas.joinToString("; "))

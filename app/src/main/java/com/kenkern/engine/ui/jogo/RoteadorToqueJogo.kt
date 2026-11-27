@@ -93,4 +93,17 @@ object RoteadorToqueJogo {
      * (PLAYING → STOPPED, PAUSED → STOPPED). Modelo puro para a JVM.
      */
     fun acaoBack(estado: PlayState): PlayState = PlayState.STOPPED
+
+    /**
+     * L2 (v0.1.28): a AÇÃO de cada alvo de toque — a checagem "play-sair" do
+     * Diagnóstico simula o toque (decidir) e aplica a ação (este método),
+     * provando que o jogo PAUSA (PLAYING→PAUSED), CONTINUA (PAUSED→PLAYING)
+     * e SAI (→STOPPED) no TESTE — a UI do aparelho só confirma.
+     * CENA não muda estado (o toque é o controle do jogo).
+     */
+    fun acao(alvo: AlvoToque, estado: PlayState): PlayState = when (alvo) {
+        AlvoToque.BOTAO_PAUSAR -> if (estado == PlayState.PLAYING) PlayState.PAUSED else PlayState.PLAYING
+        AlvoToque.BOTAO_SAIR, AlvoToque.BOTAO_FORCAR -> PlayState.STOPPED
+        AlvoToque.CENA -> estado
+    }
 }

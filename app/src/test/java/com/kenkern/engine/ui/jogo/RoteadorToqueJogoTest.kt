@@ -113,4 +113,49 @@ class RoteadorToqueJogoTest {
         assertEquals(d1.cenaConsome, d2.cenaConsome)
         assertFalse(d1.motivo.isEmpty())
     }
+
+    // ---------- L2 (v0.1.28): AÇÃO aplicada — pausa/continua/sai NO TESTE ----------
+
+    @Test
+    fun tocarPausarPausaOJogoNoTeste() {
+        // Decisão (toque sobre Pausar em PLAYING) + ação = PAUSED: é o fluxo
+        // completo do toque simulado da checagem "play-sair".
+        val d = RoteadorToqueJogo.decidir(PlayState.PLAYING, 370f, 30f, regioesPadrao(), false)
+        assertEquals(PlayState.PAUSED, RoteadorToqueJogo.acao(d.alvo, PlayState.PLAYING))
+    }
+
+    @Test
+    fun tocarPausarEmPausadoContinuaOJogoNoTeste() {
+        val d = RoteadorToqueJogo.decidir(PlayState.PAUSED, 370f, 30f, regioesPadrao(), false)
+        assertEquals(PlayState.PLAYING, RoteadorToqueJogo.acao(d.alvo, PlayState.PAUSED))
+    }
+
+    @Test
+    fun tocarSairSaiOJogoNoTeste() {
+        val d = RoteadorToqueJogo.decidir(PlayState.PLAYING, 480f, 30f, regioesPadrao(), false)
+        assertEquals(PlayState.STOPPED, RoteadorToqueJogo.acao(d.alvo, PlayState.PLAYING))
+    }
+
+    @Test
+    fun forcarSaidaDoWatchdogSaiNoTeste() {
+        val d = RoteadorToqueJogo.decidir(PlayState.PLAYING, 400f, 100f, regioesPadrao() + forcarSaida, true)
+        assertEquals(PlayState.STOPPED, RoteadorToqueJogo.acao(d.alvo, PlayState.PLAYING))
+    }
+
+    @Test
+    fun toqueNaCenaNaoMudaOEstado() {
+        val d = RoteadorToqueJogo.decidir(PlayState.PLAYING, 100f, 200f, regioesPadrao(), false)
+        assertEquals(PlayState.PLAYING, RoteadorToqueJogo.acao(d.alvo, PlayState.PLAYING))
+    }
+
+    @Test
+    fun nenhumBotaoDoEditorEAlvoPossivel() {
+        // Onda 0: Focar/Grade (botões do EDITOR) não podem interceptar o toque
+        // da janela de jogo — o enum só expressa controles do jogo; a UI os
+        // compõe FORA do jogo (por estado).
+        assertEquals(
+            setOf(AlvoToque.BOTAO_PAUSAR, AlvoToque.BOTAO_SAIR, AlvoToque.BOTAO_FORCAR, AlvoToque.CENA),
+            AlvoToque.values().toSet()
+        )
+    }
 }
