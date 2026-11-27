@@ -1,5 +1,92 @@
 # KENKERN — CHANGELOG
 
+## v0.1.29 — PARADA 1: regressões e telas (luz, Verificar, editor de código, TELAR, Inspetor, mensagens, Hub)
+
+> 8 commits (R1–R7 + fechamento), CI verde em cada; 486 testes JVM verdes.
+> Cada bug nasceu VERMELHO primeiro (reprodução antes de corrigir) — os
+> vermelhos da luz e do Verificar ficaram registrados como testes
+> permanentes. Fatos do aparelho valem mais que testes de JVM; itens de
+> aceite no TESTES_PENDENTES.md. SEM tag.
+
+### R1 — LUZ DO LUME: a câmera da checagem via o VERSO do quad (causa raiz)
+
+RED com prova matemática (R1LuzCameraContratoTest): a câmera padrão do
+OrbitCamera (yaw 35°/pitch 28°/dist 9) punha o olho em (−4,56, −3,73,
+−6,51) — os MESMOS números que o aparelho reportou — e o raio central
+ENTRAVA pela face −Z, enquanto a pontual (0,9; 1,4; 1,1) e a direcional
+((0,0,−1)) iluminam a face +Z: pixel (102,63,70) × esperado ~(243,108,111)
+e direcional IGUAL ao sol (59,63,70) — só ambiente hemisférico, nenhum
+vermelho. O comentário antigo AFIRMAVA "pixel central cai na FACE +Z" sem
+prova: era falso. LuzChecagemContrato (puro): câmera do lado +Z (yaw 200°/
+pitch −30°/dist 6), contrato de normais/dupa face documentado. R1.3: sub-caso
+(c) novo — o MESMO piso do template visto de cima nos DOIS caminhos
+(emJogo=false/true): a direcional branca int 2 tem que mudar o pixel em ambos
+e editor = play; 4 RGB no Console.
+
+### R2 — VERIFICAR: a premissa era falsa (trecho "quebrado" era Lua válido)
+
+RED (R2PremissaChecagemEditorTest): a checagem chamava de QUEBRADO
+"local x =\nprint(x)" — Lua VÁLIDO (a expressão continua na linha seguinte).
+FIX: TrechosVerificar (fonte única 5 quebrados + 3 válidos, com o
+falso-quebrado registrado em VALIDOS); verificarLua usa o COMPILADOR do
+LuaJ (LuaC.instance.compile — nada executa; o caminho antigo passava pelo
+Globals.load, cuja tabela de exceções ENGOLE Exception genérica); PAINEL DE
+ERROS no editor (linha + mensagem; toque pula para a linha) + sublinhação.
+
+### R3 — EDITOR DE CÓDIGO: "abre vazio" era RECOMPOSIÇÃO que nunca acontecia
+
+CAUSA RAIZ (print v0.1.28): a carga é assíncrona (withContext IO) e NENHUM
+estado LIDO NA COMPOSIÇÃO mudava depois dela — o LazyColumn e seu
+items(count = doc.linhas.size) ficavam com o documento INICIAL (1 linha
+vazia). O arquivo SEMPRE teve conteúdo. FIX: revisao++ após a carga.
+Nome: CriadorScript (puro) — padrão "script.lua", sufixo "_2" SÓ em colisão
+(nunca mais script_movimento_34934.lua); diálogo pergunta o nome. Layout:
+barra [voltar | nome e estado | Verificar (largura fixa) | menu ⋮ (A−, A+,
+quebra de linha, Buscar)] — FIM do overlay flutuante sobre a faixa de
+teclas; LargurasEditorLua prova sem sobreposição a 360/800dp. Colar
+multilinha (DocumentoLua.colar) + copiar seleção/linha; checagem "editor"
+estendida (modelos não vazios + layout por larguras).
+
+### R4 — TELAR: insets por KScaffold + canvas com LETTERBOX na proporção
+
+CAUSA RAIZ da barra sob a status bar: a tela não aplicava NENHUM inset —
+KScaffold (novo, ÚNICO componente de insets) envolve o TELAR e o editor de
+código. CAUSA RAIZ do "16:9 quase quadrado (~1,25:1)": escala FIXA 0,28
+sobre 1920×1080dp (537×302dp) CORTADA pelos painéis (190+230dp) — visível
+380×302 ≈ 1,26:1. TelarAjuste (puro): escala de AJUSTE
+min(W/larguraRef, H/alturaRef) com letterbox; canvas na dimensão da
+PROPORÇÃO ESCOLHIDA (1920/2160/2400×1080). Estado vazio com botão "Criar
+tela de UI" (template). Checagem "layout" inclui o TELAR (3 proporções).
+
+### R5 — INSPETOR: KToggle gigante = weight em coluna rolável (arquivo e linha)
+
+CAUSA RAIZ (InspectorPanel.kt:161 e :167 da v0.1.28): os dois KToggle
+usavam Modifier.weight(1f) DENTRO de uma Column VERTICAL ROLÁVEL (altura
+infinita — peso de coluna distribui ALTURA, não largura) → interruptores
+gigantes e sobrepostos. FIX: cabeçalho FIXO (ícone + rótulo + chave +
+"Ativo" 36dp); "Visível" em linha (rótulo à esquerda, interruptor à
+direita); Nome em UMA linha com Aplicar/Reverter SÓ quando altera (ou no
+"Concluído" do teclado); UMA seção por classe (ordem fixa, estado recolhido
+por seção) com "Adicionar classe" NO FIM; ao trocar de Nick a rolagem VOLTA
+AO TOPO (era preservada — o Nome vinha cortado).
+
+### R6 — MENSAGENS DO DIAGNÓSTICO: formatadores preenchidos
+
+CAUSA RAIZ: o .format() pegava SÓ o último literal da concatenação —
+"%.1f×", "%.0f MB", "%d ms" e "%.1f dB" ficavam CRUS em "Malha nativa",
+"Botão Importar modelo", ".KIMG" e na do toque/slop. MensagensDiag (puro)
+formatam a concatenação INTEIRA; R6MensagensDiagTest REPROVA qualquer '%'
+literal nas mensagens produzidas.
+
+### R7 — HUB: globo com aro e nome de projeto único (" 2")
+
+O seletor de idioma usava IconButton do M3 (SEM aro) contra KIconButton da
+pasta/inseto — agora os três são KIconButton. Nome duplicado ("mm" duas
+vezes): a pasta virava "mm (2)" mas o name= continuava "mm";
+ProjectManager.nomeUnico (puro): sufixo " 2" SÓ na colisão, pasta e name=
+com o MESMO valor.
+
+
 ## v0.1.28 — LUZ DO LUME (causa raiz) + 30/30 no Diagnóstico + ONDA 0 (janela de jogo, editor de código, TopBar, fontes OFL)
 
 > Sete commits (L1, L2, Onda 0 P1/P2, P3+P4, P5, P6, fechamento), CI verde;
