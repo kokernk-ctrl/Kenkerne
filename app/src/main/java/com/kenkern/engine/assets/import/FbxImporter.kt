@@ -675,9 +675,9 @@ object FbxImporter {
             if (obj.nome == "Deformer" && obj.props.getOrNull(2) == "Skin") deformers++
         }
         if (deformers > 0) {
-            val motivo = "SKIN: $deformers Deformer(s) Skin no FBX — os ossos não movem vértices nesta " +
-                "versão (Fase 8): partes presas ao esqueleto ficam na pose de bind e podem aparecer " +
-                "colapsadas/ausentes (ex.: cabeça)"
+            val motivo = "esqueleto/skinning ainda não suportado — Onda 3: $deformers Deformer(s) Skin no FBX — " +
+                "os ossos não movem vértices nesta versão; partes presas ao esqueleto ficam na pose de bind e " +
+                "podem aparecer colapsadas/ausentes (ex.: cabeça)"
             avisos.add(motivo)
             KenkernLog.w(TAG, motivo)
         }

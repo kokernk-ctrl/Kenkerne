@@ -104,9 +104,12 @@ class KernMaterialPbrTest {
         val r = GltfImporter.importar(glb)
         assertEquals("4 vértices com JOINTS/WEIGHTS contados", 4, r.report.verticesComSkin)
         val avisos = r.avisos.joinToString(" | ")
+        // Onda 0 (v0.1.28): o aviso do usuário — "esqueleto/skinning ainda
+        // não suportado — Onda 3" — em vez de jargão "Fase 8".
         assertTrue(
             "causa SKIN ausente no relatório: $avisos",
-            avisos.contains("SKIN: 4 vértices") && avisos.contains("pose de bind")
+            avisos.contains("esqueleto/skinning ainda não suportado — Onda 3") &&
+                avisos.contains("4 vértices") && avisos.contains("pose de bind")
         )
     }
 

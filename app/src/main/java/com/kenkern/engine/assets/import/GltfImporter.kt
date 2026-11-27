@@ -553,9 +553,9 @@ object GltfImporter {
         // skinning os vértices ficam na pose de bind (Fase 8 OSSATURA).
         if (ctx.verticesComSkin > 0) {
             ctx.avisos.add(
-                "SKIN: ${ctx.verticesComSkin} vértices com JOINTS/WEIGHTS não aplicados — os ossos " +
-                    "não movem vértices nesta versão (Fase 8): partes presas ao esqueleto ficam na pose de " +
-                    "bind e podem aparecer colapsadas/ausentes (ex.: cabeça)"
+                "esqueleto/skinning ainda não suportado — Onda 3: ${ctx.verticesComSkin} vértices com JOINTS/WEIGHTS " +
+                    "não aplicados — os ossos não movem vértices nesta versão; partes presas ao esqueleto ficam na " +
+                    "pose de bind e podem aparecer colapsadas/ausentes (ex.: cabeça)"
             )
         }
 
@@ -1021,11 +1021,11 @@ object GltfImporter {
         }
         val skins = raiz.optJSONArray("skins")
         if (skins != null && skins.length() > 0) {
-            ctx.avisos.add("contém esqueleto: ignorado nesta fase (Fase 8 OSSATURA)")
+            ctx.avisos.add("esqueleto/skinning ainda não suportado — Onda 3 (ossos ignorados nesta versão)")
         }
         val animacoes = raiz.optJSONArray("animations")
         if (animacoes != null && animacoes.length() > 0) {
-            ctx.avisos.add("contém animações: ignoradas nesta fase (Fase 8 OSSATURA)")
+            ctx.avisos.add("animações: ignoradas nesta versão — suporte na Onda 3 (esqueleto/skinning)")
         }
     }
 

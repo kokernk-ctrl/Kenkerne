@@ -147,12 +147,12 @@ class ImportSummary(
             append(tabelaTempo.trimEnd())
             appendLine()
         }
-        if (contemEsqueleto) appendLine("AVISO: contém esqueleto: ignorado nesta fase (Fase 8 OSSATURA)")
+        if (contemEsqueleto) appendLine("AVISO: esqueleto/skinning ainda não suportado — Onda 3 (ossos ignorados nesta versão)")
         if (verticesComSkin > 0) {
             appendLine(
-                "SKIN: $verticesComSkin vértices com JOINTS/WEIGHTS NÃO APLICADOS — os ossos não movem " +
-                    "vértices nesta versão (Fase 8): partes presas ao esqueleto ficam na pose de bind e " +
-                    "podem aparecer colapsadas/ausentes (ex.: cabeça)." 
+                "AVISO: esqueleto/skinning ainda não suportado — Onda 3: $verticesComSkin vértices com JOINTS/WEIGHTS " +
+                    "NÃO APLICADOS (os ossos não movem vértices nesta versão) — partes presas ao esqueleto ficam na " +
+                    "pose de bind e podem aparecer colapsadas/ausentes (ex.: cabeça); a malha entra ESTÁTICA."
             )
         }
         for (a in avisos) appendLine("AVISO: $a")

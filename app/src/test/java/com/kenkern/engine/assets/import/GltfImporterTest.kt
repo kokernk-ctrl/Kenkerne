@@ -181,13 +181,15 @@ class GltfImporterTest {
     fun skins_animações_e_extensões_declaradas_geram_AVISO_no_relatório() {
         val r = GltfImporter.importar(GltfAmostras.quadComIgnoradosGlb())
         val avisos = r.avisos.joinToString(" | ")
+        // Onda 0 (v0.1.28): aviso CLARO do usuário — "esqueleto/skinning ainda
+        // não suportado — Onda 3" — em vez do jargão "Fase 8".
         assertTrue(
             "aviso de esqueleto ausente: $avisos",
-            avisos.contains("contém esqueleto: ignorado nesta fase")
+            avisos.contains("esqueleto/skinning ainda não suportado — Onda 3")
         )
         assertTrue(
             "aviso de animações ausente: $avisos",
-            avisos.contains("contém animações: ignoradas nesta fase")
+            avisos.contains("animações: ignoradas nesta versão")
         )
         assertTrue(
             "aviso de extensão ignorada ausente: $avisos",
