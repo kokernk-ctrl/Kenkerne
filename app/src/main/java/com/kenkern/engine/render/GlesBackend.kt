@@ -43,6 +43,16 @@ class GlesBackend : RenderBackend {
     var isDegraded: Boolean = false
         private set
 
+    /**
+     * L1 (v0.1.28): TRUE quando o PROGRAMA PRINCIPAL da malha NÃO compilou/
+     * linkou e o backend usa o FALLBACK de cor sólida (SEM iluminação — o
+     * sintoma era o pixel (154,154,154) = uColor pura com a luz "ligada").
+     * O Diagnóstico "luz" reporta isto com a CAUSA, em vez de culpar a luz.
+     */
+    @Volatile
+    var usaShaderDeCorreSolida: Boolean = false
+        private set
+
     // ---------- Programas ----------
     private var program = 0 // malha iluminada (Lambert + hemisférica)
     private var skyProgram = 0
@@ -193,6 +203,12 @@ class GlesBackend : RenderBackend {
         in vec3 vNormal;
         in vec2 vUV;
         in vec3 vWorld;
+        // L1 (v0.1.28): ERA o BUG DA LUZ DO LUME — vTangent era USADO abaixo
+        // (normal map T0.4) sem esta declaração: o fragment shader NÃO COMPILA
+        // em nenhum driver, o initialize caía no FALLBACK de cor sólida e o
+        // pixel lia (154,154,154) = uColor pura SEM NENHUMA luz (a checagem
+        // "luz" do Diagnóstico vermelha no aparelho desde a v0.1.20).
+        in vec3 vTangent;
         uniform vec4 uColor;
         uniform vec3 uLightDir;
         uniform vec3 uLightColor;
@@ -535,6 +551,9 @@ class GlesBackend : RenderBackend {
         if (program == 0) {
             Log.w(TAG, "Shader principal falhou; tentando fallback mínimo")
             program = buildProgram(fallbackVertexShader, fallbackFragmentShader)
+            // L1: o motivo (compile/link) já foi logado acima pelo buildProgram/
+            // compile — aqui fica o ESTADO visível para o Diagnóstico.
+            if (program != 0) usaShaderDeCorreSolida = true
         }
         if (program == 0) {
             Log.e(TAG, "Nenhum shader compilou: backend em modo degradado (somente clear)")

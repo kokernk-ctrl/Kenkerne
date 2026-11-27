@@ -415,6 +415,9 @@ class Diagnostico(private val appContext: Context) {
 
     fun novaLista(): List<Checagem> = novaListaDeChecagens()
 
+    /** L1 (v0.1.28): olho da câmera da checagem "luz" (ETAPA A — log dos uniforms). */
+    private val olhoCam = com.kenkern.engine.core.math.Vec3()
+
     enum class Status { PENDENTE, RODANDO, APROVADO, FALHOU, CANCELADA }
 
     class Checagem(val id: String, val nome: String) {
@@ -1974,11 +1977,11 @@ class Diagnostico(private val appContext: Context) {
      * Checagem "luz" (H2, v0.1.20) — A LUZ DO LUME ILUMINA A CENA (GL offscreen):
      *  (a) PONTUAL: quad BRANCO (cubo do tipo nick.mesh) + luz PONTUAL VERMELHA
      *      perto dele — com a luz LIGADA o pixel central é dominado pelo
-     *      VERMELHO (r > g e r > b) e MUDA vs o MESMO render com a luz
+     *      VERMELHO (r > g+40 e r > b+40) e MUDA vs o MESMO render com a luz
      *      DESLIGADA (a luz entra e sai no mesmo frame, sem recriar nada);
-     *  (b) DIRECIONAL: light.directional vermelha SUBSTITUI o sol fixo —
-     *      comparada com o MESMO quad com ela desligada (sol padrão), o pixel
-     *      muda e fica dominado pelo vermelho.
+     *  (b) DIRECIONAL: light.directional vermelha SUBSTITUI o sol fixo — o pixel
+     *      fica DOMINADO pelo vermelho com os números do aceite (R>200, G<100,
+     *      B<100) e difere do MESMO quad com ela desligada (sol padrão).
      * Auxiliares de editor DESLIGADOS no render para isolar a LUZ (sem as
      * linhas vermelhas do auxiliar da pontual poluirem a comparação).
      *
@@ -1988,6 +1991,22 @@ class Diagnostico(private val appContext: Context) {
      * Nick ilumina o EDITOR, não só o Play. Investigação S4c ("a iluminação
      * não aparece no editor, se for o caso"): não há caminho separado —
      * editor e Play compartilham o MESMO pipeline de luz.
+     *
+     * L1 (v0.1.28) — ETAPA A (instrumentar) + causa raiz: a checagem ANTES
+     * só observava o pixel; agora (1) detecta o FALLBACK de cor sólida do
+     * GlesBackend (o shader principal da malha não compilou — sintoma
+     * v0.1.27: pixel (154,154,154) = uColor pura, inalterável por QUALQUER
+     * luz; a causa raiz era `vTangent` usado sem declaração no fragment
+     * shader, fixada no mesmo commit); (2) REGISTRA no Console os uniforms
+     * reais enviados ao shader ANTES do draw (cor da pontual, direção da
+     * direcional, posição da câmera — com os valores medidos no pixel depois
+     * do draw) para o usuário ver os números no relatório copiado.
+     *
+     * CÂMERA (L1): o alvo desce para (0, 0.5, 0) — o CENTRO do cubo — para o
+     * pixel central cair na FACE +Z (face lateral hemisférica 0,38/0,41/0,455
+     * e ângulo reto com a direcional em rotação padrão): na cara superior o
+     * azul ambiente (0,66×0,604 = 102) estouraria o aceite B<100 por puro
+     * ambiente, sem nada a ver com a luz que se quer medir.
      */
     private fun checarLuz(c: Checagem, egl: EglDiag?) {
         if (egl == null) {
@@ -2002,6 +2021,21 @@ class Diagnostico(private val appContext: Context) {
                 c.falhou("backend GLES não inicializou no contexto offscreen")
                 return
             }
+            // L1: FALLBACK de cor sólida = CAUSA RAIZ visível (não "a luz não
+            // ilumina"): sem o programa principal NENHUMA uniform de luz tem
+            // efeito — o pixel fica uColor pura (154,154,154) sempre.
+            if (backend.usaShaderDeCorreSolida) {
+                c.falhou(
+                    "shader principal da malha NÃO compilou neste driver — viewport no FALLBACK de cor sólida " +
+                        "(sem NENHUMA luz; o pixel leria (154,154,154) = uColor pura). Causa do compile/link no Console " +
+                        "(logcat: 'Compile falhou'/'Link falhou'). Enviar o relatório copiado"
+                )
+                return
+            }
+            if (backend.isDegraded) {
+                c.falhou("nenhum shader compilou — backend degradado (só clear)")
+                return
+            }
             backend.resize(64, 64)
             renderer.initialize(backend, null, registrarBootTrace = false)
             if (!renderer.isInitialized()) {
@@ -2009,6 +2043,18 @@ class Diagnostico(private val appContext: Context) {
                 return
             }
             val camera = OrbitCamera()
+            // L1: alvo no CENTRO do cubo — o pixel central cai na FACE +Z
+            camera.target.set(0f, 0.5f, 0f)
+            camera.eyePoint(olhoCam)
+            // ETAPA A — uniforms reais que vão ao shader ANTES do draw:
+            // pontual (cor/intensidade/alcance/posição), direcional
+            // (direção/cor/intensidade) e câmera (uCamPos) — tudo no Console.
+            KenkernLog.i(
+                TAG,
+                "luz ETAPA A: câmera eye=(${"%.2f,%.2f,%.2f".format(olhoCam.x, olhoCam.y, olhoCam.z)}) target=(0,0.5,0) · " +
+                    "pontual cor=(1,0,0) intensidade=3 alcance=6 pos=(0.90,1.40,1.10) · " +
+                    "direcional cor=(1,0,0) intensidade=2 direção de viagem=(0,0,-1)"
+            )
 
             // ---------- (a) pontual vermelha sobre quad branco ----------
             val scene = Scene("luz")
@@ -2030,13 +2076,15 @@ class Diagnostico(private val appContext: Context) {
             renderer.renderFrame(backend, scene, camera, 0f, null, null)
             val regiaoLigada = lerRegiao(32, 34, 5)
             val pixelLigado = lerPixel(32, 32)
+            KenkernLog.i(TAG, "luz: pixel pontual LIGADA = ${fmtCor(pixelLigado)} (esperado r≫g,b — face +Z: ~243,108,111)")
             instLuz.fields[LuzNick.CAMPO_LIGADO] = NickValue.BoolValue(false)
             renderer.renderFrame(backend, scene, camera, 0f, null, null)
             val regiaoDesligada = lerRegiao(32, 34, 5)
             val pixelDesligado = lerPixel(32, 32)
+            KenkernLog.i(TAG, "luz: pixel pontual DESLIGADA = ${fmtCor(pixelDesligado)} (só sol+ambiente)")
             val mudou = regiaoLigada != null && regiaoDesligada != null && regiaoLigada != regiaoDesligada
             val vermelhoDominante = pixelLigado != null &&
-                pixelLigado[0] > pixelLigado[1] && pixelLigado[0] > pixelLigado[2]
+                pixelLigado[0] > pixelLigado[1] + 40 && pixelLigado[0] > pixelLigado[2] + 40
 
             // ---------- (b) direcional substitui o sol ----------
             val cenaDir = Scene("luz-dir")
@@ -2055,24 +2103,28 @@ class Diagnostico(private val appContext: Context) {
             cenaDir.updateWorldTransforms()
             renderer.renderFrame(backend, cenaDir, camera, 0f, null, null)
             val comSolNick = lerPixel(32, 32)
+            KenkernLog.i(TAG, "luz: pixel direcional VERMELHA = ${fmtCor(comSolNick)} (aceite R>200, G<100, B<100)")
             instSol.fields[LuzNick.CAMPO_LIGADO] = NickValue.BoolValue(false)
             renderer.renderFrame(backend, cenaDir, camera, 0f, null, null)
             val comSolPadrao = lerPixel(32, 32)
+            KenkernLog.i(TAG, "luz: pixel com SOL PADRÃO = ${fmtCor(comSolPadrao)} (branco quente + hemi)")
             val direcionalSubstitui = comSolNick != null && comSolPadrao != null &&
                 comSolNick.toList() != comSolPadrao.toList() &&
-                comSolNick[0] > comSolNick[1] && comSolNick[0] > comSolNick[2]
+                comSolNick[0] > 200 && comSolNick[1] < 100 && comSolNick[2] < 100
 
             // ---------- veredito ----------
             val problemas = ArrayList<String>(3)
             if (!mudou) problemas.add("pixel da região central não mudou com a pontual ligada × desligada")
             if (!vermelhoDominante) problemas.add("pixel com a pontual ligada não é dominado pelo vermelho (${fmtCor(pixelLigado)})")
             if (!direcionalSubstitui) problemas.add(
-                "light.directional não substituiu o sol (${fmtCor(comSolNick)} × sol padrão ${fmtCor(comSolPadrao)})"
+                "light.directional não substituiu o sol com o pixel vermelho do aceite " +
+                    "(R>200,G<100,B<100 — obtido ${fmtCor(comSolNick)} × sol padrão ${fmtCor(comSolPadrao)})"
             )
             if (problemas.isEmpty()) {
                 c.aprovado(
                     "pontual vermelha ilumina e sai no mesmo frame (ligada ${fmtCor(pixelLigado)} × desligada ${fmtCor(pixelDesligado)}) · " +
-                        "direcional substitui o sol (${fmtCor(comSolNick)}) · ≤4 pontuais/spot por frame (LumeCena) · " +
+                        "direcional substitui o sol com o pixel DOMINADO pelo vermelho (${fmtCor(comSolNick)} = R>200,G<100,B<100) · " +
+                        "uniforms no Console (ETAPA A) · ≤4 pontuais/spot por frame (LumeCena) · " +
                         "MESMO caminho renderFrame do viewport: verde aqui = a luz ilumina o EDITOR também"
                 )
             } else {

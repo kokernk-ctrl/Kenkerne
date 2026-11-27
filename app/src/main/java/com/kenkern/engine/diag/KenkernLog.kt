@@ -22,7 +22,7 @@ import java.util.Locale
  */
 object KenkernLog {
 
-    enum class Nivel { E, W }
+    enum class Nivel { E, W, I }
 
     /** Uma entrada do console (imutável, thread-safe por cópia). */
     data class Registro(
@@ -34,7 +34,13 @@ object KenkernLog {
     ) {
         fun linha(hora: SimpleDateFormat): String = buildString {
             append(hora.format(Date(quando)))
-            append(' ').append(if (nivel == Nivel.E) "ERRO" else "AVISO")
+            append(' ').append(
+                when (nivel) {
+                    Nivel.E -> "ERRO"
+                    Nivel.W -> "AVISO"
+                    Nivel.I -> "INFO"
+                }
+            )
             append(" [").append(tag).append("] ").append(mensagem)
             if (!detalhe.isNullOrBlank()) append(" — ").append(detalhe)
         }
@@ -60,11 +66,20 @@ object KenkernLog {
         registrar(Nivel.W, tag, mensagem, erro)
     }
 
+    /** L1 (v0.1.28): registra INFO (instrumentação — ex.: uniforms da luz) no console. */
+    fun i(tag: String, mensagem: String) {
+        registrar(Nivel.I, tag, mensagem, null)
+    }
+
     private fun registrar(nivel: Nivel, tag: String, mensagem: String, erro: Throwable?) {
         if (androidLogging) {
             try {
                 val msg = if (erro != null) "$mensagem: ${erro.message ?: erro.javaClass.simpleName}" else mensagem
-                if (nivel == Nivel.E) Log.e(tag, msg, erro) else Log.w(tag, msg, erro)
+                when (nivel) {
+                    Nivel.E -> Log.e(tag, msg, erro)
+                    Nivel.W -> Log.w(tag, msg, erro)
+                    Nivel.I -> Log.i(tag, msg)
+                }
             } catch (_: Throwable) {
                 // INFRA-DIAG: logcat indisponível não pode derrubar o chamador.
             }
