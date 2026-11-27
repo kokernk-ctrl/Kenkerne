@@ -302,6 +302,7 @@
     <string name="diag_check_lua_api">Lua API (L2) — events, timers, area enter/exit/stay, tags, prefab, classes, input, ui, storage, log</string>
     <string name="diag_check_joystick">On-screen joystick — math (normalization, dead zone, 8 directions, actions)</string>
     <string name="editor_lua_abrir">Open in code editor</string>
+    <string name="editor_lua_problemas">Issues</string>
     <string name="editor_lua_verificar">Check</string>
     <string name="editor_lua_salvo">saved</string>
     <string name="editor_lua_buscar">Find</string>

@@ -1972,10 +1972,22 @@ class Diagnostico(private val appContext: Context) {
                 val erro = com.kenkern.engine.ui.screens.verificarLua(com.kenkern.engine.ui.editor.ModelosScript.conteudo(modelo))
                 if (erro != null) problemas.add("modelo '$modelo' não compila: ${erro.second}")
             }
-            // (e) Verificar: código bom e quebrado
-            if (com.kenkern.engine.ui.screens.verificarLua("local x = 1\nprint(x)") != null) problemas.add("verificar: código válido reprovado")
-            val erroRuim = com.kenkern.engine.ui.screens.verificarLua("local x =\nprint(x)")
-            if (erroRuim == null) problemas.add("verificar: código quebrado passou")
+            // (e) Verificar: 5 trechos QUEBRADOS + 3 VÁLIDOS (R2 — a premissa
+            // antiga chamava de quebrado "local x =\nprint(x)", que é Lua
+            // VÁLIDO; agora a fonte única é TrechosVerificar). Quebrado tem
+            // que devolver LINHA e MENSAGEM; válido tem que compilar.
+            for ((rotulo, codigo) in com.kenkern.engine.ui.editor.TrechosVerificar.VALIDOS) {
+                if (com.kenkern.engine.ui.screens.verificarLua(codigo) != null) {
+                    problemas.add("verificar: código válido reprovado ($rotulo)")
+                }
+            }
+            for ((rotulo, codigo) in com.kenkern.engine.ui.editor.TrechosVerificar.QUEBRADOS) {
+                val erroRuim = com.kenkern.engine.ui.screens.verificarLua(codigo)
+                if (erroRuim == null) problemas.add("verificar: código quebrado passou ($rotulo)")
+                if (erroRuim != null && (erroRuim.first < 1 || erroRuim.second.isBlank())) {
+                    problemas.add("verificar: erro sem linha/mensagem ($rotulo: $erroRuim)")
+                }
+            }
         } catch (t: Throwable) {
             problemas.add("exceção: ${t.message ?: t.javaClass.simpleName}")
         }

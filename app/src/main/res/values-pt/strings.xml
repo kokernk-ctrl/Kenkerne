@@ -302,6 +302,7 @@
     <string name="diag_check_lua_api">API Lua (L2) — eventos, timers, área on_enter/exit/stay, tags, prefab, classes, input, ui, storage, log</string>
     <string name="diag_check_joystick">Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)</string>
     <string name="editor_lua_abrir">Abrir no editor de código</string>
+    <string name="editor_lua_problemas">Problemas</string>
     <string name="editor_lua_verificar">Verificar</string>
     <string name="editor_lua_salvo">salvo</string>
     <string name="editor_lua_buscar">Buscar</string>

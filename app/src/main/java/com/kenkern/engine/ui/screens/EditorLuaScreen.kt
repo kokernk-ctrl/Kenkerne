@@ -79,7 +79,9 @@ import com.kenkern.engine.ui.theme.KenkernTextHigh
 import com.kenkern.engine.ui.theme.KenkernTextLow
 import com.kenkern.engine.ui.theme.KenkernTextMid
 import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -146,6 +148,9 @@ fun EditorLuaScreen(
     var carregado by remember(alvo) { mutableStateOf(false) }
     var ultimoErro by remember(alvo) { mutableStateOf<String?>(null) }
     var linhaErro by remember(alvo) { mutableIntStateOf(-1) }
+    // R2 (v0.1.29): PAINEL DE ERROS — lista (linha, mensagem) do Verificar e
+    // do Console; toque numa linha do painel pula o cursor para a linha.
+    var errosPainel by remember(alvo) { mutableStateOf<List<Pair<Int, String>>>(emptyList()) }
     var tamanhoFonte by remember { mutableIntStateOf(12) }
     var quebrarLinhas by remember { mutableStateOf(false) }
     var buscaAberta by remember { mutableStateOf(false) }
@@ -158,6 +163,7 @@ fun EditorLuaScreen(
     var campoAtivo by remember(alvo) { mutableStateOf(TextFieldValue("")) }
 
     // carrega o conteúdo (arquivo ou fonte inline) + último erro do Console
+    val scope = rememberCoroutineScope()
     LaunchedEffect(alvo) {
         withContext(Dispatchers.IO) {
             when (alvo) {
@@ -179,6 +185,7 @@ fun EditorLuaScreen(
         if (erro != null) {
             ultimoErro = erro.second
             linhaErro = erro.first
+            errosPainel = listOf(erro)
         }
         avisoGrande = doc.tamanhoBytes() > LIMITE_AVISO_BYTES
         listaEstado.scrollToItem(doc.linhaCursor.coerceAtLeast(0))
@@ -260,17 +267,20 @@ fun EditorLuaScreen(
                 KButton(
                     texto = stringResource(R.string.editor_lua_verificar),
                     onClick = {
-                        // C1.5: compila no LuaJ (SÓ sintaxe — nada executa) e
-                        // sublinha a linha com a mensagem.
+                        // C1.5 + R2: compila no LuaJ (SÓ sintaxe — nada executa),
+                        // sublinha a linha e LISTA os erros no painel.
                         val erro = verificarLua(doc.conteudo())
                         if (erro == null) {
                             ultimoErro = null
                             linhaErro = -1
+                            errosPainel = emptyList()
                             KenkernLog.w("EditorLua", "verificar: $nomeArquivo compila sem erros")
                         } else {
                             ultimoErro = erro.second
                             linhaErro = erro.first
+                            errosPainel = listOf(erro)
                             doc.moverCursor((erro.first - 1).coerceIn(0, doc.linhas.size - 1), 0)
+                            scope.launch { listaEstado.scrollToItem((erro.first - 1).coerceIn(0, doc.linhas.size - 1)) }
                             KenkernLog.e("EditorLua", "verificar: $nomeArquivo → linha ${erro.first}: ${erro.second}")
                         }
                         notificarEdicao()
@@ -391,16 +401,40 @@ fun EditorLuaScreen(
                 )
             }
 
-            // ---------- erro (sublinha a linha com a mensagem) ----------
-            if (ultimoErro != null) {
-                Text(
-                    stringResource(R.string.editor_lua_erro_linha, linhaErro, ultimoErro ?: ""),
-                    fontSize = 11.sp,
-                    color = KenkernError,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
-                )
+            // ---------- R2: painel de erros (LISTA; toque pula para a linha) ----------
+            if (errosPainel.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(KenkernSurface)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.editor_lua_problemas),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = KenkernError
+                    )
+                    for ((linha, msg) in errosPainel.take(3)) {
+                        Text(
+                            stringResource(R.string.editor_lua_erro_linha, linha, msg),
+                            fontSize = 11.sp,
+                            color = KenkernError,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (doc.linhas.isEmpty()) return@clickable
+                                    val alvoLinha = (linha - 1).coerceIn(0, doc.linhas.size - 1)
+                                    doc.moverCursor(alvoLinha, 0)
+                                    scope.launch { listaEstado.scrollToItem(alvoLinha) }
+                                    campoAtivo = TextFieldValue(doc.linhas[doc.linhaCursor])
+                                    revisao++
+                                }
+                        )
+                    }
+                }
             }
 
             // ---------- EDITOR: lista de linhas VIRTUALIZADA ----------
@@ -656,13 +690,23 @@ private fun TeclaChave(texto: String, onClick: () -> Unit) {
 }
 
 /**
- * C1.5: verifica a SINTAXE no LuaJ (compila SÓ — nada executa) e devolve
- * (linha, mensagem) do primeiro erro, ou null quando compila.
+ * C1.5 + R2 (v0.1.29): verifica a SINTAXE no COMPILADOR do LuaJ (LuaC) —
+ * compila e NADA EXECUTA — e devolve (linha, mensagem) do primeiro erro, ou
+ * null quando compila.
+ *
+ * R2: o caminho antigo (JsePlatform.standardGlobals().load) construía o
+ * ambiente COMPLETO (com os/io — fora do sandbox do runtime) e passava pelo
+ * Globals.load, cuja tabela de exceções ENGOLE Exception genérica
+ * (catch Exception → valor de erro sem lançar) — o resultado dependia do
+ * estado interno do Globals. LuaC.instance.compile é determinístico:
+ * erro de sintaxe = LuaError com a linha na mensagem.
  */
 fun verificarLua(conteudo: String): Pair<Int, String>? {
     return try {
-        val globals = org.luaj.vm2.lib.jse.JsePlatform.standardGlobals()
-        globals.load(conteudo, "verificar")
+        org.luaj.vm2.compiler.LuaC.instance.compile(
+            java.io.ByteArrayInputStream(conteudo.toByteArray(Charsets.UTF_8)),
+            "verificar"
+        )
         null
     } catch (t: Throwable) {
         val msg = t.message ?: t.javaClass.simpleName
