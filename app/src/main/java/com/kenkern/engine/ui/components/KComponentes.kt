@@ -6,7 +6,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kenkern.engine.ui.theme.KenkernAmber
+import com.kenkern.engine.ui.theme.KenkernBackground
 import com.kenkern.engine.ui.theme.KenkernSingCobre
 import com.kenkern.engine.ui.theme.KenkernSingCobreClaro
 import com.kenkern.engine.ui.theme.KenkernSingPreto
@@ -256,5 +262,33 @@ fun KPanel(
             .border(1.dp, KenkernSingCobre.copy(alpha = 0.45f), FormaBotao)
     ) {
         content()
+    }
+}
+
+/**
+ * R4 (v0.1.29) — KSCAFFOLD: o ÚNICO lugar do app que aplica os insets de
+ * status e navegação (mais o opcional do teclado). Causa raiz do print
+ * v0.1.28 na tela do TELAR: a barra superior era desenhada SOB a barra de
+ * status (título, desfazer, refazer e "Adicionar" cobertos pelos ícones do
+ * sistema) porque a tela não aplicava NENHUM inset. Telas de ferramenta
+ * usam este componente — a janela de JOGO é tela cheia SEM insets (regra
+ * P1/P2 da Onda 0) e o EditorScreen trata os seus dois estados por conta
+ * da janela de jogo.
+ */
+@Composable
+fun KScaffold(
+    modifier: Modifier = Modifier,
+    ime: Boolean = false,
+    conteudo: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier
+            .fillMaxSize()
+            .background(KenkernBackground)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .then(if (ime) Modifier.imePadding() else Modifier)
+    ) {
+        conteudo()
     }
 }

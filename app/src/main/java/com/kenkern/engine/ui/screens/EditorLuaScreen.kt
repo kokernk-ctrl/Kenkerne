@@ -247,14 +247,8 @@ fun EditorLuaScreen(
         sugestoes = AutocompletarLua.sugestoes(textoAntesDoCursor())
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(KenkernBackground)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
-    ) {
+    // R4: insets de status/navegação/teclado pelo ÚNICO KScaffold
+    com.kenkern.engine.ui.components.KScaffold(ime = true) {
         Column(Modifier.fillMaxSize()) {
             // ---------- barra superior R3: [voltar | nome e estado | Verificar | menu ⋮] ----------
             Row(

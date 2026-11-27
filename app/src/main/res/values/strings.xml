@@ -329,6 +329,8 @@
     <string name="editor_lua_erro_linha">Line %1$d: %2$s</string>
     <string name="telar_titulo">UI editor</string>
     <string name="telar_voltar">Back to 3D editor</string>
+    <string name="telar_vazio">No UI yet — create a screen to start (or add elements with Add).</string>
+    <string name="telar_criar_tela">Create UI screen</string>
     <string name="telar_adicionar">Add</string>
     <string name="telar_camadas">Layers</string>
     <string name="telar_selecione">Select a UI element</string>

@@ -2682,19 +2682,40 @@ class Diagnostico(private val appContext: Context) {
         val listaOk = AddNickLayout.listaMinimaVisivel(alturaUtilDp)
         val ultimoOk = AddNickLayout.ultimoTipoAlcancavel(alturaUtilDp, 24f)
 
-        if (cabe && suficiente && cabecalhoOk && listaOk && ultimoOk) {
+        // R4 (v0.1.29): TELAR — canvas com LETTERBOX: nas 3 proporções, o
+        // canvas INTEIRO cabe no espaço do editor (tela − painéis 190+230dp −
+        // barra 52dp) e PRESERVA a proporção escolhida (16:9/18:9/20:9) — o
+        // print v0.1.28 mostrava ~1,25:1 (escala fixa 0,28 cortada pelos
+        // painéis). Espaço simulado do alvo 800x360dp: 380×280dp.
+        val espacoTelarW = 380f
+        val espacoTelarH = 280f
+        var telarOk = true
+        val telarMsg = StringBuilder()
+        for (p in listOf("16:9", "18:9", "20:9")) {
+            val (lw, ah) = com.kenkern.engine.ui.telar.TelarAjuste.dimensoesDe(p)
+            val esc = com.kenkern.engine.ui.telar.TelarAjuste.escalaDeAjuste(espacoTelarW, espacoTelarH, lw.toFloat(), ah.toFloat())
+            val (rw, rh) = com.kenkern.engine.ui.telar.TelarAjuste.dimensaoRenderizada(esc, lw.toFloat(), ah.toFloat())
+            val preserva = com.kenkern.engine.ui.telar.TelarAjuste.proporcaoPreservada(esc, lw.toFloat(), ah.toFloat())
+            val cabeTudo = rw <= espacoTelarW + 0.5f && rh <= espacoTelarH + 0.5f
+            if (!preserva || !cabeTudo) telarOk = false
+            telarMsg.append("$p ${rw.toInt()}×${rh.toInt()}dp ")
+        }
+
+        if (cabe && suficiente && cabecalhoOk && listaOk && ultimoOk && telarOk) {
             c.aprovado(
                 "tela ${larguraTelaDp.roundToInt()}×${alturaTelaDp.roundToInt()}dp ($orientacao) · " +
                     "TopBar fixa ${fixa.roundToInt()}dp → rolável ${rolavel.roundToInt()}dp ✓ · " +
                     "altura útil ${alturaUtilDp.roundToInt()}dp · cabeçalho AddNick " +
                     "${AddNickLayout.CABECALHO_DP.roundToInt()}dp ≤ 20% ✓ · lista mínima " +
-                    "${(alturaUtilDp - AddNickLayout.alturaMinimaListaDp() - AddNickLayout.CABECALHO_DP).roundToInt()}dp de folga ✓ · último tipo alcançável ✓"
+                    "${(alturaUtilDp - AddNickLayout.alturaMinimaListaDp() - AddNickLayout.CABECALHO_DP).roundToInt()}dp de folga ✓ · último tipo alcançável ✓ · " +
+                    "TELAR letterbox $telarMsg(proporção preservada, cabe inteiro em 380×280dp)"
             )
         } else {
             c.falhou(
                 "tela ${larguraTelaDp.roundToInt()}×${alturaTelaDp.roundToInt()}dp ($orientacao) · " +
                     "TopBar fixa ${fixa.roundToInt()}dp cabe=$cabe · rolável ${rolavel.roundToInt()}dp suficiente=$suficiente · " +
-                    "altura útil ${alturaUtilDp.roundToInt()}dp · cabeçalho≤20%=$cabecalhoOk · lista=$listaOk · último=$ultimoOk"
+                    "altura útil ${alturaUtilDp.roundToInt()}dp · cabeçalho≤20%=$cabecalhoOk · lista=$listaOk · último=$ultimoOk · " +
+                    "TELAR letterbox=$telarOk ($telarMsg)"
             )
         }
     }

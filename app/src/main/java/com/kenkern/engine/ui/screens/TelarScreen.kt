@@ -95,7 +95,9 @@ import com.kenkern.engine.ui.theme.KenkernTextMid
  */
 @Composable
 fun TelarScreen(vm: EditorViewModel, onVoltarEditor: () -> Unit) {
-    val doc = remember { vm.carregarUiDoc() ?: DocumentoUi("ui") }
+    // R4: doc como ESTADO — o botão do estado vazio troca o documento inteiro
+    // (template) e a tela recompõe.
+    var doc by remember { mutableStateOf(vm.carregarUiDoc() ?: DocumentoUi("ui")) }
     var revisao by remember { mutableIntStateOf(0) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var panX by remember { mutableFloatStateOf(0f) }
@@ -104,12 +106,8 @@ fun TelarScreen(vm: EditorViewModel, onVoltarEditor: () -> Unit) {
     var menuAdd by remember { mutableStateOf(false) }
     var menuFonte by remember { mutableStateOf(false) }
 
-    // proporção de pré-visualização (U1.7): 16:9, 18:9, 20:9
-    val (larguraPrev, alturaPrev) = when (proporcao) {
-        "18:9" -> 2160 to 1080
-        "20:9" -> 2400 to 1080
-        else -> 1920 to 1080
-    }
+    // R4: proporção de pré-visualização — a FONTE ÚNICA é o TelarAjuste
+    val (larguraPrev, alturaPrev) = com.kenkern.engine.ui.telar.TelarAjuste.dimensoesDe(proporcao)
 
     // U1.5: SALVAR AUTOMÁTICO do .kui (500 ms após cada mudança)
     LaunchedEffect(revisao) {
@@ -118,6 +116,10 @@ fun TelarScreen(vm: EditorViewModel, onVoltarEditor: () -> Unit) {
         vm.salvarUiDoc(doc)
     }
 
+    // R4: insets de status E navegação pelo ÚNICO KScaffold — a barra
+    // superior do TELAR desenhava SOB a barra de status (print v0.1.28:
+    // título, desfazer, refazer e Adicionar cobertos pelos ícones do sistema).
+    com.kenkern.engine.ui.components.KScaffold {
     Column(Modifier.fillMaxSize().background(KenkernBackground)) {
         // ---------- barra superior do TELAR ----------
         Row(
@@ -272,75 +274,117 @@ fun TelarScreen(vm: EditorViewModel, onVoltarEditor: () -> Unit) {
                 }
             }
 
-            // ---------- canvas 1920x1080 com zoom/pan/régua/snap ----------
+            // ---------- R4: canvas com LETTERBOX — INTEIRO cabe, na proporção ----------
+            // Causa raiz do "16:9 quase quadrado (~1,25:1)" do print: escala
+            // FIXA 0,28 sobre 1920dp×1080dp (537×302dp) CORTADA pelos painéis
+            // (190+230dp) — só ~380dp de largura visível. Agora a escala é de
+            // AJUSTE ao espaço disponível (TelarAjuste) e o canvas usa a
+            // dimensão da PROPORÇÃO ESCOLHIDA (16:9/18:9/20:9), nunca a fixa.
             Box(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
                     .background(KenkernBackground)
             ) {
-                val escalaBase = 0.28f
-                Box(
-                    Modifier
-                        .align(Alignment.Center)
-                        .graphicsLayer {
-                            scaleX = escalaBase * zoom
-                            scaleY = escalaBase * zoom
-                            translationX = panX
-                            translationY = panY
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val escalaAjuste = com.kenkern.engine.ui.telar.TelarAjuste.escalaDeAjuste(
+                        constraints.maxWidth.toFloat(),
+                        constraints.maxHeight.toFloat(),
+                        larguraPrev.toFloat(),
+                        alturaPrev.toFloat()
+                    )
+                    val esc = escalaAjuste * zoom
+
+                    // R4: ESTADO VAZIO — orientação + botão que cria a tela do
+                    // template (as camadas não ficam mais "vazias sem orientação").
+                    if (doc.elementos.isEmpty()) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.align(Alignment.Center)
+                        ) {
+                            Text(
+                                stringResource(R.string.telar_vazio),
+                                fontSize = 12.sp,
+                                color = KenkernTextMid,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            KButton(
+                                texto = stringResource(R.string.telar_criar_tela),
+                                onClick = {
+                                    doc = com.kenkern.engine.ui.telar.TemplateUiMoedas.montar()
+                                    zoom = 1f; panX = 0f; panY = 0f
+                                    revisao++
+                                    KenkernLog.w("Telar", "tela de UI criada do template")
+                                },
+                                primario = true,
+                                modifier = Modifier.height(44.dp)
+                            )
                         }
-                ) {
+                    }
+
                     Box(
                         Modifier
-                            .width(LARGURA_REF.dp * escalaBase / escalaBase) // px lógicos; escala no graphicsLayer
-                            .height(ALTURA_REF.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF12151C))
-                            .border(1.dp, KenkernSingCobre)
-                            .pointerInput("pan") {
-                                detectTransformGestures { _, pan, zoomDelta, _ ->
-                                    zoom = (zoom * zoomDelta).coerceIn(0.6f, 4f)
-                                    panX += pan.x
-                                    panY += pan.y
-                                }
-                            }
-                            .pointerInput("tap") {
-                                detectTapGestures { offset ->
-                                    // selecção por toque (px da tela → px de referência)
-                                    val esc = escalaBase * zoom
-                                    val docX = ((offset.x - panX - size.width / 2f + (LARGURA_REF * esc) / 2f) / esc).toInt()
-                                    val docY = ((offset.y - panY - size.height / 2f + (ALTURA_REF * esc) / 2f) / esc).toInt()
-                                    val achou = doc.elementos.lastOrNull { e ->
-                                        if (e.oculto) return@lastOrNull false
-                                        val r = com.kenkern.engine.ui.telar.resolverRect(e, larguraPrev, alturaPrev)
-                                        docX >= r.x && docX <= r.x + r.largura && docY >= r.y && docY <= r.y + r.altura
-                                    }
-                                    doc.selecaoId = achou?.id ?: -1
-                                    revisao++
-                                }
+                            .align(Alignment.Center)
+                            .graphicsLayer {
+                                scaleX = esc
+                                scaleY = esc
+                                translationX = panX
+                                translationY = panY
                             }
                     ) {
-                        // régua superior (marcas a cada 240px de referência)
-                        Box(Modifier.fillMaxSize()) {
-                            for (e in doc.elementos) {
-                                val r = com.kenkern.engine.ui.telar.resolverRect(e, larguraPrev, alturaPrev)
-                                ElementoCanvas(e, r, doc.selecaoId == e.id) { dxTela, dyTela ->
-                                    // U1.1: arrasto → px de REFERÊNCIA com SNAP de 8px
-                                    val esc = (escalaBase * zoom).coerceAtLeast(0.01f)
-                                    val dxRef = (dxTela / esc).toInt()
-                                    val dyRef = (dyTela / esc).toInt()
-                                    val novoX = ((e.x + dxRef) / 8) * 8
-                                    val novoY = ((e.y + dyRef) / 8) * 8
-                                    doc.executar(ComandoTransformar(e.id, novoX, novoY, e.largura, e.altura))
-                                    revisao++
+                        Box(
+                            Modifier
+                                .width(larguraPrev.dp) // px de referência; escala no graphicsLayer
+                                .height(alturaPrev.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF12151C))
+                                .border(1.dp, KenkernSingCobre)
+                                .pointerInput("pan") {
+                                    detectTransformGestures { _, pan, zoomDelta, _ ->
+                                        zoom = (zoom * zoomDelta).coerceIn(0.6f, 4f)
+                                        panX += pan.x
+                                        panY += pan.y
+                                    }
                                 }
+                                .pointerInput("tap") {
+                                    detectTapGestures { offset ->
+                                        // selecção por toque (px da tela → px de referência)
+                                        val e2 = (escalaAjuste * zoom).coerceAtLeast(0.01f)
+                                        val docX = ((offset.x - panX - size.width / 2f + (larguraPrev * e2) / 2f) / e2).toInt()
+                                        val docY = ((offset.y - panY - size.height / 2f + (alturaPrev * e2) / 2f) / e2).toInt()
+                                        val achou = doc.elementos.lastOrNull { e ->
+                                            if (e.oculto) return@lastOrNull false
+                                            val r = com.kenkern.engine.ui.telar.resolverRect(e, larguraPrev, alturaPrev)
+                                            docX >= r.x && docX <= r.x + r.largura && docY >= r.y && docY <= r.y + r.altura
+                                        }
+                                        doc.selecaoId = achou?.id ?: -1
+                                        revisao++
+                                    }
+                                }
+                        ) {
+                            // régua superior (marcas a cada 240px de referência)
+                            Box(Modifier.fillMaxSize()) {
+                                for (e in doc.elementos) {
+                                    val r = com.kenkern.engine.ui.telar.resolverRect(e, larguraPrev, alturaPrev)
+                                    ElementoCanvas(e, r, doc.selecaoId == e.id) { dxTela, dyTela ->
+                                        // U1.1: arrasto → px de REFERÊNCIA com SNAP de 8px
+                                        val e3 = (escalaAjuste * zoom).coerceAtLeast(0.01f)
+                                        val dxRef = (dxTela / e3).toInt()
+                                        val dyRef = (dyTela / e3).toInt()
+                                        val novoX = ((e.x + dxRef) / 8) * 8
+                                        val novoY = ((e.y + dyRef) / 8) * 8
+                                        doc.executar(ComandoTransformar(e.id, novoX, novoY, e.largura, e.altura))
+                                        revisao++
+                                    }
+                                }
+                                // contorno da tela de referência
+                                Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .border(2.dp, KenkernSingCobre.copy(alpha = 0.6f))
+                                )
                             }
-                            // contorno da tela de referência
-                            Box(
-                                Modifier
-                                    .fillMaxSize()
-                                    .border(2.dp, KenkernSingCobre.copy(alpha = 0.6f))
-                            )
                         }
                     }
                 }
@@ -454,6 +498,7 @@ fun TelarScreen(vm: EditorViewModel, onVoltarEditor: () -> Unit) {
             }
         }
     }
+    } // R4: fecha o KScaffold (insets de status/navegação)
 }
 
 /** Um elemento DESENHADO no canvas (preview Compose com o estilo do modelo). */
