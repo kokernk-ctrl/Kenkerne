@@ -210,6 +210,8 @@
     <string name="jogo_debug_toque_ponto">Último toque: (%s, %s)px</string>
     <string name="jogo_debug_toque_alvo">Alvo: %s</string>
     <string name="jogo_debug_toque_consumidor">Consumido por: %s</string>
+    <string name="jogo_debug_toque_z">ordem z: Forçar saída 6 · debug 5 · Pausar/Sair 4 · jogo (base)</string>
+    <string name="jogo_debug_toque_janela">Aparece por 3 s após cada toque</string>
     <string name="editor_status_watchdog">travado</string>
     <!-- S2 (v0.1.24): overlay de debug de física durante o Play -->
     <string name="play_debug_titulo">FÍSICA (Play)</string>

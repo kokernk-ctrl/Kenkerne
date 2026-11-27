@@ -55,6 +55,21 @@ object RoteadorToqueJogo {
     const val WATCHDOG_MS = 3000L
 
     /**
+     * Onda 0 (v0.1.28): janela de exibição do OVERLAY DE TOQUE da janela de
+     * jogo — 3 s a partir do último toque (ETAPA A: coordenada/alvo/consumidor
+     * + ordem z visíveis na hora do problema).
+     */
+    const val JANELA_OVERLAY_MS = 3000L
+
+    /**
+     * Onda 0: o overlay de toque está visível? Puro (JVM prova): visível por
+     * [JANELA_OVERLAY_MS] a partir de [ultimoToqueMs] (uptimeMillis); antes do
+     * 1º toque (0) NUNCA aparece.
+     */
+    fun overlayDeToqueVisivel(ultimoToqueMs: Long, agoraMs: Long): Boolean =
+        ultimoToqueMs > 0L && agoraMs - ultimoToqueMs <= JANELA_OVERLAY_MS
+
+    /**
      * Decide quem recebe um toque na janela de jogo.
      * @param estado PlayState atual (STOPPED nunca chega aqui — janela de jogo desligada).
      * @param x/y coordenadas do toque em px da View.

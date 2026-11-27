@@ -210,6 +210,8 @@
     <string name="jogo_debug_toque_ponto">Last touch: (%s, %s)px</string>
     <string name="jogo_debug_toque_alvo">Target: %s</string>
     <string name="jogo_debug_toque_consumidor">Consumed by: %s</string>
+    <string name="jogo_debug_toque_z">z-order: Force exit 6 · debug 5 · Pause/Exit 4 · game (base)</string>
+    <string name="jogo_debug_toque_janela">Shows for 3 s after each touch</string>
     <string name="editor_status_watchdog">stalled</string>
     <!-- S2 (v0.1.24): physics debug overlay during Play -->
     <string name="play_debug_titulo">PHYSICS (Play)</string>

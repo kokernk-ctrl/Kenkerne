@@ -46,6 +46,8 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import android.os.SystemClock
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.GridOn
@@ -545,6 +547,12 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 modifier = Modifier
                                     .zIndex(4f)
                                     .align(Alignment.TopCenter)
+                                    // Onda 0 (v0.1.28): a janela de jogo é TELA CHEIA
+                                    // edge-to-edge — os botões vivem na ÁREA SEGURA
+                                    // (abaixo da barra de status; na lateral, fora
+                                    // da barra de navegação), nunca SOBRE as barras.
+                                    .statusBarsPadding()
+                                    .navigationBarsPadding()
                                     .padding(top = 8.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(KenkernSurface.copy(alpha = 0.75f))
@@ -596,6 +604,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     modifier = Modifier
                                         .zIndex(6f)
                                         .align(Alignment.TopCenter)
+                                        .statusBarsPadding()
                                         .padding(top = 64.dp)
                                 ) {
                                     KButton(
@@ -612,30 +621,19 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                 }
                             }
 
-                            // U1 (v0.1.27): ABA "UI" — abre o TELAR (árvore 2D
-                            // própria, .kui, camadas e Inspetor de UI).
-                            IconButton(
-                                onClick = { telaTelar = true },
-                                modifier = Modifier
-                                    .zIndex(5f)
-                                    .align(Alignment.TopEnd)
-                                    .padding(end = 8.dp, top = 96.dp)
-                                    .size(40.dp)
-                                    .background(KenkernSurface.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                            ) {
-                                Icon(
-                                    Icons.Filled.GridOn,
-                                    contentDescription = stringResource(R.string.telar_titulo),
-                                    tint = KenkernTextMid
-                                )
-                            }
-
-                            // P1.4: botão de debug de toque da janela de jogo.
+                            // Onda 0 (v0.1.28) — P1/P2: botão de debug de
+                            // toque da janela de jogo. ERA o "Focar" que o
+                            // usuário via SOBRE a barra de navegação: ícone
+                            // CenterFocusStrong + TopEnd sem insets. Agora (1)
+                            // vive na ÁREA SEGURA (insets de status e navegação);
+                            // (2) ícone TouchApp (não parece botão do editor).
                             IconButton(
                                 onClick = { debugToqueJogo = !debugToqueJogo },
                                 modifier = Modifier
                                     .zIndex(5f)
                                     .align(Alignment.TopEnd)
+                                    .statusBarsPadding()
+                                    .navigationBarsPadding()
                                     .padding(end = 8.dp, top = 52.dp)
                                     .size(40.dp)
                                     .background(
@@ -644,7 +642,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     )
                             ) {
                                 Icon(
-                                    Icons.Filled.CenterFocusStrong,
+                                    Icons.Filled.TouchApp,
                                     contentDescription = stringResource(R.string.jogo_debug_toque_botao),
                                     tint = if (debugToqueJogo) KenkernAmber else KenkernTextMid
                                 )
@@ -655,7 +653,35 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                                     modifier = Modifier
                                         .zIndex(5f)
                                         .align(Alignment.TopEnd)
+                                        .statusBarsPadding()
+                                        .navigationBarsPadding()
                                         .padding(top = 96.dp, end = 10.dp)
+                                )
+                            }
+                        }
+
+                        // Onda 0 (v0.1.28): ABA "UI" (TELAR) — ERA composta DENTRO
+                        // da janela de jogo (o "Grade" sobre a barra de navegação
+                        // do print do usuário). Agora é botão do EDITOR: só
+                        // existe com o jogo PARADO (oculto por ESTADO — nem
+                        // composto em Play), no canto do viewport. No editor a
+                        // raiz já aplica statusBars/navigationBars padding — sem
+                        // insets duplicados aqui. Nenhum botão do editor é alvo
+                        // em Play.
+                        if (!janelaDeJogo) {
+                            IconButton(
+                                onClick = { telaTelar = true },
+                                modifier = Modifier
+                                    .zIndex(3f)
+                                    .align(Alignment.TopEnd)
+                                    .padding(end = 8.dp, top = 64.dp)
+                                    .size(40.dp)
+                                    .background(KenkernSurface.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                            ) {
+                                Icon(
+                                    Icons.Filled.GridOn,
+                                    contentDescription = stringResource(R.string.telar_titulo),
+                                    tint = KenkernTextMid
                                 )
                             }
                         }
@@ -1878,7 +1904,7 @@ private fun buildDebugLines(sv: KenkernSurfaceView, viewPx: android.util.Size): 
         val ultimas = KenkernLog.registros().asReversed().take(3)
         lines.add("console: $erros erro(s) — últimos:")
         for (r in ultimas) {
-            lines.add("  ${if (r.nivel == KenkernLog.Nivel.E) "E" else "W"} [${r.tag}] ${r.mensagem}" +
+            lines.add("  ${when (r.nivel) { KenkernLog.Nivel.E -> "E"; KenkernLog.Nivel.W -> "W"; KenkernLog.Nivel.I -> "I" }} [${r.tag}] ${r.mensagem}" +
                 (r.detalhe?.let { " — $it" } ?: ""))
         }
     }
@@ -1890,6 +1916,9 @@ private fun buildDebugLines(sv: KenkernSurfaceView, viewPx: android.util.Size): 
  * tocado (px da view), o alvo decidido pelo RoteadorToqueJogo e quem consumiu
  * (cena do jogo ou botão Compose). Ligado pelo botão TouchApp no canto superior
  * direito da janela de jogo. SEM pointerInput: o overlay NÃO intercepta toques.
+ * Onda 0 (v0.1.28, ETAPA A): aparece POR 3 s após cada toque e acrescentou a
+ * ORDEM Z dos botões do jogo (Forçar saída 6 · debug 5 · Pausar/Sair 4 · jogo)
+ * e a janela de exibição de 3 s — na hora do problema, o print mostra tudo.
  */
 @Composable
 private fun OverlayToqueJogo(sv: KenkernSurfaceView?, modifier: Modifier = Modifier) {
@@ -1901,6 +1930,13 @@ private fun OverlayToqueJogo(sv: KenkernSurfaceView?, modifier: Modifier = Modif
         }
     }
     if (sv == null) return
+    // Onda 0 (v0.1.28): o overlay aparece POR 3 s a partir do ÚLTIMO toque
+    // (ETAPA A — na hora do problema: coordenada, alvo, consumidor e ordem z
+    // dos botões do jogo na tela). Sem toque recente, fica fora do caminho.
+    if (!com.kenkern.engine.ui.jogo.RoteadorToqueJogo.overlayDeToqueVisivel(
+            sv.ultimoToqueAteMs, SystemClock.uptimeMillis()
+        )
+    ) return
     val alvo = sv.ultimoAlvoToque
     Column(
         modifier
@@ -1939,6 +1975,19 @@ private fun OverlayToqueJogo(sv: KenkernSurfaceView?, modifier: Modifier = Modif
             lineHeight = 13.sp,
             fontFamily = FontFamily.Monospace,
             color = KenkernTextHigh
+        )
+        Text(
+            stringResource(R.string.jogo_debug_toque_z),
+            fontSize = 10.sp,
+            lineHeight = 13.sp,
+            fontFamily = FontFamily.Monospace,
+            color = KenkernTextMid
+        )
+        Text(
+            stringResource(R.string.jogo_debug_toque_janela),
+            fontSize = 9.sp,
+            lineHeight = 12.sp,
+            color = KenkernTextLow
         )
     }
 }

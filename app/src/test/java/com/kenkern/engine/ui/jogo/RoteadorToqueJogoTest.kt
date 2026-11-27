@@ -158,4 +158,24 @@ class RoteadorToqueJogoTest {
             AlvoToque.values().toSet()
         )
     }
+
+    // ---------- Onda 0 (v0.1.28): overlay de toque por 3 s (ETAPA A) ----------
+
+    @Test
+    fun overlayDeToqueAparecePor3sAposOCadaToque() {
+        val t = 100_000L
+        assertTrue("no instante do toque: visível", RoteadorToqueJogo.overlayDeToqueVisivel(t, t))
+        assertTrue("aos 2999 ms: visível", RoteadorToqueJogo.overlayDeToqueVisivel(t, t + 2999))
+        assertFalse("aos 3001 ms: some", RoteadorToqueJogo.overlayDeToqueVisivel(t, t + 3001))
+    }
+
+    @Test
+    fun overlayDeToqueNuncaApareceSemToque() {
+        assertFalse("antes do 1º toque (0) o overlay não existe", RoteadorToqueJogo.overlayDeToqueVisivel(0L, 50_000L))
+    }
+
+    @Test
+    fun janelaDoOverlayE3Segundos() {
+        assertEquals(3000L, RoteadorToqueJogo.JANELA_OVERLAY_MS)
+    }
 }

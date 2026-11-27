@@ -566,6 +566,14 @@ class KenkernSurfaceView(
     @Volatile var ultimoConsumidorToque: String = "—"
         private set
 
+    /**
+     * Onda 0 (v0.1.28): instante (uptimeMillis) do ÚLTIMO toque — o overlay de
+     * diagnóstico da janela de jogo aparece por 3 s a partir daqui (ETAPA A:
+     * coordenadas + alvo + z-order visíveis na hora do problema).
+     */
+    @Volatile var ultimoToqueAteMs: Long = 0L
+        private set
+
     /** U1.5 (v0.1.27): ponte Lua publicada pela cópia de Play (para os botões do TELAR). */
     @Volatile private var ponteUiPlay: NickLuaScripts? = null
 
@@ -600,6 +608,7 @@ class KenkernSurfaceView(
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 ultimoToqueX = event.x
                 ultimoToqueY = event.y
+                ultimoToqueAteMs = SystemClock.uptimeMillis()
                 val decisao = RoteadorToqueJogo.decidir(
                     requestedPlayState, event.x, event.y,
                     regioesReservadas, watchdogEmAlerta
