@@ -195,12 +195,14 @@ Formato: decisão · motivo · alternativa descartada.
    classes de teste, métodos `@Test`, checagens do Diagnóstico e `@Ignore`.
    Diminuir reprova; subir também reprova até o baseline ser aumentado no
    mesmo commit — o número nunca é ajustado para baixo para passar.
-2. **KVM**: o job do Portão 2 faz uma sonda (`/dev/kvm` + grupo `kvm`) antes
-   de instalar o emulador. Com KVM: API 34 x86_64, `swiftshader_indirect`,
-   cache do AVD e `connectedDebugAndroidTest`. Sem KVM: o MESMO corpo de
-   teste roda com Robolectric na JVM, com as checagens nativas/GL na lista de
-   AVISO (o runner não tem GPU nem a `.so` nativa). O modo usado vai no
-   CI-RESUMO.md.
+2. **KVM**: o job do Portão 2 roda em `ubuntu-22.04` e faz uma sonda
+   (`/dev/kvm`, grupo `kvm`, flags vmx/svm) com diagnóstico impresso; se o
+   device existir sem permissão, tenta `chmod 666`. Medido em 27/11/2026: o
+   `ubuntu-latest` (24.04) não entregou `/dev/kvm` — a sonda caiu na
+   alternativa. Com KVM: API 34 x86_64, `swiftshader_indirect`, cache do AVD
+   e `connectedDebugAndroidTest`. Sem KVM: o MESMO corpo de teste roda com
+   Robolectric na JVM, com as checagens nativas/GL na lista de AVISO (o
+   runner não tem GPU nem a `.so` nativa). O modo usado vai no CI-RESUMO.md.
 3. **Prova do fix**: para commits `fix`/`corrige` com arquivo de teste, o CI
    monta um worktree no commit PAI, copia só os testes tocados e os roda. Se
    todos passarem, o CI falha com "teste não reproduz o bug". Limite

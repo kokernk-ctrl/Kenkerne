@@ -193,7 +193,9 @@ jobs:
   gate2:
     name: Portão 2 (emulador)
     needs: gate1
-    runs-on: ubuntu-latest
+    # ubuntu-22.04: imagem com /dev/kvm exposto ao usuário runner (a 24.04
+    # do runner atual não entregou o device na sonda de 27/11/2026).
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     outputs:
       modo: ${{ steps.modo2.outputs.modo }}
@@ -220,7 +222,12 @@ jobs:
       - name: Sonda de KVM
         id: kvm
         run: |
-          if [ -e /dev/kvm ] && { [ -w /dev/kvm ] || id -nG | tr ' ' '\n' | grep -qx kvm; }; then
+          echo "== diagnóstico da sonda =="
+          ls -l /dev/kvm 2>&1 || echo "/dev/kvm ausente"
+          id
+          lscpu 2>/dev/null | grep -i -E "vmx|svm" || echo "sem flags vmx/svm"
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm 2>/dev/null || true; fi
+          if [ -e /dev/kvm ] && [ -w /dev/kvm ]; then
             echo "disponivel=1" >> "$GITHUB_OUTPUT"; echo "KVM disponível"
           else
             echo "disponivel=0" >> "$GITHUB_OUTPUT"; echo "KVM ausente — alternativa Robolectric"
