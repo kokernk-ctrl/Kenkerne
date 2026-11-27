@@ -1169,5 +1169,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
         /** Opções de limite de textura oferecidas no diálogo de importação (B2a). */
         val OPCOES_LIMITE_TEXTURA = intArrayOf(PerfilTexturaImportacao.ORIGINAL, 512, 1024, 2048)
+
+        /**
+         * Onda 0 (v0.1.28, P3): alvo PADRÃO da aba Código — o PRIMEIRO script
+         * do projeto (ordem alfabética, a mesma da lista de abas do editor de
+         * código); null = projeto sem script (a UI cria um do modelo "vazio"
+         * para o navegador de arquivos nascer com conteúdo). Puro — JVM prova.
+         */
+        fun alvoCodigoPadrao(scripts: List<String>): String? = scripts.firstOrNull()
     }
 }

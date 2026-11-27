@@ -25,16 +25,40 @@ object TopBarLayout {
     /** Padding horizontal da Row raiz: 4dp em cada lado. */
     const val PADDING_LATERAL_DP = 8f
 
-    /** Quantidade de botões fixos no FIM: Hierarquia + Inspetor + Resetar layout. */
+    /** Quantidade de botões fixos no FIM: Hierarquia + Inspetor + Mais. */
     const val BOTOES_FIM = 3
 
     /** Quantidade de botões fixos no INÍCIO: Voltar. */
     const val BOTOES_INICIO = 1
 
+    /**
+     * Onda 0 (v0.1.28): INVENTÁRIO da TopBar — no máximo 8 BOTÕES VISÍVEIS +
+     * um menu "mais" com o resto (antes: ~17 botões lotando a barra). Puro —
+     * a JVM prova que nada se perde: toda ferramenta antiga ou fica VISÍVEL
+     * ou entra no MENU_MAIS (guarda de regressão da reorganização).
+     */
+    val BOTOES_VISIVEIS = listOf(
+        "voltar", "undo", "redo", "play", "stop",
+        "hierarquia", "inspetor", "mais"
+    )
+
+    /** Ferramentas que migram para o menu "mais" (nenhuma desaparece). */
+    val MENU_MAIS = listOf(
+        "importar-arquivo", "importar-pasta", "mover", "girar", "escalar",
+        "local-global", "snap", "voo", "focar", "ver-pela-camera",
+        "auxiliares", "exportar", "diagnostico-toque", "resolucao", "resetar-layout"
+    )
+
+    /** Onda 0: seletor de abas Cena/UI/Código (porta de entrada da UI e do código). */
+    val ABAS = listOf("cena", "ui", "codigo")
+
+    /** Máximo de botões visíveis na TopBar (regra da Onda 0 P4). */
+    const val MAX_BOTOES_VISIVEIS = 8
+
     /** Início fixo: Voltar (40dp) + separador (9dp) = 49dp. */
     fun larguraInicioFixoDp(): Float = BOTOES_INICIO * BOTAO_DP + SEPARADOR_DP
 
-    /** Fim fixo: separador (9dp) + 3 botões (Hierarquia, Inspetor, Resetar) = 129dp. */
+    /** Fim fixo: separador (9dp) + 3 botões (Hierarquia, Inspetor, MAIS) = 129dp. */
     fun larguraFimFixoDp(): Float = SEPARADOR_DP + BOTOES_FIM * BOTAO_DP
 
     /** Soma das duas seções fixas + padding lateral da barra. */
