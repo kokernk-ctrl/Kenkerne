@@ -43,7 +43,7 @@ class DiagAgendaTest {
     fun `agenda sem duplicatas e catalogo com 30 checagens`() {
         val agenda = Diagnostico.agendaDeExecucao()
         assertEquals("agenda sem ids duplicados", agenda.size, agenda.toSet().size)
-        assertEquals("catálogo completo (30 checagens — aceite 30/30)", 30, idsCatalogo.size)
+        assertEquals("catálogo completo (33 checagens — 30 da v0.1.28 + armazenamento/pastas/explorador da F6)", 33, idsCatalogo.size)
     }
 
     @Test

@@ -356,6 +356,9 @@ ui/  worlds/  dialogues/  build/  .kenkern/
     <string name="telar_remover">Remover</string>
     <string name="editor_inspector_oculto">oculto</string>
     <string name="editor_inspector_travado">travado</string>
+    <string name="diag_check_armazenamento">Armazenamento — locais App × Aparelho (permissão, escrever/ler, auto-save)</string>
+    <string name="diag_check_pastas">Pastas do projeto — árvore F2 + migração de projetos antigos</string>
+    <string name="diag_check_explorador">Explorador — listagem paginada de 5.000 arquivos sintéticos no tempo limite</string>
     <string name="diag_check_ui">UI do TELAR — âncoras nas 3 proporções, ida e volta .kui, migração do joystick, commands e tela do template</string>
     <string name="diag_check_editor">Editor de código Lua — tokenizador, indentação automática, autocompletar offline, modelos e Verificar (LuaJ)</string>
     <string name="diag_check_area">Nicks de Área (ZONA) — enter/exit/stay, filtro por tag, uma vez só, bodies/contains, signal e checkpoint/respawn</string>

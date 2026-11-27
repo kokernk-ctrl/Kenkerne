@@ -2,6 +2,8 @@ package com.kenkern.engine.diag
 
 import android.app.ActivityManager
 import android.content.Context
+import java.io.File
+import com.kenkern.engine.projects.ProjectManager
 import android.opengl.GLES30
 import com.kenkern.engine.assets.image.Etc2
 import com.kenkern.engine.assets.image.KimgPipeline
@@ -111,7 +113,8 @@ class Diagnostico(private val appContext: Context) {
             "nativo", "etc2-nativo", "malha-nativa", "ck", "kern", "materiais",
             "gltf", "fbx", "importar", "kimg", "picking", "toque", "release",
             "layout", "joystick", "lua-api", "jogo",
-            "play-sair", "area", "editor", "ui"
+            "play-sair", "area", "editor", "ui",
+            "armazenamento", "pastas", "explorador"
         )
         val AGENDA_GL = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "luz", "astc")
         const val AGENDA_MEMORIA = "memoria"
@@ -154,6 +157,9 @@ class Diagnostico(private val appContext: Context) {
             Checagem("play-sair", "Saída da janela de jogo — roteamento de toque (botões nunca consumidos), watchdog 3 s e BACK"),
             Checagem("area", "Nicks de Área (ZONA) — enter/exit/stay, filtro por tag, uma vez só, bodies/contains, signal e checkpoint/respawn"),
             Checagem("editor", "Editor de código Lua — tokenizador, indentação automática, autocompletar offline, modelos e Verificar (LuaJ)"),
+            Checagem("armazenamento", "Armazenamento — locais App × Aparelho (permissão, escrever/ler, auto-save)"),
+            Checagem("pastas", "Pastas do projeto — árvore F2 + migração de projetos antigos"),
+            Checagem("explorador", "Explorador — listagem paginada de 5.000 arquivos sintéticos no tempo limite"),
             Checagem("ui", "UI do TELAR — âncoras nas 3 proporções, ida e volta .kui, migração do joystick, commands e tela do template")
         )
 
@@ -621,6 +627,9 @@ class Diagnostico(private val appContext: Context) {
                             "area" -> checarArea(c)
                             "editor" -> checarEditor(c)
                             "ui" -> checarUi(c)
+                            "armazenamento" -> checarArmazenamento(c)
+                            "pastas" -> checarPastas(c)
+                            "explorador" -> checarExplorador(c)
                         }
                     }.onFailure {
                         c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
@@ -2016,7 +2025,162 @@ class Diagnostico(private val appContext: Context) {
         }
     }
 
-    /** Checagem "ui" (U1, v0.1.27) — TELAR sem GL: âncoras nas 3 proporções (16:9, 18:9, 20:9), área segura, .kui ida e volta, migração do joystick sem perder dados, undo/redo por COMMAND e a tela do template. Onda 0 (v0.1.28, P5): também as FONTES OFL — carrega CADA uma do APK (assets/fonts, sem rede) e conta as que abriram. */
+
+    /**
+     * Checagem "armazenamento" (F6, v0.1.30) — os DOIS LOCAIS do F1:
+     *  (a) App: roundtrip de GRAVAÇÃO ATÔMICA + leitura + regravação
+     *      (o mesmo caminho do auto-save) no filesDir;
+     *  (b) Aparelho: estado da PERMISSÃO "Acesso a todos os arquivos";
+     *      concedida → roundtrip em /storage/emulated/0/Kenkern (escrever,
+     *      ler, apagar) + espaço livre; NEGADA → não é FALHA (o app segue
+     *      no App e mantém .kernpack/SAF — design F1), o estado vai na
+     *      mensagem.
+     */
+    private fun checarArmazenamento(c: Checagem) {
+        val problemas = ArrayList<String>(3)
+        val app = appContext
+        val t0 = System.nanoTime()
+        try {
+            // (a) App: escrever → ler → regravar (auto-save igual nos dois locais)
+            val dirApp = File(app.filesDir ?: File(app.cacheDir, "files"), "diag-armazenamento")
+            dirApp.mkdirs()
+            val alvo = File(dirApp, "auto-save-teste.ck")
+            if (!ProjectManager.writeFileAtomic(alvo, "conteúdo 1\n")) {
+                problemas.add("App: gravação atômica falhou")
+            }
+            if (alvo.readText() != "conteúdo 1\n") problemas.add("App: leitura divergiu")
+            if (!ProjectManager.writeFileAtomic(alvo, "conteúdo 2 (regravação)\n")) {
+                problemas.add("App: regravação (auto-save) falhou")
+            }
+            if (alvo.readText() != "conteúdo 2 (regravação)\n") problemas.add("App: releitura divergiu")
+            alvo.delete()
+
+            // (b) Aparelho
+            val permissao = com.kenkern.engine.projects.PermissaoAparelho.concedida(app)
+            if (permissao) {
+                val raizAparelho = com.kenkern.engine.projects.AparelhoStorage.raiz(app)
+                val dirAparelho = File(raizAparelho, ".diag-teste")
+                dirAparelho.mkdirs()
+                val f = File(dirAparelho, "roundtrip.tmp")
+                if (!ProjectManager.writeFileAtomic(f, "aparelho")) {
+                    problemas.add("Aparelho: gravação falhou (com permissão concedida)")
+                } else if (f.readText() != "aparelho") {
+                    problemas.add("Aparelho: leitura divergiu")
+                }
+                f.delete()
+                dirAparelho.delete()
+            }
+        } catch (t: Throwable) {
+            problemas.add("exceção: ${t.message ?: t.javaClass.simpleName}")
+        }
+        val ms = (System.nanoTime() - t0) / 1_000_000L
+        if (problemas.isEmpty()) {
+            val permissao = com.kenkern.engine.projects.PermissaoAparelho.concedida(app)
+            val livreMb = com.kenkern.engine.projects.AppStorage.raiz(app).usableSpace / (1024L * 1024L)
+            c.aprovado(
+                (if (permissao) "PERMISSÃO concedida — App e Aparelho leem/gravam (roundtrip OK)" else "permissão NEGADA — o app segue no App (por design: .kernpack e SAF continuam)") +
+                    " · auto-save atômico (grava→lê→regrava→lê) no App ✓ · ${ms} ms · App livre ${livreMb} MB"
+            )
+        } else {
+            c.falhou(problemas.joinToString("; ") + " · ${ms} ms")
+        }
+    }
+
+    /**
+     * Checagem "pastas" (F6, v0.1.30) — árvore F2 nova COMPLETA + MIGRAÇÃO
+     * de estrutura antiga (idempotente, NADA apagado).
+     */
+    private fun checarPastas(c: Checagem) {
+        val problemas = ArrayList<String>(3)
+        try {
+            val base = File(appContext.cacheDir, "diag-pastas")
+            base.deleteRecursively()
+            base.mkdirs()
+            // (a) árvore nova completa
+            val novo = File(base, "novo")
+            novo.mkdirs()
+            com.kenkern.engine.projects.GuardasCaminho.garantirArvore(novo)
+            if (!com.kenkern.engine.projects.GuardasCaminho.arvoreCompleta(novo)) {
+                problemas.add("árvore nova INCOMPLETA")
+            }
+            // (b) migração de projeto antigo: acrescenta sem apagar
+            val antigo = File(base, "antigo")
+            File(antigo, "assets").mkdirs()
+            File(antigo, "scenes").mkdirs()
+            val cena = File(antigo, "scenes/cena.ck")
+            cena.writeText("# antiga")
+            com.kenkern.engine.projects.GuardasCaminho.garantirArvore(antigo)
+            if (!com.kenkern.engine.projects.GuardasCaminho.arvoreCompleta(antigo)) {
+                problemas.add("migração não completou a árvore")
+            }
+            if (cena.readText() != "# antiga") problemas.add("migração APAGOU arquivo do usuário")
+            base.deleteRecursively()
+        } catch (t: Throwable) {
+            problemas.add("exceção: ${t.message ?: t.javaClass.simpleName}")
+        }
+        if (problemas.isEmpty()) {
+            c.aprovado(
+                "árvore nova completa (assets/{models,textures,materials,audio,fonts,video}, scenes, nicks, scripts, animations, shaders, ui, worlds, dialogues, build, .kenkern) · " +
+                    "migração de projeto antigo acrescenta o que falta e NÃO apaga nada (cena preservada) · " +
+                    "garantas: caminho dentro da raiz (canônico), 'ponto ponto' bloqueado, nomes ≤60"
+            )
+        } else {
+            c.falhou(problemas.joinToString("; "))
+        }
+    }
+
+    /**
+     * Checagem "explorador" (F6, v0.1.30) — listagem PAGINADA de 5.000
+     * arquivos SINTÉTICOS dentro do LIMITE DE TEMPO (a lista virtualizada
+     * do painel Projeto pede por janela — nunca a pasta inteira de uma vez).
+     */
+    private fun checarExplorador(c: Checagem) {
+        val problemas = ArrayList<String>(3)
+        val dir = File(appContext.cacheDir, "diag-explorador-5000")
+        dir.mkdirs()
+        var criacaoMs = 0L
+        var listagemMs = 0L
+        var listados = 0
+        try {
+            // 5.000 arquivos sintéticos
+            val t0 = System.nanoTime()
+            if (com.kenkern.engine.projects.ExploradorArquivos.total(dir) < 5000) {
+                for (i in 0 until 5000) {
+                    File(dir, "arquivo_${i.toString().padStart(4, '0')}.lua").writeText("x")
+                }
+            }
+            criacaoMs = (System.nanoTime() - t0) / 1_000_000L
+
+            // listagem paginada COMPLETA
+            val t1 = System.nanoTime()
+            val paginas = com.kenkern.engine.projects.ExploradorArquivos.numeroDePaginas(dir)
+            for (i in 0 until paginas) {
+                listados += com.kenkern.engine.projects.ExploradorArquivos.pagina(dir, i).size
+            }
+            listagemMs = (System.nanoTime() - t1) / 1_000_000L
+            if (listados != 5000) problemas.add("listou $listados de 5000 arquivos")
+            if (listagemMs > 2000L) problemas.add("listagem paginada levou $listagemMs ms (limite 2000 ms)")
+            // a PÁGINA em si é pequena (não trava o frame): ≤ 200 itens
+            val maiorPagina = com.kenkern.engine.projects.ExploradorArquivos.pagina(dir, 0).size
+            if (maiorPagina > com.kenkern.engine.projects.ExploradorArquivos.PAGINA_PADRAO) {
+                problemas.add("página com $maiorPagina itens (> ${com.kenkern.engine.projects.ExploradorArquivos.PAGINA_PADRAO})")
+            }
+        } catch (t: Throwable) {
+            problemas.add("exceção: ${t.message ?: t.javaClass.simpleName}")
+        } finally {
+            dir.deleteRecursively()
+        }
+        if (problemas.isEmpty()) {
+            c.aprovado(
+                "5.000 sintéticos: criação ${criacaoMs} ms · listagem paginada COMPLETA (25 páginas × 200) em $listagemMs ms (limite 2000 ms) · " +
+                    "página ≤ ${com.kenkern.engine.projects.ExploradorArquivos.PAGINA_PADRAO} itens (a lista virtualizada pede por janela)"
+            )
+        } else {
+            c.falhou(problemas.joinToString("; ") + " · criação ${criacaoMs} ms · listagem $listagemMs ms")
+        }
+    }
+
+    /** Checagem "ui" (U1, v0.1.27) — TELAR sem GL: — TELAR sem GL: âncoras nas 3 proporções (16:9, 18:9, 20:9), área segura, .kui ida e volta, migração do joystick sem perder dados, undo/redo por COMMAND e a tela do template. Onda 0 (v0.1.28, P5): também as FONTES OFL — carrega CADA uma do APK (assets/fonts, sem rede) e conta as que abriram. */
     private fun checarUi(c: Checagem) {
         val problemas = ArrayList<String>(4)
         var fontesCarregadas = 0

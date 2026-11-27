@@ -50,7 +50,10 @@ object DiagNomesChecagem {
         "play-sair" to R.string.diag_check_play_sair,
         "area" to R.string.diag_check_area,
         "editor" to R.string.diag_check_editor,
-        "ui" to R.string.diag_check_ui
+        "ui" to R.string.diag_check_ui,
+        "armazenamento" to R.string.diag_check_armazenamento,
+        "pastas" to R.string.diag_check_pastas,
+        "explorador" to R.string.diag_check_explorador
     )
 
     /**
