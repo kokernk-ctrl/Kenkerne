@@ -54,7 +54,9 @@ fun KenkernAppRoot() {
                 isLoading = vm.isLoading.value,
                 statusMessage = vm.statusMessage.value,
                 onConsumeStatus = { vm.consumeStatus() },
-                onCreateProject = { name, template -> vm.createAndEnterProject(name, template) },
+                onCreateProject = { name, template, storageId, pastaPai ->
+                    vm.createAndEnterProject(name, template, storageId, pastaPai) },
+                onMoverProject = { handle, paraAparelho -> vm.moverProjeto(handle, paraAparelho) },
                 onOpenProject = { handle -> vm.openProject(handle) },
                 onRenameProject = { handle, name -> vm.renameProject(handle, name) },
                 onDeleteProject = { handle -> vm.deleteProject(handle) },

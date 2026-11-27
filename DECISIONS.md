@@ -24,6 +24,19 @@ Formato: decisão · motivo · alternativa descartada.
 7. **LuaJ como dependência** — Java puro, roda na ART sem NDK. Alternativa:
    lua-native via JNI desde o início (contra a decisão 6).
 
+8. **F1 (v0.1.30): interface ProjectStorage com DOIS locais — "App"
+   (filesDir/projects, o atual, rápido) e "Aparelho"
+   (/storage/emulated/0/Kenkern/Projetos, acesso DIRETO por java.io.File com a
+   permissão "Acesso a todos os arquivos" — MANAGE_EXTERNAL_STORAGE no API
+   30+, WRITE/READ_EXTERNAL_STORAGE no 26–29)** · motivo: o app é distribuído
+   por APK do GitHub (sem Play, que bloqueia ALL_FILES); o usuário pediu pasta
+   VISÍVEL para os projetos; File direto = sem indireção de SAF e sem uri
+   expirando a cada reboot. Sem a permissão o app SEGUE no "App" e mantém
+   .kernpack e SAF (nada trava). Mover entre locais = CÓPIA VERIFICADA
+   (mesmos caminhos + tamanhos), original mantido até confirmação ·
+   alternativa descartada: só SAF (fricção alta;.uri não persiste em alguns
+   fabricantes) e só armazenamento interno (o usuário não vê os arquivos).
+
 ## Processo
 
 8. **Plano de fases 2–13 derivado do Prompt Mestre v3** (o texto recebido traz o

@@ -8,6 +8,8 @@ import androidx.compose.foundation.Canvas
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -119,7 +121,8 @@ fun HomeScreen(
     isLoading: Boolean,
     statusMessage: String?,
     onConsumeStatus: () -> Unit,
-    onCreateProject: (String, String?) -> Unit,
+    onCreateProject: (String, String?, String, String) -> Unit,
+    onMoverProject: (ProjectHandle, Boolean) -> Unit = { _, _ -> },
     onOpenProject: (ProjectHandle) -> Unit,
     onRenameProject: (ProjectHandle, String) -> Unit,
     onDeleteProject: (ProjectHandle) -> Unit,
@@ -368,11 +371,12 @@ fun HomeScreen(
     }
 
     if (showNewDialog) {
+        // F1: o diálogo agora escolhe o LOCAL (App × Aparelho) e a pasta pai
         NewProjectDialog(
             onDismiss = { showNewDialog = false },
-            onCreate = { name, template ->
+            onCreate = { name, template, storageId, pastaPai ->
                 showNewDialog = false
-                onCreateProject(name, template)
+                onCreateProject(name, template, storageId, pastaPai)
             }
         )
     }
@@ -532,7 +536,8 @@ private fun ProjectCard(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onDuplicate: () -> Unit,
-    onExportar: () -> Unit
+    onExportar: () -> Unit,
+    onMover: (paraAparelho: Boolean) -> Unit = {}
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
@@ -628,6 +633,24 @@ private fun ProjectCard(
                             onDuplicate()
                         }
                     )
+                    // F1 (v0.1.30): MOVER para o outro local (cópia verificada;
+                    // original mantido até confirmação — ver hub_mover_ok).
+                    val noAparelho = project.root.absolutePath.contains("Kenkern/Projetos")
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(
+                                    if (noAparelho) R.string.hub_mover_app else R.string.hub_mover_aparelho
+                                ),
+                                fontSize = 13.sp,
+                                color = KenkernTextHigh
+                            )
+                        },
+                        onClick = {
+                            menuOpen = false
+                            onMover(!noAparelho)
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.hub_delete), fontSize = 13.sp, color = KenkernError) },
                         onClick = {
@@ -706,10 +729,42 @@ private fun RenameProjectDialog(
 }
 
 @Composable
-private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String, String?) -> Unit) {
+private fun NewProjectDialog(
+    onDismiss: () -> Unit,
+    onCreate: (String, String?, String, String) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var name by remember { mutableStateOf("") }
     // M1.7: TEMPLATE ao criar — Vazio ou "Coletar moedas" (jogável na hora)
     var template by remember { mutableStateOf<String?>(null) }
+    // F1 (v0.1.30): LOCAL do projeto — padrão "Aparelho" SE permitido, senão
+    // "App" (sem permissão o app segue em (a) e mantém .kernpack/SAF).
+    var aparelhoPermitido by remember { mutableStateOf(false) }
+    var local by remember { mutableStateOf("app") }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        aparelhoPermitido = com.kenkern.engine.projects.AparelhoStorage.disponivel(context)
+        local = if (aparelhoPermitido) "aparelho" else "app"
+    }
+    // re-checa a permissão quando o usuário VOLTA das configurações do sistema
+    val cicloVida = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(cicloVida) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+            if (ev == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                aparelhoPermitido = com.kenkern.engine.projects.AparelhoStorage.disponivel(context)
+                if (aparelhoPermitido && local != "aparelho") local = "aparelho"
+            }
+        }
+        cicloVida.lifecycle.addObserver(obs)
+        onDispose { cicloVida.lifecycle.removeObserver(obs) }
+    }
+    // seletor de PASTA PAI: subpastas da raiz do local escolhido
+    val subPastas = remember(local, aparelhoPermitido) {
+        runCatching {
+            com.kenkern.engine.projects.Storages.porId(local).raiz(context)
+                .listFiles()?.filter { it.isDirectory }?.map { it.name }?.sorted()
+        }.getOrNull() ?: emptyList()
+    }
+    var pastaPai by remember { mutableStateOf("") }
     val valid = name.trim().length >= 2
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -738,6 +793,86 @@ private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String, String?) 
                         color = KenkernAmber.copy(alpha = 0.85f),
                         modifier = Modifier.padding(8.dp)
                     )
+                }
+                Spacer(Modifier.height(12.dp))
+                // F1: LOCAL — chips App × Aparelho
+                Text(stringResource(R.string.hub_local_titulo), fontSize = 11.sp, color = KenkernTextMid)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    androidx.compose.material3.FilterChip(
+                        selected = local == "app",
+                        onClick = { local = "app" },
+                        label = { Text(stringResource(R.string.hub_local_app), fontSize = 11.sp) }
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = local == "aparelho",
+                        onClick = {
+                            if (!aparelhoPermitido) {
+                                com.kenkern.engine.diag.KenkernLog.w(
+                                    "Hub", "local 'aparelho' escolhido SEM permissão — mostro a explicação"
+                                )
+                            }
+                            local = "aparelho"
+                        },
+                        enabled = true,
+                        label = { Text(stringResource(R.string.hub_local_aparelho), fontSize = 11.sp) }
+                    )
+                }
+                // F1: SEM a permissão → TELA QUE EXPLICA (bloco no diálogo) com o
+                // botão que ABRE A CONFIGURAÇÃO DO SISTEMA; negada, o app segue
+                // em (a) com .kernpack e SAF.
+                if (local == "aparelho" && !aparelhoPermitido) {
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = KenkernBackground,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(8.dp)) {
+                            Text(
+                                stringResource(R.string.hub_permissao_titulo),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = KenkernAmber
+                            )
+                            Text(
+                                stringResource(R.string.hub_permissao_explicacao),
+                                fontSize = 11.sp,
+                                color = KenkernTextMid
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                androidx.compose.material3.TextButton(onClick = {
+                                    com.kenkern.engine.projects.PermissaoAparelho.abrirConfiguracao(context)
+                                }) { Text(stringResource(R.string.hub_permissao_abrir), fontSize = 12.sp) }
+                                androidx.compose.material3.TextButton(onClick = { local = "app" }) {
+                                    Text(stringResource(R.string.hub_permissao_continuar_app), fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+                // F1: PASTA PAI (subpastas da raiz do local; "" = raiz)
+                if (local == "aparelho" && aparelhoPermitido && subPastas.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(stringResource(R.string.hub_local_pasta_pai), fontSize = 11.sp, color = KenkernTextMid, modifier = Modifier.align(androidx.compose.ui.Alignment.CenterVertically))
+                        androidx.compose.material3.FilterChip(
+                            selected = pastaPai.isEmpty(),
+                            onClick = { pastaPai = "" },
+                            label = { Text(stringResource(R.string.hub_local_raiz), fontSize = 11.sp) }
+                        )
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
+                        for (sub in subPastas) {
+                            androidx.compose.material3.FilterChip(
+                                selected = pastaPai == sub,
+                                onClick = { pastaPai = if (pastaPai == sub) "" else sub },
+                                label = { Text(sub, fontSize = 11.sp) }
+                            )
+                        }
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
                 // M1.7: seletor de TEMPLATE (chips; padrão = vazio)
@@ -773,7 +908,7 @@ private fun NewProjectDialog(onDismiss: () -> Unit, onCreate: (String, String?) 
         },
         confirmButton = {
             TextButton(
-                onClick = { if (valid) onCreate(name.trim(), template) },
+                onClick = { if (valid) onCreate(name.trim(), template, local, pastaPai) },
                 enabled = valid
             ) { Text(stringResource(R.string.hub_create), color = KenkernAmber, fontWeight = FontWeight.SemiBold) }
         },

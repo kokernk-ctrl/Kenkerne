@@ -46,6 +46,14 @@ object ProjectManager {
         "ui", "worlds"
     )
 
+    /**
+     * F2 (v0.1.30): árvore COMPLETA visível ao criar (assets/{models,
+     * textures,materials,audio,fonts,video}, scenes, nicks, scripts,
+     * animations, shaders, ui, worlds, dialogues, build, .kenkern). Guardas
+     * puras e teste da árvore em [GuardasCaminho].
+     */
+    val ARVORE = GuardasCaminho.ARVORE_PROJETO
+
     /** Último erro ocorrido (para a UI mostrar ao usuário; thread-safe via volatile). */
     @Volatile
     var lastError: String? = null
@@ -74,31 +82,45 @@ object ProjectManager {
     /**
      * Cria um projeto novo com a estrutura padrão de pastas e o project.kenkern.
      * Retorna null em caso de falha (mensagem em [lastError]) — NUNCA lança exceção.
+     *
+     * F1 (v0.1.30): [storage] escolhe o LOCAL (App interno × Aparelho em
+     * /storage/emulated/0/Kenkern/Projetos com java.io.File; sem permissão
+     * o local caí para App e o projeto segue — nada trava).
      */
-    fun createProject(context: Context, projectName: String, template: String? = null): ProjectHandle? = runCatching {
+    fun createProject(
+        context: Context,
+        projectName: String,
+        template: String? = null,
+        storage: ProjectStorage = Storages.padrao(context),
+        pastaPai: File? = null
+    ): ProjectHandle? = runCatching {
         clearError()
         val clean = sanitize(projectName)
         if (clean.isBlank()) {
             lastError = "Nome de projeto inválido"
             return null
         }
+        // F1: o local efetivo — "Aparelho" SEM permissão cai para "App" (o
+        // app segue em (a) e mantém .kernpack/SAF; nada bloqueia a criação).
+        val localEfetivo = if (storage is AparelhoStorage && !storage.disponivel(context)) {
+            KenkernLog.w(TAG, "local 'aparelho' indisponível (sem permissão) — criando no 'app'")
+            AppStorage
+        } else storage
+        val raiz = pastaPai?.takeIf { it.isDirectory } ?: localEfetivo.raiz(context)
+        if (!raiz.isDirectory && !raiz.mkdirs()) {
+            lastError = "Não foi possível criar a raiz de projetos"
+            return null
+        }
         // R7: o NOME do projeto recebe o sufixo " 2" quando já existe — a
-        // pasta E o name= do project.kenkern usam o MESMO nome único (antes:
-        // a pasta virava "mm (2)" mas o name= continuava "mm" — o Hub
-        // listava DOIS projetos chamados "mm").
-        val raiz = projectsRoot(context)
+        // pasta E o name= do project.kenkern usam o MESMO nome único.
         val nomeUnicoProjeto = nomeUnico(raiz, clean)
         val root = File(raiz, nomeUnicoProjeto)
         if (!ensureDir(root)) {
             lastError = "Não foi possível criar a pasta do projeto"
             return null
         }
-        for (folder in FOLDERS) {
-            if (!ensureDir(File(root, folder))) {
-                lastError = "Falha ao criar pasta '$folder'"
-                return null
-            }
-        }
+        // F2: árvore completa (assets/{…}, …, dialogues, .kenkern).
+        GuardasCaminho.garantirArvore(root)
         val created = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(Date())
         val meta = buildString {
             appendLine("KENKERN_PROJECT")
@@ -206,6 +228,62 @@ object ProjectManager {
     }.onFailure { reportError("duplicateProject", it) }.getOrNull()
 
     /**
+     * F1 (v0.1.30) — MOVER projeto para OUTRO local (App ↔ Aparelho):
+     * CÓPIA VERIFICADA (mesmos caminhos + mesmos tamanhos — [GuardasCaminho.
+     * copiaVerificada]) e o ORIGINAL é MANTIDO até a confirmação explícita
+     * ([apagarOriginal]). Nunca lança: null em falha (motivo em [lastError]).
+     */
+    fun moveProject(
+        context: Context,
+        handle: ProjectHandle,
+        destino: ProjectStorage
+    ): ProjectHandle? = runCatching {
+        clearError()
+        if (handle.root.isDirectory && File(handle.root, PROJECT_FILE).isFile) {
+            val raizDestino = destino.raiz(context)
+            if (!raizDestino.isDirectory && !raizDestino.mkdirs()) {
+                lastError = "Não foi possível criar a raiz de destino"
+                return null
+            }
+            val nome = nomeUnico(raizDestino, handle.root.name)
+            val destinoDir = File(raizDestino, nome)
+            if (!handle.root.copyRecursively(destinoDir, overwrite = false)) {
+                lastError = "Falha ao copiar o projeto para o destino"
+                runCatching { destinoDir.deleteRecursively() } // não deixa cópia parcial
+                return null
+            }
+            if (!GuardasCaminho.copiaVerificada(handle.root, destinoDir)) {
+                lastError = "Cópia NÃO verificada (arquivos/tamanhos divergem) — destino descartado"
+                runCatching { destinoDir.deleteRecursively() }
+                return null
+            }
+            // meta com o nome único do destino (pode ter ganho " 2")
+            val metaFile = File(destinoDir, PROJECT_FILE)
+            val atualizado = metaFile.readLines().map { line ->
+                if (line.trim().startsWith("name=")) "name=${CkFormat.quote(nome)}" else line
+            }
+            if (!writeFileAtomic(metaFile, atualizado.joinToString("\n") + "\n")) {
+                lastError = "Falha ao gravar $PROJECT_FILE do destino"
+                runCatching { destinoDir.deleteRecursively() }
+                return null
+            }
+            KenkernLog.w(
+                TAG,
+                "projeto '${handle.name}' COPIADO VERIFICADO para ${destino.id} (original mantido até confirmação)"
+            )
+            ProjectHandle(destinoDir, nome, handle.createdAt)
+        } else {
+            lastError = "Projeto original inválido"
+            null
+        }
+    }.onFailure { reportError("moveProject", it) }.getOrNull()
+
+    /** F1: apaga o ORIGINAL depois da confirmação do usuário (pós-cópia). */
+    fun apagarOriginal(handle: ProjectHandle): Boolean = runCatching {
+        handle.root.deleteRecursively()
+    }.onFailure { reportError("apagarOriginal", it) }.getOrDefault(false)
+
+    /**
      * Renomeia um projeto (grava o novo nome no project.kenkern e retorna o
      * handle atualizado). NUNCA lança: null em falha (motivo em [lastError]).
      */
@@ -241,15 +319,10 @@ object ProjectManager {
         handle
     }.onFailure { reportError("openProject", it) }.getOrNull()
 
-    /** Cria as pastas padrão que faltarem (projetos antigos; tolera repetição). */
+    /** Cria as pastas padrão que faltarem (projetos antigos; tolera repetição).
+     * F2 (v0.1.30): a ÁRVORE COMPLETA — idempotente, NUNCA apaga nada. */
     fun ensureStructure(handle: ProjectHandle) {
-        for (folder in FOLDERS) {
-            val dir = File(handle.root, folder)
-            if (!dir.isDirectory) {
-                runCatching { dir.mkdirs() }
-                    .onFailure { KenkernLog.w(TAG, "pasta '$folder' não criada — projeto segue sem ela", it) }
-            }
-        }
+        GuardasCaminho.garantirArvore(handle.root)
     }
 
     /** Carrega a cena principal; se existir auto-save mais recente, usa-o (recuperação pós-crash). */

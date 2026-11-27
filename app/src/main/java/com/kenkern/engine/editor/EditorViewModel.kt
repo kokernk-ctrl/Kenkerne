@@ -157,7 +157,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         if (existente != null) openProject(existente) else createAndEnterProject("Sandbox")
     }
 
-    fun createAndEnterProject(rawName: String, template: String? = null) {
+    fun createAndEnterProject(
+        rawName: String,
+        template: String? = null,
+        storageId: String = "app",
+        pastaPai: String = ""
+    ) {
         if (isLoading.value) return
         // Marcador de progresso: criar também abre o editor — mesma trilha de
         // etapas rastreada para localizar crash nativo (a última etapa gravada
@@ -168,9 +173,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             // S5 (v0.1.24): limite de 15 s — I/O pendurado vira estado de ERRO
             // visível (não spinner eterno com o Hub travado).
+            // F1 (v0.1.30): LOCAL do projeto (App × Aparelho) + pasta pai
+            // (guarda: caminho dentro da raiz — sem "..").
+            val app = getApplication<Application>()
+            val storage = com.kenkern.engine.projects.Storages.porId(storageId)
+            val raizStorage = storage.raiz(app)
+            val pastaPaiFile = if (pastaPai.isNotBlank() &&
+                com.kenkern.engine.projects.GuardasCaminho.caminhoDentro(raizStorage, pastaPai)
+            ) java.io.File(raizStorage, pastaPai) else null
             val r = OperacaoComLimite.executar("criar projeto '$rawName'") {
                 withContext(Dispatchers.IO) {
-                    ProjectManager.createProject(getApplication(), rawName, template)
+                    ProjectManager.createProject(app, rawName, template, storage, pastaPaiFile)
                 }
             }
             isLoading.value = false
@@ -372,6 +385,32 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 getApplication<Application>().getString(R.string.vm_duplicate_ok, copia.name)
             } else {
                 ProjectManager.lastError ?: getApplication<Application>().getString(R.string.vm_duplicate_fail)
+            }
+            refreshProjects()
+        }
+    }
+
+    /**
+     * F1 (v0.1.30): MOVER o projeto para o outro local (App ↔ Aparelho) —
+     * CÓPIA VERIFICADA no destino e o ORIGINAL MANTIDO até o usuário
+     * confirmar e apagar (o aviso vem no statusMessage). Nunca crasha.
+     */
+    fun moverProjeto(handle: ProjectHandle, paraAparelho: Boolean) {
+        if (isLoading.value) return
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val destino = if (paraAparelho) {
+                com.kenkern.engine.projects.AparelhoStorage
+            } else {
+                com.kenkern.engine.projects.AppStorage
+            }
+            val movido = withContext(Dispatchers.IO) {
+                ProjectManager.moveProject(app, handle, destino)
+            }
+            statusMessage.value = if (movido != null) {
+                app.getString(R.string.hub_mover_ok)
+            } else {
+                ProjectManager.lastError ?: app.getString(R.string.vm_duplicate_fail)
             }
             refreshProjects()
         }

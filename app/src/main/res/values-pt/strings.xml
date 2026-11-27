@@ -27,7 +27,24 @@
     <string name="hub_project_name">Nome do projeto</string>
     <string name="hub_new_title">Novo projeto</string>
     <string name="hub_new_structure">A estrutura padrão da engine será criada:</string>
-    <string name="hub_new_folders">assets/   scenes/   nicks/\nscripts/  audio/   animations/\nshaders/  build/\n→ project.kenkern  +  scenes/cena.ck</string>
+    <string name="hub_new_folders">assets/{models,textures,materials,
+audio,fonts,video}/  scenes/  nicks/
+scripts/  animations/  shaders/
+ui/  worlds/  dialogues/  build/  .kenkern/
+→ project.kenkern + scenes/cena.ck</string>
+    <string name="hub_local_titulo">Local</string>
+    <string name="hub_local_app">App (interno, rápido)</string>
+    <string name="hub_local_aparelho">Aparelho (pasta visível)</string>
+    <string name="hub_local_pasta_pai">Pasta pai:</string>
+    <string name="hub_local_raiz">(raiz)</string>
+    <string name="hub_permissao_titulo">Acesso a todos os arquivos</string>
+    <string name="hub_permissao_explicacao">Para salvar projetos na pasta visível /storage/emulated/0/Kenkern/Projetos o app precisa da permissão “Acesso a todos os arquivos” (é distribuído por APK do GitHub, sem Play). Se negada, o app segue funcionando no armazenamento interno e continua oferecendo .kernpack e SAF.</string>
+    <string name="hub_permissao_abrir">Abrir configurações</string>
+    <string name="hub_permissao_continuar_app">Continuar no App</string>
+    <string name="hub_mover_aparelho">Mover para o Aparelho (cópia verificada)</string>
+    <string name="hub_mover_app">Mover para o App (cópia verificada)</string>
+    <string name="hub_mover_ok">Movido — o original fica até você conferir a cópia no aparelho</string>
+    <string name="hub_mover_confirma">Apagar o original agora?</string>
     <string name="hub_name_hint">Ex.: Meu Jogo 3D</string>
     <string name="hub_name_folder">pasta: %1$s</string>
     <string name="hub_create">Criar</string>
