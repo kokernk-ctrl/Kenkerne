@@ -2073,11 +2073,24 @@ class Diagnostico(private val appContext: Context) {
      * direcional, posição da câmera — com os valores medidos no pixel depois
      * do draw) para o usuário ver os números no relatório copiado.
      *
-     * CÂMERA (L1): o alvo desce para (0, 0.5, 0) — o CENTRO do cubo — para o
-     * pixel central cair na FACE +Z (face lateral hemisférica 0,38/0,41/0,455
-     * e ângulo reto com a direcional em rotação padrão): na cara superior o
-     * azul ambiente (0,66×0,604 = 102) estouraria o aceite B<100 por puro
-     * ambiente, sem nada a ver com a luz que se quer medir.
+     * R1 (v0.1.29) — CÂMERA DO LADO DA LUZ (causa raiz da falha no aparelho,
+     * comprovada por R1LuzCameraContratoTest): a câmera PADRÃO do OrbitCamera
+     * (yaw 35°/pitch 28°/dist 9 → olho (−4,56, −3,73, −6,51)) via o VERSO
+     * (face −Z) do cubo enquanto a pontual (0,9; 1,4; 1,1) e a direcional
+     * ((0,0,−1)) iluminam a face +Z — pixel (102,63,70) × esperado
+     * ~(243,108,111) e direcional IGUAL ao sol (59,63,70). Agora a câmera é
+     * a de [LuzChecagemContrato] (yaw 200°/pitch −30°/dist 6 → olho
+     * ≈(1,78; 3,50; 4,89), lado +Z): o raio central ENTRA pela face +Z
+     * iluminada. CONTRATO de normais/dupa face: normais para FORA + culling
+     * GL_BACK (GlesBackend:545) — só a face de entrada é vista; o pixel
+     * central cai na face +Z com hit ≈(0,19; 0,80; 0,50), dentro dela.
+     *
+     * R1.3 (v0.1.29) — sub-caso (c): o MESMO piso do template (body.static
+     * escala 14×1×14, topo y=0) visto DE CIMA nos DOIS caminhos
+     * (renderFrame com emJogo=false = editor × emJogo=true = Play): a
+     * direcional branca de intensidade 2 tem que MUDAR o pixel nos dois —
+     * registra os 4 RGB no Console (evidence: piso “quase preto” × “azul
+     * claro” reportados no aparelho v0.1.28).
      */
     private fun checarLuz(c: Checagem, egl: EglDiag?) {
         if (egl == null) {
@@ -2113,17 +2126,16 @@ class Diagnostico(private val appContext: Context) {
                 c.falhou("renderer não inicializou no contexto offscreen")
                 return
             }
-            val camera = OrbitCamera()
-            // L1: alvo no CENTRO do cubo — o pixel central cai na FACE +Z
-            camera.target.set(0f, 0.5f, 0f)
+            val camera = LuzChecagemContrato.camera()
             camera.eyePoint(olhoCam)
             // ETAPA A — uniforms reais que vão ao shader ANTES do draw:
             // pontual (cor/intensidade/alcance/posição), direcional
             // (direção/cor/intensidade) e câmera (uCamPos) — tudo no Console.
+            // R1: a câmera vem do CONTRATO (lado +Z — prova no teste JVM).
             KenkernLog.i(
                 TAG,
-                "luz ETAPA A: câmera eye=(${"%.2f,%.2f,%.2f".format(olhoCam.x, olhoCam.y, olhoCam.z)}) target=(0,0.5,0) · " +
-                    "pontual cor=(1,0,0) intensidade=3 alcance=6 pos=(0.90,1.40,1.10) · " +
+                "luz ETAPA A: câmera eye=(${"%.2f,%.2f,%.2f".format(olhoCam.x, olhoCam.y, olhoCam.z)}) target=(0,${LuzChecagemContrato.ALVO_Y},0) · " +
+                    "pontual cor=(1,0,0) intensidade=3 alcance=6 pos=(${LuzChecagemContrato.LUZ_X},${LuzChecagemContrato.LUZ_Y},${LuzChecagemContrato.LUZ_Z}) · " +
                     "direcional cor=(1,0,0) intensidade=2 direção de viagem=(0,0,-1)"
             )
 
@@ -2133,7 +2145,9 @@ class Diagnostico(private val appContext: Context) {
             val quad = scene.createNick("Quad", mundo, kind = NickKindRegistry.NICK_MESH)
             quad.transform.setLocalPosition(0f, 0.5f, 0f)
             val luz = scene.createNick("Luz Vermelha", mundo, kind = "light.point")
-            luz.transform.setLocalPosition(0.9f, 1.4f, 1.1f)
+            luz.transform.setLocalPosition(
+                LuzChecagemContrato.LUZ_X, LuzChecagemContrato.LUZ_Y, LuzChecagemContrato.LUZ_Z
+            )
             val instLuz = NickClassRegistry.createInstance(LuzNick.CLASSE)
             if (instLuz == null) {
                 c.falhou("classe Luz não registrada (KenkernBuiltInClasses)")
@@ -2183,18 +2197,92 @@ class Diagnostico(private val appContext: Context) {
                 comSolNick.toList() != comSolPadrao.toList() &&
                 comSolNick[0] > 200 && comSolNick[1] < 100 && comSolNick[2] < 100
 
+            // ---------- (c) R1.3: piso do template nos DOIS caminhos ----------
+            // O MESMO piso do template "Coletar moedas" (body.static escala
+            // 14×1×14 em y=−0,5 → topo y=0), visto DE CIMA, renderizado pelo
+            // MESMO renderFrame nos DOIS caminhos (emJogo=false = editor ×
+            // emJogo=true = Play — a única diferença entre eles). A direcional
+            // BRANCA de intensidade 2 tem que MUDAR o pixel nos dois caminhos
+            // e os dois caminhos têm que iluminar IGUAL (evidence do aparelho
+            // v0.1.28: piso “quase preto” no editor × “azul claro” no Play).
+            val cenaPiso = Scene("luz-piso")
+            val mundoPiso = cenaPiso.createRootNick("Mundo")
+            val piso = cenaPiso.createNick("Chão", mundoPiso, kind = "body.static")
+            piso.transform.setLocalPosition(0f, -0.5f, 0f)
+            piso.transform.scale.set(14f, 1f, 14f)
+            val solBranco = cenaPiso.createNick("Sol Branco", mundoPiso, kind = "light.directional")
+            val instSolBranco = NickClassRegistry.createInstance(LuzNick.CLASSE)
+            if (instSolBranco == null) {
+                c.falhou("classe Luz não registrada (KenkernBuiltInClasses)")
+                return
+            }
+            instSolBranco.fields[LuzNick.CAMPO_COR] = NickValue.Vec3Value(1f, 1f, 1f)
+            instSolBranco.fields[LuzNick.CAMPO_INTENSIDADE] = NickValue.FloatValue(2f)
+            solBranco.addClassInstance(instSolBranco)
+            cenaPiso.updateWorldTransforms()
+            val cameraPiso = OrbitCamera()
+            cameraPiso.target.set(0f, 0f, 0f)
+            cameraPiso.yawDegrees = 0f
+            cameraPiso.pitchDegrees = -60f
+            cameraPiso.distance = 12f
+
+            renderer.emJogo = false // caminho do EDITOR
+            renderer.renderFrame(backend, cenaPiso, cameraPiso, 0f, null, null)
+            val pisoEditorComDirecional = lerPixel(32, 32)
+            instSolBranco.fields[LuzNick.CAMPO_LIGADO] = NickValue.BoolValue(false)
+            renderer.renderFrame(backend, cenaPiso, cameraPiso, 0f, null, null)
+            val pisoEditorSolPadrao = lerPixel(32, 32)
+            instSolBranco.fields[LuzNick.CAMPO_LIGADO] = NickValue.BoolValue(true)
+
+            renderer.emJogo = true // caminho de PLAY (única diferença)
+            renderer.renderFrame(backend, cenaPiso, cameraPiso, 0f, null, null)
+            val pisoPlayComDirecional = lerPixel(32, 32)
+            instSolBranco.fields[LuzNick.CAMPO_LIGADO] = NickValue.BoolValue(false)
+            renderer.renderFrame(backend, cenaPiso, cameraPiso, 0f, null, null)
+            val pisoPlaySolPadrao = lerPixel(32, 32)
+            renderer.emJogo = false // restaura o estado para o resto da rodada
+            KenkernLog.i(
+                TAG,
+                "luz R1.3 piso visto de cima — EDITOR: int 2 = ${fmtCor(pisoEditorComDirecional)} × sol = ${fmtCor(pisoEditorSolPadrao)} · " +
+                    "PLAY: int 2 = ${fmtCor(pisoPlayComDirecional)} × sol = ${fmtCor(pisoPlaySolPadrao)}"
+            )
+            val pisoMudaNoEditor = pisoEditorComDirecional != null && pisoEditorSolPadrao != null &&
+                pisoEditorComDirecional.toList() != pisoEditorSolPadrao.toList()
+            val pisoMudaNoPlay = pisoPlayComDirecional != null && pisoPlaySolPadrao != null &&
+                pisoPlayComDirecional.toList() != pisoPlaySolPadrao.toList()
+            val diferencaMaxima = maxDe4(
+                pisoEditorComDirecional, pisoPlayComDirecional,
+                pisoEditorSolPadrao, pisoPlaySolPadrao
+            )
+            val caminhosIguais = diferencaMaxima <= 2
+
             // ---------- veredito ----------
-            val problemas = ArrayList<String>(3)
+            val problemas = ArrayList<String>(6)
             if (!mudou) problemas.add("pixel da região central não mudou com a pontual ligada × desligada")
             if (!vermelhoDominante) problemas.add("pixel com a pontual ligada não é dominado pelo vermelho (${fmtCor(pixelLigado)})")
             if (!direcionalSubstitui) problemas.add(
                 "light.directional não substituiu o sol com o pixel vermelho do aceite " +
                     "(R>200,G<100,B<100 — obtido ${fmtCor(comSolNick)} × sol padrão ${fmtCor(comSolPadrao)})"
             )
+            if (!pisoMudaNoEditor) problemas.add(
+                "R1.3: a direcional int 2 NÃO mudou o pixel do piso no caminho do EDITOR " +
+                    "(${fmtCor(pisoEditorComDirecional)} × sol ${fmtCor(pisoEditorSolPadrao)})"
+            )
+            if (!pisoMudaNoPlay) problemas.add(
+                "R1.3: a direcional int 2 NÃO mudou o pixel do piso no caminho de PLAY " +
+                    "(${fmtCor(pisoPlayComDirecional)} × sol ${fmtCor(pisoPlaySolPadrao)})"
+            )
+            if (!caminhosIguais) problemas.add(
+                "R1.3: EDITOR × PLAY iluminam o MESMO piso DE FORMA DIFERENTE (editor " +
+                    "${fmtCor(pisoEditorSolPadrao)} × play ${fmtCor(pisoPlaySolPadrao)} com o MESMO sol — " +
+                    "diferença máx $diferencaMaxima/canal) — é o “quase preto” × “azul claro”"
+            )
             if (problemas.isEmpty()) {
                 c.aprovado(
                     "pontual vermelha ilumina e sai no mesmo frame (ligada ${fmtCor(pixelLigado)} × desligada ${fmtCor(pixelDesligado)}) · " +
                         "direcional substitui o sol com o pixel DOMINADO pelo vermelho (${fmtCor(comSolNick)} = R>200,G<100,B<100) · " +
+                        "R1.3 piso do template: int 2 muda o pixel nos DOIS caminhos, editor = play " +
+                        "(int 2 ${fmtCor(pisoEditorComDirecional)} × sol ${fmtCor(pisoEditorSolPadrao)}) · " +
                         "uniforms no Console (ETAPA A) · ≤4 pontuais/spot por frame (LumeCena) · " +
                         "MESMO caminho renderFrame do viewport: verde aqui = a luz ilumina o EDITOR também"
                 )
@@ -2463,6 +2551,27 @@ class Diagnostico(private val appContext: Context) {
 
     private fun fmtCor(px: IntArray?): String =
         if (px == null) "ILEGÍVEL (readPixels falhou)" else "(${px[0]},${px[1]},${px[2]})"
+
+    /**
+     * R1.3: maior diferença por canal ENTRE os 4 pixels do piso (editor×play
+     * com direcional × sol padrão). Nulo vira 255 (ILEGÍVEL reprova): se um
+     * readPixels falhou, os dois caminhos NÃO podem ser declarados iguais.
+     */
+    private fun maxDe4(a: IntArray?, b: IntArray?, c: IntArray?, d: IntArray?): Int {
+        val pixels = listOfNotNull(a, b, c, d)
+        if (pixels.size < 4) return 255
+        var max = 0
+        for (i in 0 until 3) {
+            var menor = pixels[0][i]
+            var maior = pixels[0][i]
+            for (p in pixels) {
+                if (p[i] < menor) menor = p[i]
+                if (p[i] > maior) maior = p[i]
+            }
+            if (maior - menor > max) max = maior - menor
+        }
+        return max
+    }
 
     private fun intArrayDe(rgba: ByteArray, i: Int): IntArray =
         intArrayOf(rgba[i].toInt() and 0xFF, rgba[i + 1].toInt() and 0xFF, rgba[i + 2].toInt() and 0xFF)
