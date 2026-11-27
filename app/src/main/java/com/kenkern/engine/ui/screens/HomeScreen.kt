@@ -430,13 +430,16 @@ private fun LanguageSelector() {
     val escolhido = AppLanguage.chosen(context)
 
     Box {
-        IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
-            Icon(
-                Icons.Filled.Language,
-                contentDescription = stringResource(R.string.hub_language_cd),
-                tint = if (escolhido != null) KenkernAmber else KenkernTextMid
-            )
-        }
+        // R7: o GLOBO agora usa KIconButton como a pasta e o inseto — MESMO
+        // aro de cobre do visual Singularidade (antes: IconButton do M3 puro,
+        // SEM aro — os três ficavam inconsistentes no cabeçalho do Hub).
+        KIconButton(
+            icon = Icons.Filled.Language,
+            contentDescription = stringResource(R.string.hub_language_cd),
+            onClick = { menuOpen = true },
+            selecionado = escolhido != null,
+            tint = KenkernTextMid
+        )
         DropdownMenu(
             expanded = menuOpen,
             onDismissRequest = { menuOpen = false },

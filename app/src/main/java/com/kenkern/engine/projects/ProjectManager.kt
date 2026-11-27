@@ -82,7 +82,13 @@ object ProjectManager {
             lastError = "Nome de projeto inválido"
             return null
         }
-        val root = uniqueDirectory(projectsRoot(context), clean)
+        // R7: o NOME do projeto recebe o sufixo " 2" quando já existe — a
+        // pasta E o name= do project.kenkern usam o MESMO nome único (antes:
+        // a pasta virava "mm (2)" mas o name= continuava "mm" — o Hub
+        // listava DOIS projetos chamados "mm").
+        val raiz = projectsRoot(context)
+        val nomeUnicoProjeto = nomeUnico(raiz, clean)
+        val root = File(raiz, nomeUnicoProjeto)
         if (!ensureDir(root)) {
             lastError = "Não foi possível criar a pasta do projeto"
             return null
@@ -98,7 +104,7 @@ object ProjectManager {
             appendLine("KENKERN_PROJECT")
             appendLine("format=$FORMAT_VERSION")
             appendLine("engine=$ENGINE_VERSION")
-            appendLine("name=${CkFormat.quote(projectName.trim())}")
+            appendLine("name=${CkFormat.quote(nomeUnicoProjeto)}")
             appendLine("folder=${CkFormat.quote(root.name)}")
             appendLine("created=${CkFormat.quote(created)}")
             appendLine("scene=scenes/cena.ck")
@@ -131,11 +137,11 @@ object ProjectManager {
         }
         writeFileAtomic(
             File(root, "scenes/cena.ck"),
-            "# Cena principal criada pelo projeto $projectName\n" + CkFormat.writeToString(scene)
+            "# Cena principal criada pelo projeto $nomeUnicoProjeto\n" + CkFormat.writeToString(scene)
         )
         writeFileAtomic(File(root, "nicks/README.txt"), "Nicks salvos individualmente (.ck) ficam nesta pasta.\n")
         writeFileAtomic(File(root, "assets/README.txt"), "Assets do projeto (malhas .kern, texturas, fontes).\n")
-        ProjectHandle(root, projectName.trim(), created)
+        ProjectHandle(root, nomeUnicoProjeto, created)
     }.onFailure { reportError("createProject", it) }.getOrNull()
 
     /** Lista os projetos existentes; nunca lança, retorna lista (possivelmente vazia). */
@@ -414,5 +420,23 @@ object ProjectManager {
             if (i > 999) break // proteção contra loop infinito em FS degenerado
         }
         return candidate
+    }
+
+    /**
+     * R7 (v0.1.29) — NOME ÚNICO DE PROJETO com sufixo " 2" SÓ quando o nome
+     * já existe (pura — JVM-testada): "mm" → "mm 2" → "mm 3"… Pasta E
+     * name= do project.kenkern usam o MESMO valor — o Hub nunca mais lista
+     * dois projetos com o mesmo nome (print v0.1.28: "mm" duas vezes).
+     */
+    fun nomeUnico(parent: File, base: String): String {
+        val existentes = parent.listFiles()?.mapTo(HashSet()) { it.name } ?: emptySet<String>()
+        var nome = base
+        var i = 2
+        while (nome in existentes) {
+            nome = "$base $i"
+            i++
+            if (i > 999) break
+        }
+        return nome
     }
 }
