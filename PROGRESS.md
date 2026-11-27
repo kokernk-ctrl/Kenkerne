@@ -1,5 +1,7 @@
 # KENKERN — PROGRESS
 
+
+> **Antes de agir:** leia [HARNESS.md](HARNESS.md) — papéis, linguagem, definição de PRONTO e portões de CI.
 **Retome daqui.** Se uma conversa nova começar com o Prompt Mestre v3, leia este
 arquivo, BACKLOG.md, ARCHITECTURE.md, DECISIONS.md e REGRESSION.md, e siga o loop
 de tarefas do BACKLOG sem refazer o que está pronto.

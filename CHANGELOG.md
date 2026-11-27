@@ -1,5 +1,63 @@
 # KENKERN — CHANGELOG
 
+## v0.1.32 — HARNESS + PORTÕES DE QUALIDADE NO CI
+
+> Sem funcionalidade nova no app: esta versão só trata de CI, testes e
+> documentos. 495 testes JVM (antes 493) + 3 androidTest; Diagnóstico 33;
+> `gates/baseline.json` como prova numérica. Uma Release de pré-lançamento,
+> criada pelo workflow em tag `v0.1.32`.
+
+### HARNESS.md (raiz)
+
+Papéis (usuário, implementador, arquiteto — o arquiteto não escreve o
+projeto), linguagem proibida (a lista exata do HARNESS.md §2), definição de
+PRONTO (CI verde nos dois portões + teste que nasceu vermelho + checagem no
+Diagnóstico + strings en/pt) e de VALIDADO (só o aparelho do usuário), modelo
+de relatório e de prompt, os erros conhecidos da IA e o orçamento de 5 CIs
+vermelhos (vira BLOQUEADO). Linkado de `README.md`, `ROADMAP.md` e
+`PROGRESS.md`.
+
+### PORTÃO 1 (rápido, bloqueia sempre)
+
+1. Compilação, testes JVM, lint sem erros novos, i18n e JNI da `.so`.
+2. Ratchet `gates/baseline.json`: 82 classes de teste, 495 métodos `@Test`,
+   3 androidTest, 33 checagens e 0 `@Ignore`. Diminuir reprova; subir obriga
+   a aumentar o baseline no mesmo commit.
+3. Detector de mudança de portão: commit que toca `.github/`, `gates/` ou
+   `HARNESS.md` marca **GATES ALTERADOS** no `CI-RESUMO.md` e na Release.
+4. Regra "reproduzir antes de corrigir": commit `fix`/`corrige` sem arquivo em
+   `src/test` ou `src/androidTest` reprova; com arquivo, o CI roda os testes
+   novos contra o código do commit PAI e exige pelo menos uma falha.
+5. Detector de palavras proibidas (arquivo e linha) e de arquivos obrigatórios
+   citados em `ROADMAP.md`.
+
+### PORTÃO 2 (emulador, bloqueia a Release)
+
+Job com emulador API 34 x86_64, GPU `swiftshader_indirect`, cache do AVD e
+sonda de KVM; sem KVM, o MESMO corpo de teste roda com Robolectric. Abre o
+app de verdade na `MainActivity` e faz pelo caminho da interface: criar
+projeto (árvore completa + `project.kenkern`), criar um script de cada modelo
+(não vazio) e digitar no editor, criar um Nick de cada kind por
+`addNickOfKind`, Play de 120 ticks no template Coletar moedas, salvar/fechar/
+reabrir e rodar todas as checagens do Diagnóstico. Capturas de tela do Hub,
+do editor e do editor de código vão como artifact. Teto de 25 minutos.
+
+### PUBLICAÇÃO E RESUMO
+
+A Release só nasce do workflow, em tag `vX.Y.Z`, com Portão 1, Portão 2 e
+`REPORT.md` verdes e a tag igual ao `versionName`. Cada execução gera
+`CI-RESUMO.md` (máximo 40 linhas: versão, hash, resultado dos portões, 10
+primeiras linhas de cada erro, números contra o baseline e GATES ALTERADOS),
+anexado à Release e escrito no resumo da execução. Falha em qualquer portão =
+nenhum APK publicado.
+
+### REPORT.md e AUDITORIA.md
+
+`REPORT.md` com as seções Itens feitos (ID, commit, causa raiz arquivo:linha,
+teste que falhou antes e passou depois, o que não foi validado), Itens NÃO
+feitos e Números reais; o CI rejeita seção ausente, item sem commit ou palavra
+proibida. `AUDITORIA.md` criado como esqueleto (preenchido na rodada seguinte).
+
 ## v0.1.30 — PARADA 2 (parcial): projeto e arquivos — F1 (locais App × Aparelho) + F2 (árvore visível) + F6 (checagens)
 
 > 3 commits (F1+F2, F6, fechamento), CI verde em cada; 493 testes JVM

@@ -1,0 +1,368 @@
+name: CI Kenkern
+
+# HARNESS.md §3: Portão 1 (rápido, bloqueia sempre) + Portão 2 (emulador,
+# bloqueia a Release). A Release só nasce aqui, em tag vX.Y.Z, com os dois
+# portões e o REPORT.md verdes. Release manual é proibida (HARNESS.md §4).
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  JAVA_VERSION: '17'
+  NDK_VERSION: '27.3.13750724'
+
+jobs:
+  # =====================================================================
+  # PORTÃO 1 — rápido, bloqueia sempre
+  # =====================================================================
+  gate1:
+    name: Portão 1 (rápido)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      gates_alterados: ${{ steps.gates.outputs.alterados }}
+      fix_commits: ${{ steps.gates.outputs.fix }}
+    steps:
+      - name: Checkout (histórico completo para a regra fix/corrige)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: NDK 27.3.13750724 e CMake 3.22.1 (fixados)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;${NDK_VERSION}" "cmake;3.22.1" > /dev/null 2>&1 || \
+            yes | sdkmanager "ndk;${NDK_VERSION}" "cmake;3.22.1" > /dev/null
+          ls "$ANDROID_HOME/ndk" "$ANDROID_HOME/cmake"
+
+      - name: Checagem i18n (sem literais; paridade en/pt)
+        run: bash scripts/check_i18n.sh
+
+      - name: Portão 1 — ratchet, arquivos obrigatórios e palavras proibidas
+        id: gates
+        run: |
+          BASE="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          fi
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE="HEAD~1"
+          fi
+          python3 scripts/check_gates.py --base-ref "$BASE" --json gates/resultado.json
+          python3 scripts/check_fix_rule.py --base-ref "$BASE" --json gates/fix_commits.json
+          echo "alterados=$([ -s gates/alterados.txt ] && echo 1 || echo 0)" >> "$GITHUB_OUTPUT"
+          echo "fix=$(python3 -c 'import json;print(1 if json.load(open("gates/fix_commits.json"))["fix_commits"] else 0)')" >> "$GITHUB_OUTPUT"
+
+      - name: Portão 1 — testes de JVM
+        run: |
+          mkdir -p logs
+          set -o pipefail
+          ./gradlew testReleaseUnitTest --stacktrace 2>&1 | tee logs/gate1.log
+
+      - name: Portão 1 — lint (sem erros novos)
+        run: |
+          set -o pipefail
+          ./gradlew lintRelease --stacktrace 2>&1 | tee -a logs/gate1.log
+          python3 scripts/check_lint.py
+
+      - name: Portão 1 — REPORT.md (seções, commits, linguagem)
+        run: |
+          set -o pipefail
+          python3 scripts/check_report.py 2>&1 | tee logs/report.log
+
+      - name: Decodificar keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/kenkern-release.jks"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/kenkern-release.jks" >> "$GITHUB_ENV"
+          else
+            echo "KEYSTORE_BASE64 ausente: release assinado com a chave debug."
+          fi
+
+      - name: assembleRelease
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee -a logs/gate1.log
+
+      - name: Símbolos JNI da .so do APK
+        run: |
+          APK="$(ls app/build/outputs/apk/release/*.apk)"
+          rm -rf /tmp/apk-e1 && mkdir -p /tmp/apk-e1
+          unzip -q "$APK" -d /tmp/apk-e1
+          NM="$ANDROID_HOME/ndk/${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          [ -x "$NM" ] || NM=nm
+          bash scripts/check_jni_symbols.sh /tmp/apk-e1/lib/arm64-v8a/libkenkern.so "$NM"
+
+      - name: Artifact — APK assinado (só existe com o portão verde)
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate1-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Artifact — logs e ratchet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate1-logs
+          path: |
+            logs/
+            gates/
+            app/build/reports/lint-results-release.xml
+          if-no-files-found: ignore
+
+  # =====================================================================
+  # PORTÃO 1 — prova real de "reproduzir antes de corrigir"
+  # =====================================================================
+  repro:
+    name: Portão 1 (prova do fix)
+    needs: gate1
+    if: needs.gate1.outputs.fix_commits == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout (histórico completo)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: NDK 27.3.13750724
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;${NDK_VERSION}" "cmake;3.22.1" > /dev/null 2>&1 || true
+
+      - name: Baixar gates do Portão 1
+        uses: actions/download-artifact@v4
+        with:
+          name: gate1-logs
+          path: .
+
+      - name: Rodar os testes novos contra o código do commit pai
+        run: |
+          mkdir -p logs
+          set -o pipefail
+          bash scripts/check_fix_repro.sh gates/fix_commits.json 2>&1 | tee logs/repro.log
+
+      - name: Artifact — log da prova
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repro-logs
+          path: logs/
+          if-no-files-found: ignore
+
+  # =====================================================================
+  # PORTÃO 2 — emulador (API 34, x86_64, swiftshader) com alternativa
+  # =====================================================================
+  gate2:
+    name: Portão 2 (emulador)
+    needs: gate1
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      modo: ${{ steps.modo2.outputs.modo }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: NDK 27.3.13750724
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;${NDK_VERSION}" "cmake;3.22.1" > /dev/null 2>&1 || true
+
+      - name: Sonda de KVM
+        id: kvm
+        run: |
+          if [ -e /dev/kvm ] && { [ -w /dev/kvm ] || id -nG | tr ' ' '\n' | grep -qx kvm; }; then
+            echo "disponivel=1" >> "$GITHUB_OUTPUT"; echo "KVM disponível"
+          else
+            echo "disponivel=0" >> "$GITHUB_OUTPUT"; echo "KVM ausente — alternativa Robolectric"
+          fi
+
+      - name: Cache do AVD (API 34 x86_64)
+        if: steps.kvm.outputs.disponivel == '1'
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/avd
+          key: avd-api34-x86_64-${{ runner.os }}-v1
+          restore-keys: avd-api34-x86_64-${{ runner.os }}-v1
+
+      - name: Portão 2 — instrumentação no emulador
+        id: modo
+        if: steps.kvm.outputs.disponivel == '1'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          ram: 2048
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          script: |
+            set -o pipefail
+            mkdir -p logs screenshots
+            echo "modo=emulador" >> "$GITHUB_OUTPUT"
+            ./gradlew connectedDebugAndroidTest --stacktrace 2>&1 | tee logs/gate2.log
+            adb shell am start -n com.kenkern.engine.debug/com.kenkern.engine.MainActivity >/dev/null 2>&1 || true
+            sleep 6
+            adb exec-out screencap -p > screenshots/01-hub.png || true
+            adb pull /sdcard/Android/data/com.kenkern.engine.debug/files/screenshots screenshots/app >/dev/null 2>&1 || true
+            ls -la screenshots || true
+
+      - name: Portão 2 — alternativa Robolectric (sem KVM)
+        id: robo
+        if: steps.kvm.outputs.disponivel != '1'
+        run: |
+          set -o pipefail
+          mkdir -p logs
+          echo "modo=robolectric" >> "$GITHUB_OUTPUT"
+          echo "KVM ausente no runner: alternativa Robolectric registrada em DECISIONS.md" | tee logs/gate2.log
+          ./gradlew testDebugUnitTest --tests "*FluxoReal*" --stacktrace 2>&1 | tee -a logs/gate2.log
+
+      - name: Modo do Portão 2
+        id: modo2
+        if: always()
+        run: |
+          if [ -n "${{ steps.modo.outputs.modo }}" ]; then MODO="${{ steps.modo.outputs.modo }}"; else MODO="${{ steps.robo.outputs.modo }}"; fi
+          [ -n "$MODO" ] || MODO="nao-rodou"
+          echo "modo=$MODO" >> "$GITHUB_OUTPUT"
+
+      - name: Artifact — log e capturas do Portão 2
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2-logs
+          path: |
+            logs/
+            screenshots/
+          if-no-files-found: ignore
+
+  # =====================================================================
+  # CI-RESUMO — uma execução, um resumo de no máximo 40 linhas
+  # =====================================================================
+  resumo:
+    name: CI-RESUMO
+    needs: [gate1, repro, gate2]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Baixar logs dos portões
+        uses: actions/download-artifact@v4
+        with:
+          path: .
+          merge-multiple: true
+
+      - name: Tempo da execução
+        run: echo "CI_TEMPO=$(( $(date +%s) - $(date -d "${{ github.run_started_at }}" +%s) )) s" >> "$GITHUB_ENV"
+
+      - name: Gerar CI-RESUMO.md
+        env:
+          GATE1_RESULT: ${{ needs.gate1.result }}
+          GATE2_RESULT: ${{ needs.gate2.result }}
+          REPORT_RESULT: success
+          GATES_ALTERADOS: ${{ needs.gate1.outputs.gates_alterados }}
+          GATE2_MODO: ${{ needs.gate2.outputs.modo }}
+        run: python3 scripts/ci_resumo.py
+
+      - name: Artifact — CI-RESUMO
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-resumo
+          path: CI-RESUMO.md
+          if-no-files-found: error
+
+  # =====================================================================
+  # RELEASE — só em tag, só com os três portões verdes
+  # =====================================================================
+  release:
+    name: Release (pré-lançamento assinado)
+    needs: [gate1, repro, gate2, resumo]
+    if: >-
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.gate1.result == 'success' &&
+      needs.gate2.result == 'success' &&
+      needs.repro.result != 'failure' &&
+      needs.resumo.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Baixar APK assinado
+        uses: actions/download-artifact@v4
+        with:
+          name: gate1-apk
+          path: apk
+
+      - name: Baixar CI-RESUMO
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-resumo
+          path: resumo
+
+      - name: Conferir tag × versionName
+        run: python3 scripts/check_release.py "${GITHUB_REF_NAME}"
+
+      - name: Publicar pré-lançamento
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK="$(ls apk/*.apk | head -1)"
+          cp "resumo/CI-RESUMO.md" "CI-RESUMO-${GITHUB_REF_NAME}.md"
+          gh release create "$GITHUB_REF_NAME" \
+            "$APK" "CI-RESUMO-${GITHUB_REF_NAME}.md" \
+            --prerelease \
+            --title "Kenkern $GITHUB_REF_NAME (pré-lançamento)" \
+            --notes-file "CI-RESUMO-${GITHUB_REF_NAME}.md"

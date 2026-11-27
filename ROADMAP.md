@@ -1,5 +1,7 @@
 # KENKERN — ROADMAP (PROMPT MESTRE v3 + ADENDO v4)
 
+
+> **Antes de agir:** leia [HARNESS.md](HARNESS.md) — papéis, linguagem, definição de PRONTO e portões de CI.
 Game engine 3D mobile-first, só Android nesta etapa. Kotlin + Compose (Material 3),
 OpenGL ES 3.x até a Fase 12, Vulkan (NDK/JNI) na Fase 13 atrás de `RenderBackend`.
 Escopo termina na Fase 13: PC, multiplayer, rede, serviços online e loja estão FORA.

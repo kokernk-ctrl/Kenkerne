@@ -12,6 +12,10 @@ luaj = "3.0.1"
 # Testes JVM do importador glTF (F2.7): o app usa o org.json nativo do Android;
 # nos testes JVM a MESMA API vem do artefato oficial (não entra no APK).
 orgJson = "20240303"
+androidxTest = "1.6.1"
+androidxTestExt = "1.2.1"
+androidxTestRunner = "1.6.2"
+robolectric = "4.14.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -32,6 +36,13 @@ mockito-core = { group = "org.mockito", name = "mockito-core", version.ref = "mo
 # Troca por Lua 5.4 nativo só se o PROFILER provar gargalo (DECISIONS.md #6).
 luaj-jse = { group = "org.luaj", name = "luaj-jse", version.ref = "luaj" }
 org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTest" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "androidxTest" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExt" }
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

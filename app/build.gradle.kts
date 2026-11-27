@@ -19,13 +19,15 @@ android {
         applicationId = "com.kenkern.engine"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "0.1.30"
+        versionCode = 33
+        versionName = "0.1.32"
 
         // B3: compila libkenkern.so só para arm64-v8a.
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+        // HARNESS §3.2: instrumentação abre o app de verdade (Portão 2).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
             cmake {
                 cppFlags += listOf("-std=c++17", "-Wall", "-Wextra")
@@ -39,6 +41,8 @@ android {
     // "not mocked" — sem isso os testes da pinça quebrariam no Log.d.
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Robolectric (alternativa do Portão 2 sem KVM) precisa dos recursos.
+        unitTests.isIncludeAndroidResources = true
         // Medições em modelos REAIS (auditoria V2): a pasta vem da linha de
         // comando (-Dkenkern.modelos.dir=<pasta>); sem ela o teste é IGNORADO.
         unitTests.all { teste ->
@@ -93,6 +97,11 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
+            // Portão 2: o emulador do CI é x86_64 — o debug precisa da .so
+            // nativa dessa ABI (o release segue só arm64-v8a).
+            ndk {
+                abiFilters += listOf("x86_64", "arm64-v8a")
+            }
         }
     }
 
@@ -140,6 +149,19 @@ dependencies {
     implementation(libs.luaj.jse)
 
     testImplementation(libs.mockito.core)
+
+    // ---- Portão 2 (HARNESS §3.2): instrumentação + alternativa Robolectric ----
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(platform(libs.androidx.compose.bom))
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
     // Importador glTF (F2.7): mesmo package org.json do Android, só nos testes JVM.
     testImplementation(libs.org.json)
 }
@@ -189,6 +211,11 @@ val compilarNativoHost by tasks.registering {
         logger.lifecycle("nativo do HOST compilado: ${arquivoSaida.absolutePath}")
     }
 }
+
+// O MESMO corpo de teste roda no emulador (androidTest) e no Robolectric
+// (JVM): só o runner muda. HARNESS §3.2 — alternativa com o mesmo conteúdo.
+android.sourceSets.getByName("test").java.srcDir("src/testShared/java")
+android.sourceSets.getByName("androidTest").java.srcDir("src/testShared/java")
 
 tasks.matching { it.name == "testDebugUnitTest" || it.name == "testReleaseUnitTest" }.configureEach {
     dependsOn(compilarNativoHost)

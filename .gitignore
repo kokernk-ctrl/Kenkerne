@@ -14,3 +14,7 @@
 /local.properties
 kenkern-release.jks
 .kotlin/
+__pycache__/
+/gates/resultado.json
+/gates/fix_commits.json
+/gates/alterados.txt

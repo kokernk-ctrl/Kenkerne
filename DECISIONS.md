@@ -188,3 +188,37 @@ Formato: decisão · motivo · alternativa descartada.
 - v0.1.12: yaw do voo lia `yawDegrees` do orbital em `computeBasis` (causa (b)).
 - v0.1.11: zoom preso = dedo morto reancorado no `ACTION_POINTER_UP`.
 - v0.1.8: NPE de inicialização do TransformGizmo (ordem de propriedades Kotlin).
+
+## Portões de CI (v0.1.32 — HARNESS.md)
+
+1. **Ratchet em `gates/baseline.json`**: o baseline guarda o número PROVADO de
+   classes de teste, métodos `@Test`, checagens do Diagnóstico e `@Ignore`.
+   Diminuir reprova; subir também reprova até o baseline ser aumentado no
+   mesmo commit — o número nunca é ajustado para baixo para passar.
+2. **KVM**: o job do Portão 2 faz uma sonda (`/dev/kvm` + grupo `kvm`) antes
+   de instalar o emulador. Com KVM: API 34 x86_64, `swiftshader_indirect`,
+   cache do AVD e `connectedDebugAndroidTest`. Sem KVM: o MESMO corpo de
+   teste roda com Robolectric na JVM, com as checagens nativas/GL na lista de
+   AVISO (o runner não tem GPU nem a `.so` nativa). O modo usado vai no
+   CI-RESUMO.md.
+3. **Prova do fix**: para commits `fix`/`corrige` com arquivo de teste, o CI
+   monta um worktree no commit PAI, copia só os testes tocados e os roda. Se
+   todos passarem, o CI falha com "teste não reproduz o bug". Limite
+   documentado: teste que não compila no pai (API nova) conta como reprodução.
+4. **Release**: só o workflow cria, em tag `vX.Y.Z`, com Portão 1, Portão 2 e
+   REPORT.md verdes e a tag igual ao `versionName`. Release manual é proibida
+   (HARNESS.md §4).
+5. **Palavras proibidas**: o varredura é no arquivo inteiro (não só no diff) —
+   `CHANGELOG.md`, `PROGRESS.md`, `TESTES_PENDENTES.md`, `DECISIONS.md` e
+   `REPORT.md`. Um documento antigo com uma palavra proibida reprova o build até ser
+   reescrito com fato ou `NÃO VERIFICADO`.
+
+## Limite do Portão 2 sem KVM (v0.1.32)
+
+O teste Robolectric do Portão 2 cobre o fluxo real (criar projeto, scripts,
+Nicks, Play, salvar/reabrir) e a física esperada-falhar. A checagem completa do
+Diagnóstico NÃO roda nesse runner: a checagem "nativo" instala o handler de
+SIGSEGV do C++ e o HotSpot usa SIGSEGV para checagem implícita de nulo — a JVM
+de teste morre com exit 139 (o mesmo mecanismo do E1). No emulador (caminho
+principal) o Diagnóstico roda inteiro. Esse limite é aceito porque o fallback
+só existe quando o runner não tem KVM, e o modo usado vai no CI-RESUMO.md.
