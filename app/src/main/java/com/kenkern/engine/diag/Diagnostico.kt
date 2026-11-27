@@ -858,9 +858,12 @@ class Diagnostico(private val appContext: Context) {
         if (problemas.isEmpty()) {
             val aceleracao = if (kotlinMs > 0) kotlinMs.toDouble() / nativoMs.coerceAtLeast(1) else 0.0
             c.aprovado(
-                "grade 100×100 (20.000 tris) · nativo ${nativoMs} ms × kotlin ${kotlinMs} ms · %.1f× · " +
-                    "únicos ${dedupNativo.unicos} == ${dedupKotlin.vertexCount} · LOD nativo ${lodNativo.indices.size / 3} tris (erro %.4f) · LODs kotlin ${lodKotlin.lods.size}".format(
-                        java.util.Locale.US, aceleracao, lodNativo.erro
+                // R6: builder PURO formatando a concatenação INTEIRA (o .format
+                // antigo pegava só o último literal — o "%.1f×" ficava CRU).
+                MensagensDiag.malhaNativa(
+                    nativoMs, kotlinMs, aceleracao,
+                    dedupNativo.unicos, dedupKotlin.vertexCount,
+                    lodNativo.indices.size / 3, lodNativo.erro, lodKotlin.lods.size
                 )
             )
         } else {
@@ -1232,12 +1235,10 @@ class Diagnostico(private val appContext: Context) {
                 c.falhou("glTF externo no zip: ${zipModelo.vertices} vértices / ${zipModelo.problemasIntegridade.joinToString("; ")}")
                 return
             }
-
             c.aprovado(
-                "GLB embutido (4 v, integridade OK, pico %.0f MB, %d ms) · nome único + zip-slip bloqueado · " +
-                    "Command undo/redo com lixeira OK · glTF com .bin externo via .zip OK".format(
-                        java.util.Locale.US, summary.picoMemoriaMb, summary.tempoMs
-                    )
+                // R6: builder PURO — o .format antigo pegava só o segundo
+                // literal; "%.0f MB" e "%d ms" ficavam CRUS na mensagem.
+                MensagensDiag.importarModelo(summary.picoMemoriaMb, summary.tempoMs)
             )
         } finally {
             raiz.deleteRecursively()
@@ -1345,11 +1346,9 @@ class Diagnostico(private val appContext: Context) {
             return
         }
         c.aprovado(
-            "ida e volta OK · PSNR REALISTA (gradiente + ruído leve) %.1f dB · " +
-                "PSNR ADVERSARIAL (alfa alternada por pixel, pior caso do EAC) %.1f dB · ${relatorio.resumo()} · ".format(
-                    java.util.Locale.US, psnrRealista, psnrAdversarial
-                ) +
-                "truncado e magic quebrado = erros claros ($bytesRealista bytes)"
+            // R6: builder PURO — o .format antigo pegava só o segundo literal
+            // (o PRIMEIRO "%.1f dB" ficava CRU no aparelho).
+            MensagensDiag.kimg(psnrRealista, psnrAdversarial, relatorio.resumo(), bytesRealista)
         )
     }
 
@@ -2862,10 +2861,9 @@ class Diagnostico(private val appContext: Context) {
             evDown.recycle()
             evUp.recycle()
         }
-        if (tapXRecebido < 0f) {
-            c.falhou(
-                "TouchController NÃO classificou como tap (tap só até 250 ms e dentro do slop de 12 dp×density=%.1f) — " +
-                    "toque em (%.1f, %.1f) px da view".format(java.util.Locale.US, density, tapX, tapY)
+        if (tapXRecebido < 0f) {            c.falhou(
+                // R6: builder PURO — mesmo anti-padrão corrigido (density %.1f crus).
+                MensagensDiag.toqueNaoClassificou(density, tapX, tapY)
             )
             return
         }
