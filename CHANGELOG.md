@@ -1,5 +1,66 @@
 # KENKERN — CHANGELOG
 
+## v0.1.28 — LUZ DO LUME (causa raiz) + 30/30 no Diagnóstico + ONDA 0 (janela de jogo, editor de código, TopBar, fontes OFL)
+
+> Sete commits (L1, L2, Onda 0 P1/P2, P3+P4, P5, P6, fechamento), CI verde;
+> 456 testes JVM verdes. Toda correção de bug nasceu VERMELHA primeiro
+> (reprodução antes de corrigir). Fatos do aparelho valem mais que testes
+> de JVM — os itens de aceite estão no TESTES_PENDENTES.md. SEM tag.
+
+### L1 — LUZ DO LUME: causa raiz do pixel (154,154,154)
+
+O fragment shader da malha usava `vTangent` (normal map, T0.4) SEM
+declaração — NÃO COMPILAVA em nenhum driver desde a v0.1.20 e o backend
+caía SILENCIOSAMENTE no fallback de cor sólida: nenhuma luz afetava o
+pixel (154,154,154) = uColor pura. Corrigido (`in vec3 vTangent;`);
+ETAPA A instrumentou a checagem "luz" (uniforms reais no Console ANTES do
+draw, detecção do fallback com a CAUSA, alvo no centro do cubo → pixel na
+face +Z) e o aceite subiu para o número do usuário: direcional → pixel
+R>200, G<100, B<100; pontual → r>g+40/b+40 + região muda ligada×desligada.
+Teste ShaderGlslFonteTest NOVO nasceu vermelho apontando
+`fragmentShader usa sem declarar: vTangent` — validador GLSL estático de
+todas as fontes do backend (a JVM não tem driver GL; nada disto voltava a
+acontecer sem ele).
+
+### L2 — OS 4 TESTES PENDENTES RODAM (30/30)
+
+O catálogo tinha 30 checagens mas `executar` agendava 26: play-sair,
+area, editor e ui existiam no catálogo e no `when`, mas NÃO em nenhuma
+lista da agenda — ficavam PENDENTES para sempre no aparelho. Agenda
+extraída para constantes PURAS (AGENDA_RAPIDAS/AGENDA_GL/AGENDA_MEMORIA;
+DiagAgendaTest nasceu vermelho: "agenda tem 26 de 30") e as 4 agendadas.
+A checagem "play-sair" agora aplica a AÇÃO no teste (RoteadorToqueJogo.acao
+NOVO: Pausar PAUSA, Continuar RETOMA, Sair/Forçar SAEM) e prova que nenhum
+botão do editor é alvo possível (o enum AlvoToque só expressa o jogo).
+
+### Onda 0 — janela de jogo, editor de código, TopBar, fontes
+
+- **P1/P2 (janela de jogo)**: botões do editor FORA do jogo POR ESTADO — o
+  TELAR (Grade) saiu da janela de jogo (só existe com o jogo PARADO), o
+  botão de debug virou TouchApp dentro da ÁREA SEGURA (insets de status +
+  navegação); Pausar/Continuar, Sair e Forçar saída também na área segura.
+  Overlay de toque aparece POR 3 s a partir de cada toque com coordenada,
+  alvo, consumidor e ORDEM Z dos botões do jogo
+  (RoteadorToqueJogo.overlayDeToqueVisivel — puro, JVM).
+- **P3 (porta de entrada do código)**: seletor de abas **Cena | UI |
+  Código** na TopBar — Código abre o editor de código com o primeiro script
+  do projeto (ou cria um do modelo vazio) — 2 toques do Hub ao navegador
+  de arquivos.
+- **P4 (TopBar)**: no máximo 8 botões visíveis (Voltar, Undo, Redo,
+  Play/Pause, Stop, Hierarquia, Inspetor, Mais) + menu "mais" com TODO o
+  resto (Importar, Mover/Girar/Escalar, Local/Global, Snap, Voo, Focar,
+  Ver pela câmera, Auxiliares, Exportar APK, Diagnóstico de toque,
+  Resolução, Resetar) — inventário provado na JVM (TopBarLayoutTest: ≤8,
+  nada perdido).
+- **P5 (fontes OFL)**: os 8 .ttf (Roboto, RobotoMono, NotoSans, NotoSerif,
+  OpenSans, Lato, Montserrat, JetBrainsMono; ~6,7 MB) EMBUTIDOS em
+  assets/fonts e carregados do APK (FontesKenkern; sem download — modo
+  avião); o texto do TELAR muda de fonte de verdade; checagem "ui" mostra
+  "FONTES: 8/8 OFL carregadas do APK"; licenças no LICENSES.md.
+- **P6 (skinning)**: aviso do importador no texto do usuário —
+  "esqueleto/skinning ainda não suportado — Onda 3" (antes "Fase 8") nas 3
+  pontas (glTF, FBX, ImportReport).
+
 ## v0.1.27 — PARADA 3: TELAR base (editor de UI com árvore 2D própria)
 
 > Um commit (U1) + fechamento, CI verde. Fase 2 CONTINUA ABERTA

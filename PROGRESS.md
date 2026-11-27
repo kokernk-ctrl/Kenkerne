@@ -6,6 +6,22 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
+- **v0.1.28 — LUZ DO LUME + 30/30 + ONDA 0 COMPILADO**: L1 causa raiz da luz
+  (fragment shader usava `vTangent` sem declaração → não compilava →
+  fallback de cor sólida → pixel (154,154,154) desde a v0.1.20; corrigido +
+  checagem "luz" instrumentada com uniforms no Console e aceite R>200/
+  G<100/B<100; ShaderGlslFonteTest valida GLSL na JVM); L2 agenda do
+  Diagnóstico 26→30 (play-sair/area/editor/ui RODAM — DiagAgendaTest nasceu
+  vermelho "agenda tem 26 de 30"; RoteadorToqueJogo.acao aplicado no
+  teste); Onda 0: P1/P2 botões do editor fora da janela de jogo POR ESTADO
+  + área segura (insets) + overlay de toque por 3 s com ordem z; P3 abas
+  Cena/UI/Código na TopBar (editor de código a 2 toques do Hub); P4 TopBar
+  ≤8 botões + menu "mais" (inventário provado na JVM); P5 as 8 fontes OFL
+  EMBUTIDAS no APK (assets/fonts, FontesKenkern, sem download — LICENSES.md)
+  + linha "FONTES: 8/8" na checagem "ui"; P6 aviso de skinning no texto do
+  usuário ("esqueleto/skinning ainda não suportado — Onda 3"). 456 testes
+  JVM verdes. **Release `v0.1.28` publicada — aguardando aceite no
+  aparelho** (6 itens no TESTES_PENDENTES.md).
 - **v0.1.27 — PARADA 3 (U1) COMPILADO**: TELAR base — aba "UI" com canvas
   1920x1080 (zoom/pan/régua/snap 8px), 8 elementos, âncoras 9+esticar com
   área segura nas 3 proporções, camadas (Z/ocultar/travar), Inspetor de UI,

@@ -1,6 +1,36 @@
 # KENKERN — TESTES_PENDENTES (só no aparelho; o agente não roda o app)
 
-## v0.1.27 — PARADA 3 (U1): 5 itens de aceite
+## v0.1.28 — LUZ DO LUME + 30/30 + ONDA 0: 6 itens de aceite
+
+> 7 commits (L1, L2, Onda 0 P1/P2, P3+P4, P5, P6, fechamento), CI verde em
+> cada; 456 testes JVM verdes (cada bug nasceu VERMELHO primeiro —
+> reprodução antes de corrigir). Fatos do aparelho valem mais que testes de
+> JVM.
+
+1. **Diagnóstico → Rodar tudo: 30/30 APROVADAS, 0 falhas, 0 PENDENTES** —
+   a "Luz do LUME" APROVADA com o pixel dominado pelo vermelho (R>200,
+   G<100, B<100) e os uniforms da ETAPA A no Console (Copiar relatório);
+   as 4 que ficavam PENDENTES (Saída da janela de jogo, Nicks de Área,
+   Editor de código Lua, UI do TELAR) agora RODAM e ficam APROVADAS.
+2. **Janela de jogo tocável**: tocar PAUSAR pausa em ≤100 ms; SAIR volta ao
+   editor; NENHUM botão do editor (Grade/Focar) na janela de jogo nem sobre
+   a barra de navegação; o overlay de toque (botão TouchApp) aparece POR 3 s
+   com coordenada, alvo, consumidor e ordem z.
+3. **Porta de entrada do editor de código**: 2 TOQUES do Hub até o editor de
+   código (aba Código na TopBar) com o navegador de arquivos (abas de
+   scripts + botão + dos modelos).
+4. **TopBar**: no máximo 8 botões visíveis + menu "mais" com o resto —
+   confira que Importar/Mover/Girar/Escalar/Snap/Voo/Focar/Ver pela câmera/
+   Auxiliares/Exportar/Diagnóstico/Resolução/Resetar continuam TODOS no
+   menu "mais" (manda o print antes/depois).
+5. **Fontes OFL em modo avião**: com o aparelho em MODO AVIÃO, o texto em
+   pt renderiza com as fontes do TELAR (troque a fonte de um TEXTO no
+   TELAR e veja mudar) e a checagem "ui" mostra "FONTES: 8/8 OFL carregadas
+   do APK (sem rede)".
+6. **Aviso de skinning**: importe um personagem com esqueleto — o relatório
+   mostra "esqueleto/skinning ainda não suportado — Onda 3" (em vez de
+   entregar modelo quebrado sem explicação; manda o print do aviso).
+
 
 > 1 commit (U1) + fechamento, CI verde; 431 testes JVM verdes.
 
