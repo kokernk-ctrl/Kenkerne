@@ -303,6 +303,15 @@
     <string name="diag_check_joystick">On-screen joystick — math (normalization, dead zone, 8 directions, actions)</string>
     <string name="editor_lua_abrir">Open in code editor</string>
     <string name="editor_lua_problemas">Issues</string>
+    <string name="editor_lua_menu_mais">More</string>
+    <string name="editor_lua_fonte_menos">A−</string>
+    <string name="editor_lua_fonte_mais">A+</string>
+    <string name="editor_lua_quebra_linha">Wrap lines</string>
+    <string name="editor_lua_copiar">Copy line</string>
+    <string name="editor_lua_colar">Paste</string>
+    <string name="editor_lua_nome_titulo">Name of the new script</string>
+    <string name="editor_lua_nome_hint">script.lua</string>
+    <string name="editor_lua_criar">Create</string>
     <string name="editor_lua_verificar">Check</string>
     <string name="editor_lua_salvo">saved</string>
     <string name="editor_lua_buscar">Find</string>

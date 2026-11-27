@@ -1988,13 +1988,29 @@ class Diagnostico(private val appContext: Context) {
                     problemas.add("verificar: erro sem linha/mensagem ($rotulo: $erroRuim)")
                 }
             }
+            // (f) R3: modelo NÃO vazio (grava ANTES de abrir — CriadorScript) +
+            // layout da barra SEM SOBREPOSIÇÃO por larguras ([voltar | nome e
+            // estado | Verificar | ⋮]; 360dp = retrato do alvo 800x360).
+            for (modelo in com.kenkern.engine.ui.editor.ModelosScript.NOMES) {
+                if (com.kenkern.engine.ui.editor.ModelosScript.conteudo(modelo).isBlank()) {
+                    problemas.add("modelo '$modelo' com conteúdo VAZIO")
+                }
+            }
+            if (!com.kenkern.engine.ui.editor.LargurasEditorLua.semSobreposicao(360)) {
+                problemas.add("layout: barra do editor NÃO cabe em 360dp (retrato do 800x360)")
+            }
+            if (!com.kenkern.engine.ui.editor.LargurasEditorLua.semSobreposicao(800)) {
+                problemas.add("layout: barra do editor NÃO cabe em 800dp")
+            }
         } catch (t: Throwable) {
             problemas.add("exceção: ${t.message ?: t.javaClass.simpleName}")
         }
         if (problemas.isEmpty()) {
             c.aprovado(
                 "tokenizador (keyword/string/comentário/número/API) · indentação por balanço de blocos · " +
-                    "autocompletar offline por contexto (catálogo = LUA_API.md) · 4 modelos compilam · Verificar (LuaJ) marca a linha"
+                    "autocompletar offline por contexto (catálogo = LUA_API.md) · 4 modelos compilam · Verificar (LuaC) marca a linha e lista no painel · " +
+                    "5 quebrados reprovados + 3 válidos (TrechosVerificar) · modelos gravam conteúdo ANTES de abrir (não vazios) · " +
+                    "barra [voltar|nome|Verificar|⋮] sem sobreposição em 360/800dp (LargurasEditorLua)"
             )
         } else {
             c.falhou(problemas.joinToString("; "))

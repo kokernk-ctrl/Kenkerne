@@ -227,6 +227,41 @@ class DocumentoLua(conteudo: String = "") {
     }
 
     /**
+     * R3 (v0.1.29) — COLAR do clipboard: texto com VÁRIAS linhas entra como
+     * linhas de verdade (sem indentação automática — o conteúdo colado é
+     * literal), a linha atual divide no cursor e o resto cola no fim da
+     * última linha colada. Cursor para na junção.
+     */
+    fun colar(texto: String) {
+        if (texto.isEmpty()) return
+        snapshot()
+        val limpo = texto.replace("\r\n", "\n").replace("\r", "\n")
+        val partes = limpo.split('\n')
+        val l = linhas[linhaCursor]
+        val col = colunaCursor.coerceIn(0, l.length)
+        val antes = l.substring(0, col)
+        val depois = l.substring(col)
+        if (partes.size == 1) {
+            linhas[linhaCursor] = antes + partes[0] + depois
+            colunaCursor = col + partes[0].length
+            return
+        }
+        linhas[linhaCursor] = antes + partes[0]
+        var idx = linhaCursor
+        for (i in 1 until partes.size) {
+            idx++
+            linhas.add(idx, partes[i])
+        }
+        if (depois.isNotEmpty()) {
+            linhas[idx] = linhas[idx] + depois
+            colunaCursor = linhas[idx].length - depois.length
+        } else {
+            colunaCursor = linhas[idx].length
+        }
+        linhaCursor = idx
+    }
+
+    /**
      * ENTER com INDENTAÇÃO AUTOMÁTICA (C1.2): herda o recuo da linha atual;
      * +1 nível se a linha termina em then/do/function/repeat/else/{;
      * −1 nível se a NOVA linha começa com end/until/else/elseif/}.

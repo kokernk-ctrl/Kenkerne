@@ -21,12 +21,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -78,6 +83,8 @@ import com.kenkern.engine.ui.theme.KenkernSurfaceHigh
 import com.kenkern.engine.ui.theme.KenkernTextHigh
 import com.kenkern.engine.ui.theme.KenkernTextLow
 import com.kenkern.engine.ui.theme.KenkernTextMid
+import com.kenkern.engine.ui.editor.CriadorScript
+import com.kenkern.engine.ui.editor.LargurasEditorLua
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.delay
@@ -154,6 +161,10 @@ fun EditorLuaScreen(
     var tamanhoFonte by remember { mutableIntStateOf(12) }
     var quebrarLinhas by remember { mutableStateOf(false) }
     var buscaAberta by remember { mutableStateOf(false) }
+    // R3: PERGUNTA O NOME do script novo (padrão script.lua; sufixo _2 só em
+    // colisão) — o modelo foi escolhido no menu + e o diálogo confirma o nome.
+    var modeloNovo by remember { mutableStateOf<String?>(null) }
+    var nomeNovo by remember { mutableStateOf(com.kenkern.engine.ui.editor.CriadorScript.NOME_PADRAO) }
     var textoBusca by remember { mutableStateOf("") }
     var textoSubstituir by remember { mutableStateOf("") }
     var avisoGrande by remember { mutableStateOf(false) }
@@ -164,6 +175,8 @@ fun EditorLuaScreen(
 
     // carrega o conteúdo (arquivo ou fonte inline) + último erro do Console
     val scope = rememberCoroutineScope()
+    // R3: clipboard para COPIAR (seleção/linha) e COLAR (multilinha).
+    val clipboard = LocalClipboardManager.current
     LaunchedEffect(alvo) {
         withContext(Dispatchers.IO) {
             when (alvo) {
@@ -179,6 +192,14 @@ fun EditorLuaScreen(
             }
         }
         carregado = true
+        // R3 (v0.1.29) — CAUSA RAIZ do “script abre VAZIO”: a carga é ASSÍNCRONA
+        // (withContext IO) e nenhum estado LIDO NA COMPOSIÇÃO mudava depois dela
+        // (só nomeArquivo, lido no escopo do título — o LazyColumn e seu
+        // items(count = doc.linhas.size) ficavam com o documento INICIAL vazio:
+        // a recomposição que atualiza a contagem de linhas NUNCA acontecia).
+        // revisao é chave do LaunchedEffect do autosave NA MESMA ESCOPO — bump
+        // aqui invalida a composição e o editor mostra as linhas carregadas.
+        revisao++
         // C1.5: erro de execução do Console abre o script NA LINHA (formato
         // [string "..."]:LINHA: — procurado no último erro do KenkernLog).
         val erro = ultimoErroLuaDoConsole(nomeArquivo)
@@ -235,7 +256,7 @@ fun EditorLuaScreen(
             .imePadding()
     ) {
         Column(Modifier.fillMaxSize()) {
-            // ---------- barra superior ----------
+            // ---------- barra superior R3: [voltar | nome e estado | Verificar | menu ⋮] ----------
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -247,22 +268,31 @@ fun EditorLuaScreen(
                     contentDescription = stringResource(R.string.editor_back_hub),
                     onClick = onFechar
                 )
-                Text(
-                    nomeArquivo,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = KenkernTextHigh,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                // R3: NOME E ESTADO juntos no espaço de peso — o Verificar
+                // (largura FIXA) e o ⋮ ficam SEMPRE visíveis e NUNCA cobrem o
+                // “salvo” (sintoma v0.1.28: Verificar cortado na borda e
+                // cobrindo o rótulo). Larguras do contrato: LargurasEditorLua.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
-                )
-                if (statusSalvo.isNotEmpty()) {
+                ) {
                     Text(
-                        stringResource(R.string.editor_lua_salvo),
-                        fontSize = 10.sp,
-                        color = KenkernSuccess,
-                        maxLines = 1
+                        nomeArquivo,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = KenkernTextHigh,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    if (statusSalvo.isNotEmpty()) {
+                        Text(
+                            stringResource(R.string.editor_lua_salvo),
+                            fontSize = 10.sp,
+                            color = KenkernSuccess,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = 6.dp)
+                        )
+                    }
                 }
                 KButton(
                     texto = stringResource(R.string.editor_lua_verificar),
@@ -285,8 +315,62 @@ fun EditorLuaScreen(
                         }
                         notificarEdicao()
                     },
-                    modifier = Modifier.height(44.dp)
+                    modifier = Modifier
+                        .height(44.dp)
+                        .width(LargurasEditorLua.BOTAO_VERIFICAR_DP.dp)
                 )
+                // R3: menu ⋮ — A−, A+, quebra de linha e Busca moram AQUI (fim
+                // do overlay flutuante que cobria a faixa de teclas).
+                var menuMais by remember { mutableStateOf(false) }
+                Box {
+                    KIconButton(
+                        icon = Icons.Filled.MoreVert,
+                        contentDescription = stringResource(R.string.editor_lua_menu_mais),
+                        onClick = { menuMais = true }
+                    )
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = menuMais,
+                        onDismissRequest = { menuMais = false }
+                    ) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(stringResource(R.string.editor_lua_fonte_menos), fontSize = 12.sp) },
+                            onClick = {
+                                if (tamanhoFonte > 9) tamanhoFonte--
+                                menuMais = false
+                            }
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(stringResource(R.string.editor_lua_fonte_mais), fontSize = 12.sp) },
+                            onClick = {
+                                if (tamanhoFonte < 20) tamanhoFonte++
+                                menuMais = false
+                            }
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(stringResource(R.string.editor_lua_quebra_linha), fontSize = 12.sp) },
+                            leadingIcon = {
+                                if (quebrarLinhas) {
+                                    androidx.compose.material3.Icon(
+                                        Icons.Filled.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.width(16.dp)
+                                    )
+                                }
+                            },
+                            onClick = {
+                                quebrarLinhas = !quebrarLinhas
+                                menuMais = false
+                            }
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(stringResource(R.string.editor_lua_buscar), fontSize = 12.sp) },
+                            onClick = {
+                                buscaAberta = !buscaAberta
+                                menuMais = false
+                            }
+                        )
+                    }
+                }
             }
 
             // ---------- abas de arquivos (scripts .lua) ----------
@@ -335,8 +419,8 @@ fun EditorLuaScreen(
                                 },
                                 onClick = {
                                     menuNovo = false
-                                    val nome = vm.criarScriptModelo(modelo)
-                                    if (nome.isNotEmpty()) onAbrir(AlvoEditorLua.Arquivo(nome))
+                                    nomeNovo = CriadorScript.NOME_PADRAO
+                                    modeloNovo = modelo
                                 }
                             )
                         }
@@ -552,25 +636,64 @@ fun EditorLuaScreen(
                         }
                     }
                 )
+                // R3: COPIAR (seleção da linha ativa, senão a linha inteira) e
+                // COLAR (multilinha — DocumentoLua.colar) na faixa de apoio.
+                KIconButton(
+                    icon = Icons.Filled.ContentCopy,
+                    contentDescription = stringResource(R.string.editor_lua_copiar),
+                    onClick = {
+                        val linha = doc.linhas[doc.linhaCursor]
+                        val sel = campoAtivo.selection
+                        val ini = sel.start.coerceIn(0, linha.length)
+                        val fim = sel.end.coerceIn(0, linha.length)
+                        val texto = if (fim > ini) linha.substring(ini, fim) else linha
+                        clipboard.setText(AnnotatedString(texto))
+                        KenkernLog.w("EditorLua", "copiar: ${texto.length} caractere(s) da linha ${doc.linhaCursor + 1}")
+                    }
+                )
+                KIconButton(
+                    icon = Icons.Filled.ContentPaste,
+                    contentDescription = stringResource(R.string.editor_lua_colar),
+                    onClick = {
+                        val texto = clipboard.getText()?.text ?: ""
+                        if (texto.isNotEmpty()) {
+                            doc.colar(texto)
+                            campoAtivo = TextFieldValue(doc.linhas[doc.linhaCursor])
+                            notificarEdicao()
+                            atualizarSugestoes()
+                        }
+                    }
+                )
             }
         }
 
-        // ---------- controles de fonte/quebra/busca (canto superior direito) ----------
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(8.dp)
-        ) {
-            com.kenkern.engine.ui.components.KChip(texto = "A−", onClick = { if (tamanhoFonte > 9) tamanhoFonte-- })
-            com.kenkern.engine.ui.components.KChip(texto = "A+", onClick = { if (tamanhoFonte < 20) tamanhoFonte++ })
-            com.kenkern.engine.ui.components.KChip(
-                texto = if (quebrarLinhas) "⏎ ✓" else "⏎",
-                onClick = { quebrarLinhas = !quebrarLinhas }
-            )
-            com.kenkern.engine.ui.components.KChip(
-                texto = stringResource(R.string.editor_lua_buscar),
-                onClick = { buscaAberta = !buscaAberta }
+        // R3: DIÁLOGO DO NOME do script novo (padrão script.lua; o modelo já
+        // foi escolhido no menu +). Sufixo _2 SÓ em colisão (CriadorScript).
+        if (modeloNovo != null) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { modeloNovo = null },
+                title = { Text(stringResource(R.string.editor_lua_nome_titulo), fontSize = 14.sp) },
+                text = {
+                    OutlinedTextField(
+                        value = nomeNovo,
+                        onValueChange = { nomeNovo = it },
+                        singleLine = true,
+                        textStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                        label = { Text(stringResource(R.string.editor_lua_nome_hint), fontSize = 10.sp) }
+                    )
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        val nome = vm.criarScriptComNome(nomeNovo, modeloNovo ?: "vazio")
+                        modeloNovo = null
+                        if (nome.isNotEmpty()) onAbrir(AlvoEditorLua.Arquivo(nome))
+                    }) { Text(stringResource(R.string.editor_lua_criar), fontSize = 13.sp) }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { modeloNovo = null }) {
+                        Text(stringResource(R.string.hub_cancel), fontSize = 13.sp)
+                    }
+                }
             )
         }
     }

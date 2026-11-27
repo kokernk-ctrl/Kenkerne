@@ -1052,23 +1052,36 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             ?: emptyList()
     }
 
-    /** C1.7: cria um script novo a partir de um MODELO (vazio/movimento/coletar/gatilho). */
-    fun criarScriptModelo(modelo: String): String {
-        val nome = "script_${modelo}_${System.currentTimeMillis() % 100000}.lua"
-        val f = scriptFile(nome)
-        if (f == null) {
-            com.kenkern.engine.diag.KenkernLog.e(TAG, "criarScriptModelo: projeto sem raiz — nada criado")
+    /**
+     * C1 + R3 (v0.1.29): cria scripts/<nome> com o conteúdo do MODELO —
+     * grava ANTES de abrir (CriadorScript, PURO, testado na JVM). Nome
+     * PADRÃO "script.lua"; sufixo "_2" SÓ em colisão (nunca mais o sufixo
+     * aleatório "script_movimento_34934.lua" da v0.1.28).
+     */
+    fun criarScriptModelo(modelo: String): String =
+        criarScriptComNome(com.kenkern.engine.ui.editor.CriadorScript.NOME_PADRAO, modelo)
+
+    /** R3: cria com o NOME perguntado no diálogo (padrão script.lua). */
+    fun criarScriptComNome(nomeDesejado: String, modelo: String): String {
+        val raiz = project.value?.root ?: run {
+            com.kenkern.engine.diag.KenkernLog.e(TAG, "criarScript: projeto sem raiz — nada criado")
             return ""
         }
-        try {
-            f.parentFile?.mkdirs()
-            f.writeText(com.kenkern.engine.ui.editor.ModelosScript.conteudo(modelo))
-            com.kenkern.engine.diag.KenkernLog.w(TAG, "script novo: scripts/$nome (modelo $modelo)")
+        return try {
+            val nome = com.kenkern.engine.ui.editor.CriadorScript.criar(
+                java.io.File(raiz, "scripts"), nomeDesejado, modelo
+            )
+            if (nome == null) {
+                com.kenkern.engine.diag.KenkernLog.e(TAG, "criarScript: nome inválido '$nomeDesejado'")
+                ""
+            } else {
+                com.kenkern.engine.diag.KenkernLog.w(TAG, "script novo: scripts/$nome (modelo $modelo)")
+                nome
+            }
         } catch (e: Exception) {
-            com.kenkern.engine.diag.KenkernLog.e(TAG, "criarScriptModelo falhou ($nome)", e)
-            return ""
+            com.kenkern.engine.diag.KenkernLog.e(TAG, "criarScript falhou ($nomeDesejado)", e)
+            ""
         }
-        return nome
     }
 
     /** C1: fonte INLINE da classe Script de um Nick (null = Nick sem Script). */

@@ -303,6 +303,15 @@
     <string name="diag_check_joystick">Joystick de tela — matemática (normalização, zona morta, 8 direções, ações)</string>
     <string name="editor_lua_abrir">Abrir no editor de código</string>
     <string name="editor_lua_problemas">Problemas</string>
+    <string name="editor_lua_menu_mais">Mais</string>
+    <string name="editor_lua_fonte_menos">A−</string>
+    <string name="editor_lua_fonte_mais">A+</string>
+    <string name="editor_lua_quebra_linha">Quebra de linha</string>
+    <string name="editor_lua_copiar">Copiar linha</string>
+    <string name="editor_lua_colar">Colar</string>
+    <string name="editor_lua_nome_titulo">Nome do script novo</string>
+    <string name="editor_lua_nome_hint">script.lua</string>
+    <string name="editor_lua_criar">Criar</string>
     <string name="editor_lua_verificar">Verificar</string>
     <string name="editor_lua_salvo">salvo</string>
     <string name="editor_lua_buscar">Buscar</string>
