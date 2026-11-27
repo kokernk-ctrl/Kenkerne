@@ -45,7 +45,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kenkern.engine.R
-import com.kenkern.engine.ui.components.KToggle
 import com.kenkern.engine.core.LenteNick
 import com.kenkern.engine.core.LuzNick
 import com.kenkern.engine.core.MalhaNick
@@ -56,7 +55,6 @@ import com.kenkern.engine.editor.EditorViewModel
 import com.kenkern.engine.ui.nickDisplayName
 import com.kenkern.engine.ui.nickKindIcon
 import com.kenkern.engine.ui.nickKindLabel
-import com.kenkern.engine.ui.renameHint
 import com.kenkern.engine.ui.common.AxisNumberField
 import com.kenkern.engine.ui.common.CollapsibleSection
 import com.kenkern.engine.ui.common.FloatField
@@ -101,6 +99,59 @@ fun InspectorPanel(
 
     val scroll = rememberScrollState()
 
+    // R5.5: ao TROCAR o Nick selecionado a rolagem VOLTA AO TOPO — a posição
+    // era PRESERVADA entre seleções (print v0.1.28: campo Nome cortado fora
+    // da tela; o usuário descia para ler e o próximo Nick já vinha descido).
+    androidx.compose.runtime.LaunchedEffect(nick.id) {
+        com.kenkern.engine.diag.KenkernLog.w("Inspetor", "seleção trocada — rolagem de volta ao topo")
+        scroll.scrollTo(0)
+    }
+
+    Column(Modifier.fillMaxSize()) {
+    // ---------- R5.2: CABEÇALHO FIXO (fora da rolagem) ----------
+    // ícone + rótulo do tipo + chave técnica + interruptor "Ativo" de 36dp.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .padding(horizontal = 12.dp)
+    ) {
+        Icon(
+            nickKindIcon(nick.kind),
+            contentDescription = null,
+            tint = KenkernAmber,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                nickKindLabel(nick.kind),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = KenkernTextHigh,
+                maxLines = 1
+            )
+            Text(
+                nick.kind,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                color = KenkernTextLow,
+                maxLines = 1
+            )
+        }
+        // R5.1: "Ativo" de 36dp NO CABEÇALHO — CAUSA RAIZ dos interruptores
+        // gigantes e sobrepostos: os dois KToggle usavam Modifier.weight(1f)
+        // DENTRO de uma Column VERTICAL ROLÁVEL (altura infinita — peso de
+        // COLUNA distribui altura, não largura): InspectorPanel.kt:161 e 167
+        // na v0.1.28. Sem weight, 36dp, no cabeçalho.
+        Switch(
+            checked = nick.active,
+            onCheckedChange = { vm.setNickActive(nick.id, it) },
+            modifier = Modifier.height(36.dp)
+        )
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -108,64 +159,53 @@ fun InspectorPanel(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // ---------- T0.3: CABEÇALHO DO TIPO (ícone + rótulo localizado + chave) ----------
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                nickKindIcon(nick.kind),
-                contentDescription = null,
-                tint = KenkernAmber,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    nickKindLabel(nick.kind),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = KenkernTextHigh,
-                    maxLines = 1
-                )
-                Text(
-                    nick.kind,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = KenkernTextLow,
-                    maxLines = 1
-                )
-            }
-        }
-
-        // Nome (T0.2: VAZIO = rótulo do tipo no idioma atual — DECISIONS #26)
+        // ---------- R5.3: NOME em uma linha; Aplicar/Reverter SÓ quando muda ----------
         var nameText by remember(nick.id) { mutableStateOf(nick.name ?: "") }
+        val nomeAlterado = nameText.trim() != (nick.name ?: "")
         OutlinedTextField(
             value = nameText,
             onValueChange = { nameText = it },
             label = { Text(stringResource(R.string.inspector_name), fontSize = 12.sp) },
-            supportingText = { Text(renameHint(), fontSize = 11.sp) },
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyMedium,
+            // R5.3: "Concluído" do teclado APLICA o nome (sem precisar do botão)
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                imeAction = androidx.compose.ui.text.input.ImeAction.Done
+            ),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                onDone = { if (nomeAlterado) vm.renameSelected(nameText.trim()) }
+            ),
             modifier = Modifier.fillMaxWidth()
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(onClick = { if (nameText.trim() != (nick.name ?: "")) {
-                vm.renameSelected(nameText.trim())
-            } }) { Text(stringResource(R.string.inspector_apply_name), fontSize = 12.sp) }
-            TextButton(onClick = { vm.select(nick.id) }) { Text(stringResource(R.string.inspector_revert), fontSize = 12.sp) }
+        if (nomeAlterado) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = { vm.renameSelected(nameText.trim()) }) {
+                    Text(stringResource(R.string.inspector_apply_name), fontSize = 12.sp)
+                }
+                TextButton(onClick = { nameText = nick.name ?: "" }) {
+                    Text(stringResource(R.string.inspector_revert), fontSize = 12.sp)
+                }
+            }
         }
-
-        // Flags — P2 (v0.1.25): toggles do visual Singularidade.
-        KToggle(
-            rotulo = stringResource(R.string.inspector_active),
-            checked = nick.active,
-            onCheckedChange = { vm.setNickActive(nick.id, it) },
-            modifier = Modifier.weight(1f)
-        )
-        KToggle(
-            rotulo = stringResource(R.string.inspector_visible),
-            checked = nick.visible,
-            onCheckedChange = { vm.setNickVisible(nick.id, it) },
-            modifier = Modifier.weight(1f)
-        )
+        // R5: "Visível" — rótulo à esquerda, interruptor à direita, 36dp (linha).
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+        ) {
+            Text(
+                stringResource(R.string.inspector_visible),
+                fontSize = 12.sp,
+                color = KenkernTextHigh,
+                modifier = Modifier.weight(1f)
+            )
+            Switch(
+                checked = nick.visible,
+                onCheckedChange = { vm.setNickVisible(nick.id, it) },
+                modifier = Modifier.height(36.dp)
+            )
+        }
 
         // ---------- TRANSFORM (seção recolhível) ----------
         CollapsibleSection(stringResource(R.string.inspector_transform)) {
@@ -412,64 +452,72 @@ fun InspectorPanel(
             }
         }
 
-        // ---------- CLASSES (seção recolhível) ----------
-        CollapsibleSection(stringResource(R.string.inspector_classes)) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (inst in nick.classes.toList()) {
-                    ClassCard(vm, nick.id, inst, onAbrirEditorLua)
-                }
+        // ---------- R5.4: UMA SEÇÃO POR CLASSE (ordem fixa de nick.classes) ----------
+        // As classes com seção ESPECIAL acima (Colisor = forma, Luz, Lente)
+        // já renderizaram seus campos — o cartão genérico os duplicaria, por
+        // isso ficam de fora. O estado recolhido de cada seção é SALVO POR
+        // SEÇÃO (remember(inst.typeName) no ClassCard — não reseta ao trocar
+        // de Nick, não depende da seleção).
+        for (inst in nick.classes.toList()) {
+            val temSecaoEspecial = inst.typeName == MalhaNick.CLASSE_COLISOR ||
+                (inst.typeName == LuzNick.CLASSE && nick.kind.startsWith("light.")) ||
+                (inst.typeName == LenteNick.CLASSE && nick.kind.startsWith("camera."))
+            if (!temSecaoEspecial) {
+                ClassCard(vm, nick.id, inst, onAbrirEditorLua)
+            }
+        }
 
-                var addMenu by remember { mutableStateOf(false) }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { addMenu = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = null, Modifier.width(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.inspector_add_class), fontSize = 12.sp)
-                    }
-                    DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
-                        // T0.3: classes AGRUPADAS POR FUNÇÃO (categoria), com
-                        // cabeçalho de grupo; "já aplicada" continua desabilitada.
-                        val porCategoria = com.kenkern.engine.core.NickClassRegistry.porCategoria()
-                        if (porCategoria.isEmpty()) {
-                            DropdownMenuItem(text = { Text(stringResource(R.string.inspector_no_class), fontSize = 12.sp) }, onClick = {})
-                        }
-                        for ((categoria, definicoes) in porCategoria) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        categoriaLocalizada(categoria),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = KenkernTextMid
-                                    )
-                                },
-                                enabled = false,
-                                onClick = {}
+        // R5.4: "Adicionar classe" NO FIM (depois de todas as seções).
+        var addMenu by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { addMenu = true }) {
+                Icon(Icons.Filled.Add, contentDescription = null, Modifier.width(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(stringResource(R.string.inspector_add_class), fontSize = 12.sp)
+            }
+            DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
+                // T0.3: classes AGRUPADAS POR FUNÇÃO (categoria), com
+                // cabeçalho de grupo; "já aplicada" continua desabilitada.
+                val porCategoria = com.kenkern.engine.core.NickClassRegistry.porCategoria()
+                if (porCategoria.isEmpty()) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.inspector_no_class), fontSize = 12.sp) }, onClick = {})
+                }
+                for ((categoria, definicoes) in porCategoria) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                categoriaLocalizada(categoria),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = KenkernTextMid
                             )
-                            for (def in definicoes) {
-                                val already = nick.findClassInstance(def.name) != null
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            def.name + if (already) "  " + stringResource(R.string.inspector_class_applied) else "",
-                                            fontSize = 12.sp
-                                        )
-                                    },
-                                    enabled = !already,
-                                    onClick = {
-                                        addMenu = false
-                                        vm.addClassToSelected(def.name)
-                                    }
+                        },
+                        enabled = false,
+                        onClick = {}
+                    )
+                    for (def in definicoes) {
+                        val already = nick.findClassInstance(def.name) != null
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    def.name + if (already) "  " + stringResource(R.string.inspector_class_applied) else "",
+                                    fontSize = 12.sp
                                 )
+                            },
+                            enabled = !already,
+                            onClick = {
+                                addMenu = false
+                                vm.addClassToSelected(def.name)
                             }
-                        }
+                        )
                     }
                 }
             }
         }
 
         Spacer(Modifier.height(12.dp))
-    }
+    } // fecha a Column ROLÁVEL (R5: cabeçalho fixo ficou FORA dela)
+    } // fecha a Column raiz (cabeçalho fixo + corpo rolável)
 }
 
 /** Rótulo localizado da forma do colisor (chave estável → texto do idioma). */
