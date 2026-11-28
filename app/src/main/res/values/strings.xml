@@ -353,6 +353,13 @@ ui/  worlds/  dialogues/  build/  .kenkern/
     <string name="telar_selecione">Select a UI element</string>
     <string name="telar_nome">Name</string>
     <string name="telar_texto">Text</string>
+    <string name="telar_joy_tipo">Type</string>
+    <string name="telar_joy_tamanho">Size (dp)</string>
+    <string name="telar_joy_opacidade">Opacity (0-1)</string>
+    <string name="telar_joy_zona_morta">Dead zone (0-0.9)</string>
+    <string name="telar_joy_oito">8 directions</string>
+    <string name="telar_joy_controla">Controls (Nick name)</string>
+    <string name="telar_joy_seguir">Follow Nick</string>
     <string name="telar_remover">Remove</string>
     <string name="editor_inspector_oculto">hidden</string>
     <string name="editor_inspector_travado">locked</string>

@@ -31,6 +31,7 @@ import com.kenkern.engine.commands.SetFlagCommand
 import com.kenkern.engine.commands.SetLentePrincipalCommand
 import com.kenkern.engine.commands.TransformCommand
 import com.kenkern.engine.commands.TransformDragCommand
+import com.kenkern.engine.core.NickKind
 import com.kenkern.engine.core.NickKindRegistry
 import com.kenkern.engine.core.NickValue
 import com.kenkern.engine.core.ReferenceId
@@ -624,6 +625,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
      * "Adicionar Nick" — UM Command (desfazer remove), classes padrão do tipo
      * aplicadas, nasce SELECIONADO na posição do centro da tela projetada no
      * chão. [spawnXz] traz x/z do ponto projetado (null = origem).
+     *
+     * X1 (v0.1.31): Nicks `ui.*` NUNCA entram na Hierarquia 3D — nem como
+     * filho do selecionado, nem na raiz. Eles viram ELEMENTO DE UI no
+     * documento do TELAR (ui/<nome>.kui), que é a árvore deles.
      */
     fun addNickOfKind(kind: String, comoFilhoDoSelecionado: Boolean, spawnXz: FloatArray?) {
         val s = sceneRef ?: return
@@ -637,6 +642,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 "addNickOfKind recusado: '$kind' tem status " + def.status +
                     " — só Nicks COMPLETOS são criáveis (NICKS.md, P3)"
             )
+            return
+        }
+        // X1 (v0.1.31): rota própria para ui.* — "como filho do selecionado"
+        // é IGNORADO para eles (não existe pai 3D para elemento de UI).
+        if (kind.startsWith("ui.")) {
+            adicionarElementoUi(kind, def)
             return
         }
         val parent = if (comoFilhoDoSelecionado) {
@@ -657,6 +668,42 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             select(criado.id)
             bump()
         }
+    }
+
+    /**
+     * X1 (v0.1.31): cria o elemento de UI no documento do TELAR (mesmo
+     * padrão de posição/tamanho do "Adicionar" do TELAR) e grava o .kui.
+     * Erro claro no Console se o kind ui.* não tem tipo de elemento
+     * correspondente — nada silencioso.
+     */
+    private fun adicionarElementoUi(kind: String, def: NickKind?) {
+        val tipo = com.kenkern.engine.ui.telar.ElementoUi.de(kind)
+        if (tipo == null) {
+            com.kenkern.engine.diag.KenkernLog.e(
+                TAG,
+                "ui.* '$kind' sem tipo de elemento de UI correspondente (TELAR) — não criado"
+            )
+            return
+        }
+        val doc = carregarUiDoc() ?: com.kenkern.engine.ui.telar.DocumentoUi("ui")
+        doc.executar(
+            com.kenkern.engine.ui.telar.ComandoAdicionar(
+                com.kenkern.engine.ui.telar.ElementoUiInstancia(
+                    doc.proximoId(), tipo,
+                    def?.label("pt") ?: tipo.key.substringAfter('.'),
+                    com.kenkern.engine.ui.telar.LARGURA_REF / 4,
+                    com.kenkern.engine.ui.telar.ALTURA_REF / 4,
+                    if (tipo == com.kenkern.engine.ui.telar.ElementoUi.JOYSTICK) 448 else 320,
+                    if (tipo == com.kenkern.engine.ui.telar.ElementoUi.JOYSTICK) 448 else 96
+                )
+            )
+        )
+        salvarUiDoc(doc)
+        com.kenkern.engine.diag.KenkernLog.i(
+            TAG,
+            "X1: '$kind' criado como ELEMENTO DE UI do TELAR (ui/${doc.nome}.kui) — nunca como Nick 3D"
+        )
+        bump()
     }
 
     /** T0.3: troca a FORMA do colisor do Nick selecionado (UM Command; ajusta à AABB). */

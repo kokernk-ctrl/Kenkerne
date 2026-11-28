@@ -447,6 +447,71 @@ fun TelarScreen(vm: EditorViewModel, onVoltarEditor: () -> Unit) {
                             }
                         }
                     }
+                    // X2 (v0.1.31): propriedades do joystick EDITÁVEIS com efeito
+                    // ao vivo — os mesmos campos da classe Joystick (Nick ui.*
+                    // antigo) agora para o ELEMENTO DE UI do TELAR; cada campo é
+                    // um ComandoPropriedade (undo/redo por Command).
+                    if (sel.tipo == ElementoUi.JOYSTICK) {
+                        // tipo: fixo × flutuante
+                        Text(stringResource(R.string.telar_joy_tipo), fontSize = 11.sp, color = KenkernTextMid)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            for (t in listOf("fixo", "flutuante")) {
+                                KChip(
+                                    texto = t,
+                                    onClick = {
+                                        doc.executar(ComandoPropriedade(sel.id, "joystickTipo", sel.joystickTipo, t))
+                                        revisao++
+                                    },
+                                    selecionado = sel.joystickTipo == t
+                                )
+                            }
+                        }
+                        CampoUiTexto(stringResource(R.string.telar_joy_tamanho), sel.joystickTamanho.toString()) {
+                            val v = it.toIntOrNull()
+                            if (v != null) {
+                                doc.executar(ComandoPropriedade(sel.id, "joystickTamanho", sel.joystickTamanho, v.coerceIn(64, 200)))
+                                revisao++
+                            }
+                        }
+                        CampoUiTexto(stringResource(R.string.telar_joy_opacidade), sel.joystickOpacidade.toString()) {
+                            val v = it.toFloatOrNull()
+                            if (v != null) {
+                                doc.executar(ComandoPropriedade(sel.id, "joystickOpacidade", sel.joystickOpacidade, v.coerceIn(0.15f, 1f)))
+                                revisao++
+                            }
+                        }
+                        CampoUiTexto(stringResource(R.string.telar_joy_zona_morta), sel.joystickZonaMorta.toString()) {
+                            val v = it.toFloatOrNull()
+                            if (v != null) {
+                                doc.executar(ComandoPropriedade(sel.id, "joystickZonaMorta", sel.joystickZonaMorta, v.coerceIn(0f, 0.9f)))
+                                revisao++
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.telar_joy_oito), fontSize = 11.sp, color = KenkernTextMid, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = sel.joystickOitoDirecoes,
+                                onCheckedChange = { novo ->
+                                    doc.executar(ComandoPropriedade(sel.id, "joystickOitoDirecoes", sel.joystickOitoDirecoes, novo))
+                                    revisao++
+                                }
+                            )
+                        }
+                        CampoUiTexto(stringResource(R.string.telar_joy_controla), sel.joystickControla) {
+                            doc.executar(ComandoPropriedade(sel.id, "joystickControla", sel.joystickControla, it))
+                            revisao++
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.telar_joy_seguir), fontSize = 11.sp, color = KenkernTextMid, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = sel.joystickSeguirNick,
+                                onCheckedChange = { novo ->
+                                    doc.executar(ComandoPropriedade(sel.id, "joystickSeguirNick", sel.joystickSeguirNick, novo))
+                                    revisao++
+                                }
+                            )
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.editor_inspector_oculto), fontSize = 11.sp, color = KenkernTextMid, modifier = Modifier.weight(1f))
                         Switch(

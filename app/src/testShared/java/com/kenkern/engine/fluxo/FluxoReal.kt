@@ -113,20 +113,42 @@ object FluxoReal {
         rule.onAllNodes(hasSetTextAction()).onFirst().performTextInput(TEXTO_DIGITADO)
     }
 
-    /** c) cria UM Nick de cada kind criável pelo caminho da UI (addNickOfKind). */
+    /** c) cria UM Nick de cada kind criável pelo caminho da UI (addNickOfKind).
+     * X1 (v0.1.31): kinds `ui.*` NÃO entram na cena 3D — o helper exige que a
+     * cena fique INTACTA e que o elemento de UI apareça no .kui do TELAR. */
     fun criarUmNickDeCadaKind(vm: EditorViewModel): List<Pair<String, String>> {
         val s = vm.sceneRef ?: error("cena ausente")
         val criados = ArrayList<Pair<String, String>>()
         for (kind in NickKindRegistry.all().filter { it.criavel() }) {
             val antes = s.roots.size + contarDescendentes(s)
             vm.addNickOfKind(kind.key, false, null)
-            val depois = s.roots.size + contarDescendentes(s)
-            check(depois == antes + 1) { "kind '${kind.key}' não entrou na cena ($antes → $depois)" }
-            val ultimo = s.roots.lastOrNull()?.let { ultimoCriado(it) } ?: s.roots.last()
-            criados += kind.key to (ultimo.name ?: kind.label("en"))
+            if (kind.key.startsWith("ui.")) {
+                // X1: cena 3D INTACTA + elemento de UI criado.
+                val depois3d = s.roots.size + contarDescendentes(s)
+                check(depois3d == antes) { "X1: kind '${kind.key}' ALTEROU a Hierarquia 3D ($antes → $depois3d)" }
+                check(temElementoUiCriado(vm, kind.key)) {
+                    "X1: kind '${kind.key}' não virou elemento de UI no .kui"
+                }
+                criados += kind.key to kind.label("en")
+            } else {
+                val depois = s.roots.size + contarDescendentes(s)
+                check(depois == antes + 1) { "kind '${kind.key}' não entrou na cena ($antes → $depois)" }
+                val ultimo = s.roots.lastOrNull()?.let { ultimoCriado(it) } ?: s.roots.last()
+                criados += kind.key to (ultimo.name ?: kind.label("en"))
+            }
         }
         return criados
     }
+
+    /** X1: o .kui atual contém um elemento do tipo correspondente ao kind. */
+    fun temElementoUiCriado(vm: EditorViewModel, kind: String): Boolean {
+        val tipo = com.kenkern.engine.ui.telar.ElementoUi.de(kind) ?: return false
+        val doc = vm.carregarUiDoc() ?: return false
+        return doc.elementos.any { it.tipo == tipo }
+    }
+
+    /** X1: total de Nicks da árvore 3D (raízes + descendentes). */
+    fun totalNicks(s: Scene): Int = s.roots.size + contarDescendentes(s)
 
     private fun contarDescendentes(s: Scene): Int {
         var n = 0

@@ -815,11 +815,13 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             !narrowDockCoversViewport &&
                             svForPlay != null
                         ) {
-                            // M1.3: JOYSTICK NICK editável — o 1º ui.joystick ATIVO
-                            // configura tamanho/opacidade/zona morta/8 direções/tipo;
-                            // sem joystick na cena, usa o de teste padrão.
+                            // M1.3 + X2 (v0.1.31): o 1º ui.joystick ATIVO (Nick
+                            // antigo) OU o joystick do .kui do TELAR (destino dos
+                            // ui.* desde o X1) configura tamanho/opacidade/zona
+                            // morta/8 direções/tipo — efeito ao vivo em Play.
+                            val docTelar = remember(vm.scene.value, sceneRevision) { vm.carregarUiDoc() }
                             val cfg = remember(vm.scene.value, sceneRevision) {
-                                com.kenkern.engine.ui.screens.JoystickUiConfig.de(vm.scene.value)
+                                com.kenkern.engine.ui.screens.JoystickUiConfig.de(vm.scene.value, docTelar)
                             }
                             val estadoInput = remember { com.kenkern.engine.engine.EstadoInputJogo() }
                             LaunchedEffect(estadoInput, svForPlay) { svForPlay.estadoInput = estadoInput }
@@ -835,7 +837,6 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             // U1.6 (v0.1.27): UI DO TELAR em Play — o .kui do projeto
                             // desenhado SOBRE o jogo (Compose) com toque sem conflito:
                             // só botão/joystick/área reclamam toque.
-                            val docTelar = remember(vm.scene.value, sceneRevision) { vm.carregarUiDoc() }
                             if (docTelar != null) {
                                 UiJogoTelar(
                                     doc = docTelar,
@@ -2231,27 +2232,47 @@ data class JoystickUiConfig(
     companion object {
         val PADRAO = JoystickUiConfig("fixo", 112f, 0.9f, 0.15f, false, false)
 
-        fun de(scene: com.kenkern.engine.core.Scene?): JoystickUiConfig {
-            if (scene == null) return PADRAO
-            val pilha = ArrayList<com.kenkern.engine.core.Nick>(16)
-            for (r in scene.roots) pilha.add(r)
-            var head = 0
-            while (head < pilha.size) {
-                val n = pilha[head++]
-                if (n.active && n.kind == "ui.joystick") {
-                    val inst = n.findClassInstance("Joystick")
-                    if (inst != null) {
-                        return JoystickUiConfig(
-                            tipo = inst.getString("tipo", "fixo"),
-                            tamanhoDp = inst.getFloat("tamanho", 112f).coerceIn(64f, 200f),
-                            opacidade = inst.getFloat("opacidade", 0.9f).coerceIn(0.15f, 1f),
-                            zonaMorta = inst.getFloat("zonaMorta", 0.15f).coerceIn(0f, 0.9f),
-                            oitoDirecoes = inst.getBool("oitoDirecoes", false),
-                            seguirNick = inst.getBool("seguirNick", false)
-                        )
+        fun de(scene: com.kenkern.engine.core.Scene?): JoystickUiConfig = de(scene, null)
+
+        /**
+         * X2 (v0.1.31): leitura com efeito ao vivo também para o joystick do
+         * TELAR (elemento de UI do .kui — o destino dos ui.* desde o X1). O
+         * Nick ui.joystick antigo (migração) continua com prioridade.
+         */
+        fun de(scene: com.kenkern.engine.core.Scene?, docUi: com.kenkern.engine.ui.telar.DocumentoUi?): JoystickUiConfig {
+            if (scene != null) {
+                val pilha = ArrayList<com.kenkern.engine.core.Nick>(16)
+                for (r in scene.roots) pilha.add(r)
+                var head = 0
+                while (head < pilha.size) {
+                    val n = pilha[head++]
+                    if (n.active && n.kind == "ui.joystick") {
+                        val inst = n.findClassInstance("Joystick")
+                        if (inst != null) {
+                            return JoystickUiConfig(
+                                tipo = inst.getString("tipo", "fixo"),
+                                tamanhoDp = inst.getFloat("tamanho", 112f).coerceIn(64f, 200f),
+                                opacidade = inst.getFloat("opacidade", 0.9f).coerceIn(0.15f, 1f),
+                                zonaMorta = inst.getFloat("zonaMorta", 0.15f).coerceIn(0f, 0.9f),
+                                oitoDirecoes = inst.getBool("oitoDirecoes", false),
+                                seguirNick = inst.getBool("seguirNick", false)
+                            )
+                        }
                     }
+                    for (c in n.children) pilha.add(c)
                 }
-                for (c in n.children) pilha.add(c)
+            }
+            // X2: joystick do documento de UI (.kui) — efeito ao vivo no Play.
+            val j = docUi?.elementos?.firstOrNull { it.tipo == com.kenkern.engine.ui.telar.ElementoUi.JOYSTICK }
+            if (j != null) {
+                return JoystickUiConfig(
+                    tipo = j.joystickTipo.ifEmpty { "fixo" },
+                    tamanhoDp = j.joystickTamanho.toFloat().coerceIn(64f, 200f),
+                    opacidade = j.joystickOpacidade.coerceIn(0.15f, 1f),
+                    zonaMorta = j.joystickZonaMorta.coerceIn(0f, 0.9f),
+                    oitoDirecoes = j.joystickOitoDirecoes,
+                    seguirNick = j.joystickSeguirNick
+                )
             }
             return PADRAO
         }

@@ -93,6 +93,84 @@ class FluxoRealRobolectricTest {
     }
 
     @Test
+    fun x1_uiJoystickComLuzSelecionada_nuncaAlteraHierarquia3D() {
+        // X1 (v0.1.31): criar ui.joystick com uma luz selecionada NÃO altera a
+        // Hierarquia 3D — o joystick vira elemento de UI do TELAR (ui/ui.kui).
+        val handle = ProjectManager.createProject(ctx, "CI X1 " + System.currentTimeMillis(), null)
+            ?: error("createProject falhou: ${ProjectManager.lastError}")
+        val vm = EditorViewModel(app)
+        abrirProjeto(vm, handle)
+        val s = vm.sceneRef ?: error("cena ausente")
+
+        vm.addNickOfKind("light.directional", false, null)
+        val total3dAntes = FluxoReal.totalNicks(s)
+        assertTrue("luz não entrou na cena", total3dAntes >= 1)
+
+        // "Como filho do selecionado" = true — IGNORADO para ui.* (X1).
+        vm.addNickOfKind("ui.joystick", true, null)
+
+        assertEquals(
+            "X1: ui.* não pode alterar a Hierarquia 3D",
+            total3dAntes, FluxoReal.totalNicks(s)
+        )
+        assertTrue("X1: ui.joystick não virou elemento de UI", FluxoReal.temElementoUiCriado(vm, "ui.joystick"))
+        val kui = File(handle.root, "ui/ui.kui")
+        assertTrue("X1: ui/ui.kui não gravado", kui.isFile && kui.length() > 0)
+    }
+
+    @Test
+    fun x2_inspetorJoystick_editaOs7CamposComEfeitoAoVivo() {
+        // X2 (v0.1.31): o Inspetor do TELAR edita tipo, tamanho, opacidade,
+        // zona morta, 8 direções, Controla e Seguir Nick do elemento joystick
+        // (o MESMO caminho que a UI usa: ComandoPropriedade no DocumentoUi),
+        // com undo e efeito ao vivo no Play (JoystickUiConfig lê o .kui).
+        val handle = ProjectManager.createProject(ctx, "CI X2 " + System.currentTimeMillis(), null)
+            ?: error("createProject falhou: ${ProjectManager.lastError}")
+        val vm = EditorViewModel(app)
+        abrirProjeto(vm, handle)
+        vm.addNickOfKind("ui.joystick", false, null)
+
+        val doc = vm.carregarUiDoc() ?: error("doc de UI ausente")
+        val sel = doc.elementos.first { it.tipo == com.kenkern.engine.ui.telar.ElementoUi.JOYSTICK }
+
+        // os 7 campos editáveis do Inspetor (mesmos nomes de campo do comando)
+        doc.executar(com.kenkern.engine.ui.telar.ComandoPropriedade(sel.id, "joystickTipo", "fixo", "flutuante"))
+        doc.executar(com.kenkern.engine.ui.telar.ComandoPropriedade(sel.id, "joystickTamanho", sel.joystickTamanho, 200))
+        doc.executar(com.kenkern.engine.ui.telar.ComandoPropriedade(sel.id, "joystickOpacidade", sel.joystickOpacidade, 0.5f))
+        doc.executar(com.kenkern.engine.ui.telar.ComandoPropriedade(sel.id, "joystickZonaMorta", sel.joystickZonaMorta, 0.3f))
+        doc.executar(com.kenkern.engine.ui.telar.ComandoPropriedade(sel.id, "joystickOitoDirecoes", false, true))
+        doc.executar(com.kenkern.engine.ui.telar.ComandoPropriedade(sel.id, "joystickControla", "", "Herói"))
+        doc.executar(com.kenkern.engine.ui.telar.ComandoPropriedade(sel.id, "joystickSeguirNick", false, true))
+
+        assertEquals("flutuante", sel.joystickTipo)
+        assertEquals(200, sel.joystickTamanho)
+        assertEquals(0.5f, sel.joystickOpacidade)
+        assertEquals(0.3f, sel.joystickZonaMorta)
+        assertTrue(sel.joystickOitoDirecoes)
+        assertEquals("Herói", sel.joystickControla)
+        assertTrue(sel.joystickSeguirNick)
+
+        // efeito ao vivo: o Play lê o joystick do .kui (X2)
+        val cfg = com.kenkern.engine.ui.screens.JoystickUiConfig.de(vm.sceneRef, doc)
+        assertEquals("flutuante", cfg.tipo)
+        assertEquals(200f, cfg.tamanhoDp)
+        assertEquals(0.5f, cfg.opacidade)
+        assertEquals(0.3f, cfg.zonaMorta)
+        assertTrue(cfg.oitoDirecoes)
+        assertTrue(cfg.seguirNick)
+
+        // ida e volta no .kui: os 7 campos sobrevivem ao salvar/carregar
+        vm.salvarUiDoc(doc)
+        val doc2 = vm.carregarUiDoc() ?: error("doc recarregado ausente")
+        val j2 = doc2.elementos.first { it.tipo == com.kenkern.engine.ui.telar.ElementoUi.JOYSTICK }
+        assertEquals("flutuante", j2.joystickTipo)
+        assertEquals(200, j2.joystickTamanho)
+        assertEquals("Herói", j2.joystickControla)
+        assertTrue(j2.joystickOitoDirecoes)
+        assertTrue(j2.joystickSeguirNick)
+    }
+
+    @Test
     fun e_fisicaRigidCorpo_esperadoFalhar() {
         val handle = ProjectManager.createProject(ctx, "CI Fisica " + System.currentTimeMillis(), null)
             ?: error("createProject falhou: ${ProjectManager.lastError}")
