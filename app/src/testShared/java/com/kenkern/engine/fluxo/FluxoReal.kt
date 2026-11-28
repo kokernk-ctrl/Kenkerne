@@ -193,13 +193,32 @@ object FluxoReal {
         }
     }
 
-    /** c) o Nick criado aparece na Hierarquia (painel montado da cena) —
-     * SCROLLA a Hierarquia até o nó PRIMEIRO: com 17+ Nicks o último está
-     * FORA DA VISTA da LazyColumn e nós fora da viewport NÃO existem na
-     * semântica (esperar sozinho nunca os vê — causa raiz das execuções
-     * 6 e 7 do Portão 2). */
-    fun conferirNaHierarquia(rule: AndroidComposeTestRule<ActivityScenarioRule<MainActivity>, MainActivity>, nome: String) {
-        rule.onRoot().performScrollToNode(hasText(nome, substring = true))
+    /** c) o Nick criado aparece na Hierarquia (painel montado da cena).
+     * Duas causas raiz já provadas no CI:
+     *   * execuções 6/7/8 — o editor de código é TELA CHEIA e esconde o
+     *     painel: voltar à Cena é obrigatório (voltarDaAbaCodigoParaACena);
+     *   * execução 10 — performScrollToNode na RAIZ do app falha com
+     *     "Semantic Node has no parent layout with a Scroll SemanticsAction":
+     *     a raiz NÃO está dentro de nenhum scrollable. O âncora do scroll é a
+     *     PRIMEIRA LINHA da lista (primeira raiz da cena, visível na posição
+     *     0 da LazyColumn), que tem o scrollable da Hierarquia como ancestral;
+     *     com 17+ Nicks o último está fora da vista e esperar sozinho nunca
+     *     o vê (nó fora da viewport não existe na semântica). */
+    fun conferirNaHierarquia(
+        rule: AndroidComposeTestRule<ActivityScenarioRule<MainActivity>, MainActivity>,
+        vm: EditorViewModel,
+        nome: String
+    ) {
+        // nickDisplayName é @Composable (LocalContext) — fora da composição o
+        // MESMO texto vem de Nick.displayName + AppLanguage.currentTag.
+        val primeiraLinha = vm.sceneRef?.roots?.firstOrNull()
+            ?.let { it.displayName(com.kenkern.engine.ui.AppLanguage.currentTag(contexto())) }
+        if (primeiraLinha != null) {
+            val ancora = rule.onAllNodesWithText(primeiraLinha, substring = true)
+            if (ancora.fetchSemanticsNodes().isNotEmpty()) {
+                ancora.onFirst().performScrollToNode(hasText(nome, substring = true))
+            }
+        }
         rule.waitUntil(15_000) {
             rule.onAllNodesWithText(nome, substring = true).fetchSemanticsNodes().isNotEmpty()
         }

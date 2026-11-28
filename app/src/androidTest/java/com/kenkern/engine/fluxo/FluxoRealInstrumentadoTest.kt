@@ -48,7 +48,7 @@ class FluxoRealInstrumentadoTest {
         assertTrue("poucos kinds criáveis: ${criados.size}", criados.size >= 10)
         // X1 (v0.1.31): kinds ui.* não estão na Hierarquia 3D — conferir o
         // último kind 3D criado (o ui.* é provado no .kui pelo helper).
-        FluxoReal.conferirNaHierarquia(rule, criados.last { !it.first.startsWith("ui.") }.second)
+        FluxoReal.conferirNaHierarquia(rule, vm, criados.last { !it.first.startsWith("ui.") }.second)
 
         FluxoReal.ligarEDesligarPlay(vm)
         val (moedas, falha) = FluxoReal.jogar120Ticks(vm.sceneRef!!)
