@@ -50,9 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
@@ -70,13 +68,11 @@ import com.kenkern.engine.ui.components.KIconButton
 import com.kenkern.engine.ui.editor.AutocompletarLua
 import com.kenkern.engine.ui.editor.DocumentoLua
 import com.kenkern.engine.ui.editor.ModelosScript
-import com.kenkern.engine.ui.editor.SpanLua
-import com.kenkern.engine.ui.editor.TokenTipo
-import com.kenkern.engine.ui.editor.TokenizadorLua
+import com.kenkern.engine.ui.editor.TransformacaoRealceLua
+import com.kenkern.engine.ui.editor.realceLinhaLua
 import com.kenkern.engine.ui.theme.KenkernAmber
 import com.kenkern.engine.ui.theme.KenkernBackground
 import com.kenkern.engine.ui.theme.KenkernError
-import com.kenkern.engine.ui.theme.KenkernSingCobre
 import com.kenkern.engine.ui.theme.KenkernSuccess
 import com.kenkern.engine.ui.theme.KenkernSurface
 import com.kenkern.engine.ui.theme.KenkernSurfaceHigh
@@ -120,12 +116,6 @@ sealed class AlvoEditorLua {
 }
 
 private const val LIMITE_AVISO_BYTES = 200 * 1024
-
-private val corPalavra = KenkernAmber
-private val corString = KenkernSuccess
-private val corComentario = KenkernTextLow
-private val corNumero = KenkernSingCobre
-private val corApi = KenkernSurfaceHigh
 
 @Composable
 fun EditorLuaScreen(
@@ -737,6 +727,10 @@ private fun LinhaEditor(
                     fontFamily = FontFamily.Monospace,
                     color = KenkernTextHigh
                 ),
+                // X3 (v0.1.31): a linha do cursor recebe o MESMO realce das
+                // outras (spans por cima do textStyle) — antes era campo
+                // plano e os tokens mudavam de cor ao mover o cursor.
+                visualTransformation = TransformacaoRealceLua,
                 cursorBrush = SolidColor(KenkernAmber),
                 keyboardOptions = KeyboardOptions.Default,
                 modifier = Modifier.weight(1f),
@@ -754,8 +748,10 @@ private fun LinhaEditor(
                 }
             )
         } else {
+            // X3 (v0.1.31): a MESMA função pura das duas linhas — o estilo
+            // não depende da posição do cursor.
             Text(
-                realceLua(texto),
+                remember(texto) { realceLinhaLua(texto) },
                 fontSize = fonteSp,
                 fontFamily = FontFamily.Monospace,
                 color = KenkernTextHigh,
@@ -767,28 +763,8 @@ private fun LinhaEditor(
     }
 }
 
-/** Realce de UMA linha (tokenizador puro; estado de bloco é ignorado aqui — o realce das linhas visíveis começa limpo e o comentário de linha cobre o caso comum). */
-@Composable
-private fun realceLua(texto: String): AnnotatedString = remember(texto) {
-    val spans: List<SpanLua> = TokenizadorLua.marcarLinha(texto, TokenizadorLua.Estado())
-    buildAnnotatedString {
-        append(texto)
-        for (s in spans) {
-            val cor = when (s.tipo) {
-                TokenTipo.PALAVRA_CHAVE -> corPalavra
-                TokenTipo.STRING -> corString
-                TokenTipo.COMENTARIO -> corComentario
-                TokenTipo.NUMERO -> corNumero
-                TokenTipo.API -> corApi
-                else -> null
-            } ?: continue
-            addStyle(
-                SpanStyle(color = cor, fontWeight = if (s.tipo == TokenTipo.PALAVRA_CHAVE) FontWeight.SemiBold else null),
-                s.ini, s.fim
-            )
-        }
-    }
-}
+/** Realce MOVIDO para ui/editor/RealceLua.kt (X3, v0.1.31): função PURA usada
+ * pela linha do cursor (VisualTransformation) e pelas linhas sem cursor (Text). */
 
 /** Tecla de apoio (C1.3) — insere no cursor. */
 @Composable

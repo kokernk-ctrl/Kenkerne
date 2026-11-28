@@ -64,6 +64,16 @@ val KenkernSingCobreClaro = Color(0xFFFFDB8F) // cobre claro do anel de fótons 
 // âmbar: KenkernAmber acima é o token canônico (midAmber do disco harmonizado
 // com o âmbar da engine) — botão primário cheio com texto escuro.
 
+// ---- Tokens do editor de código (X3, v0.1.31) — TODAS com contraste >= 4,5:1
+// contra KenkernBackground (prova: X3ContrasteEditorLuaTest). Causa raiz do
+// texto invisível (X3/P4): KenkernSurfaceHigh (#2D2D30, 1,21:1) era usada como
+// cor de TEXTO da API e KenkernTextLow (#6E6E6E, 3,27:1) nos comentários.
+val KenkernTokenPalavra = KenkernAmber          // #FFA940 — 8,73:1
+val KenkernTokenString = KenkernSuccess         // #57AB5A — 5,86:1
+val KenkernTokenComentario = KenkernTextMid     // #9D9D9D — 6,15:1
+val KenkernTokenNumero = KenkernSingCobre       // #D98040 — 5,65:1
+val KenkernTokenApi = KenkernSingCobreClaro     // #FFDB8F — 12,53:1
+
 
 private val KenkernColors = darkColorScheme(
     primary = KenkernAmber,
