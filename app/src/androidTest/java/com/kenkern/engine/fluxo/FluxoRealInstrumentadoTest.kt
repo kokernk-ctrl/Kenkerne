@@ -39,6 +39,10 @@ class FluxoRealInstrumentadoTest {
         }
         FluxoReal.abrirEditorCodigoEDigitar(rule)
         FluxoReal.capturarTela(ctx, "03-editor-codigo")
+        // Causa raiz das execuções 6/7/8: o editor de código é tela cheia e
+        // esconde a Hierarquia — SEM voltar à Cena, nem espera nem scroll
+        // encontram o nó na semântica.
+        FluxoReal.voltarDaAbaCodigoParaACena(rule)
 
         val criados = FluxoReal.criarUmNickDeCadaKind(vm)
         assertTrue("poucos kinds criáveis: ${criados.size}", criados.size >= 10)

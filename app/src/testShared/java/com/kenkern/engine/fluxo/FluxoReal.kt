@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -175,6 +176,21 @@ object FluxoReal {
         var atual = raiz
         while (atual.children.isNotEmpty()) atual = atual.children.last()
         return atual
+    }
+
+    /** Volta do EDITOR DE CÓDIGO para a aba CENA: o EditorLuaScreen é tela
+     * cheia ("nada do editor de cena é composto", EditorScreen.kt) — a
+     * Hierarquia NÃO existe enquanto ele está aberto e nem espera nem scroll
+     * a encontram (causa raiz das execuções 6, 7 e 8 do Portão 2). A seta de
+     * voltar do editor fecha SOMENTE a tela dele (alvoEditorLua = null);
+     * na Cena a MESMA seta sai do projeto, então o clique é válido apenas
+     * com o editor de código aberto. */
+    fun voltarDaAbaCodigoParaACena(rule: AndroidComposeTestRule<ActivityScenarioRule<MainActivity>, MainActivity>) {
+        val ctx = contexto()
+        rule.onNodeWithContentDescription(ctx.getString(R.string.editor_back_hub)).performClick()
+        rule.waitUntil(15_000) {
+            rule.onAllNodesWithText(ctx.getString(R.string.editor_aba_cena)).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     /** c) o Nick criado aparece na Hierarquia (painel montado da cena) —
