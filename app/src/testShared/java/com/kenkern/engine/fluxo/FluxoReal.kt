@@ -204,7 +204,11 @@ object FluxoReal {
      *     dentro da lista;
      *   * 11 — âncora ENCONTRADA (linha "Group Nick (1)" da LazyColumn) e o
      *     scroll RODOU, mas "No node found ... 'Checkpoint Nick' ... in
-     *     scrollable container".
+     *     scrollable container";
+     *   * 12 — o UIH-1 "não bloqueante" BLOQUEAVA mesmo assim:
+     *     performScrollToNode lança AssertionError e waitUntil lança
+     *     ComposeTimeoutException ANTES do registro — tudo virou try +
+     *     sondagem sem lançar.
      * Causa raiz do resíduo: NÃO VERIFICADO em código. Como verificar: as
      * capturas 04-hierarquia (antes do scroll) e 05-hierarquia-apos (depois)
      * + o marcador hierarquia-ui.txt no artifact gate2-logs desta rodada.
@@ -218,20 +222,32 @@ object FluxoReal {
         nome: String
     ) {
         capturarTela(contexto(), "04-hierarquia")
-        // nickDisplayName é @Composable (LocalContext) — fora da composição o
-        // MESMO texto vem de Nick.displayName + AppLanguage.currentTag.
-        val primeiraLinha = vm.sceneRef?.roots?.firstOrNull()
-            ?.let { it.displayName(com.kenkern.engine.ui.AppLanguage.currentTag(contexto())) }
-        if (primeiraLinha != null) {
-            val ancora = rule.onAllNodesWithText(primeiraLinha, substring = true)
-            if (ancora.fetchSemanticsNodes().isNotEmpty()) {
-                ancora.onFirst().performScrollToNode(hasText(nome, substring = true))
+        var achou = rule.onAllNodesWithText(nome, substring = true).fetchSemanticsNodes().isNotEmpty()
+        if (!achou) {
+            // Best-effort com âncora DENTRO da lista (execução 11: a âncora foi
+            // achada e o scroll rodou). performScrollToNode e waitUntil LANÇAM
+            // AssertionError/ComposeTimeoutException quando o alvo não aparece —
+            // execução 12: o UIH-1 "não bloqueante" bloqueava por essas duas
+            // chamadas ANTES do registro. Tudo aqui é try + poll SEM lançar.
+            val primeiraLinha = vm.sceneRef?.roots?.firstOrNull()
+                ?.let { it.displayName(com.kenkern.engine.ui.AppLanguage.currentTag(contexto())) }
+            if (primeiraLinha != null) {
+                val ancora = rule.onAllNodesWithText(primeiraLinha, substring = true)
+                if (ancora.fetchSemanticsNodes().isNotEmpty()) {
+                    try {
+                        ancora.onFirst().performScrollToNode(hasText(nome, substring = true))
+                        achou = true // scrollToNode só retorna quando o alvo aparece
+                    } catch (e: AssertionError) {
+                        android.util.Log.i("Portao2", "UIH-1: scroll sem alvo: ${e.message?.take(140)}")
+                    }
+                }
             }
         }
-        rule.waitUntil(8_000) {
-            rule.onAllNodesWithText(nome, substring = true).fetchSemanticsNodes().isNotEmpty()
+        val t0 = System.currentTimeMillis()
+        while (!achou && System.currentTimeMillis() - t0 < 8_000) {
+            Thread.sleep(250)
+            achou = rule.onAllNodesWithText(nome, substring = true).fetchSemanticsNodes().isNotEmpty()
         }
-        val achou = rule.onAllNodesWithText(nome, substring = true).fetchSemanticsNodes().isNotEmpty()
         capturarTela(contexto(), "05-hierarquia-apos")
         val total = vm.sceneRef?.let { totalNicks(it) } ?: -1
         android.util.Log.i("Portao2", "UIH-1: '$nome' na Hierarquia=$achou (nicks na cena=$total)")
