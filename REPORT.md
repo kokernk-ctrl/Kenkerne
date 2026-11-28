@@ -27,6 +27,12 @@
   - Teste que passou depois: `check_release.py` confere tag × `versionName`; `ci_resumo.py` gera no máximo 40 linhas; `check_report.py` rejeita seção ausente e item sem commit.
   - Não validado: a primeira Release v0.1.32 criada pelo workflow.
 
+- **H5 — Portão 2 travava antes do gradle (correção do workflow)** — commit `70f571b`
+  - Causa raiz: `.github/workflows/ci.yml:259` — o script do `android-emulator-runner` executava `echo "modo=emulador" >> "$GITHUB_OUTPUT"`; dentro do shell do script dessa action a variável `GITHUB_OUTPUT` não existe, o redirect falha e o script morre com exit 2 ANTES de rodar `connectedDebugAndroidTest` (execução 2, 27/11/2026 21:56:47Z).
+  - Teste que falhou antes: execução 2 do CI — job "Portão 2 (emulador)" failure com `The process '/usr/bin/sh' failed with exit code 2` e nenhum log do gradle.
+  - Teste que passou depois: execução seguinte do CI — `connectedDebugAndroidTest` roda no emulador (KVM disponível no runner ubuntu-22.04) e o job fica verde; o modo agora é derivado do resultado dos passos (`steps.modo.outcome`), não de output inexistente.
+  - Não validado: não se aplica (o CI real é a validação).
+
 ## Itens NÃO feitos
 
 - Nenhum item de funcionalidade do app foi tocado (escopo do prompt: só CI, testes e documentos).
