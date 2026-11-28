@@ -2,11 +2,15 @@
 """Portão 1 — regra "reproduzir antes de corrigir" (parte 1: arquivo de teste).
 
 Um commit cujo assunto começa com "fix" ou "corrige" precisa alterar ou criar
-ao menos um arquivo em app/src/test ou app/src/androidTest. Sem isso o CI
-falha. O commit que só documenta (chore/docs) não é afetado.
+ao menos um arquivo de TESTE: app/src/test, app/src/androidTest ou
+app/src/testShared (código de teste compartilhado pelos dois runners, ligado
+por android.sourceSets no app/build.gradle.kts). Sem isso o CI falha. O
+commit que só documenta (chore/docs) não é afetado.
 
-Saída: gates/fix_commits.json com os commits fix e os arquivos de teste
-tocados (usados por scripts/check_fix_repro.sh).
+Saída: gates/fix_commits.json com os commits fix, os arquivos de teste
+tocados e os arquivos de PRODUÇÃO (app/src/main) tocados — o campo
+"producao" decide se a prova de reprodução do pai é aplicável (HARNESS.md §5
+e DECISIONS.md "Prova de reprodução").
 
 Uso:
   python3 scripts/check_fix_rule.py --base-ref <ref> [--json gates/fix_commits.json]
@@ -22,7 +26,8 @@ import sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PADRAO_FIX = re.compile(r"^(fix|corrige)\b", re.IGNORECASE)
-PREFIXOS_TESTE = ("app/src/test/", "app/src/androidTest/")
+PREFIXOS_TESTE = ("app/src/test/", "app/src/androidTest/", "app/src/testShared/")
+PREFIXO_PRODUCAO = "app/src/main/"
 
 
 def git(*args: str) -> str:
@@ -64,6 +69,7 @@ def main() -> int:
             continue
         arquivos = arquivos_do_commit(sha)
         testes = [a for a in arquivos if a.startswith(PREFIXOS_TESTE)]
+        producao = [a for a in arquivos if a.startswith(PREFIXO_PRODUCAO)]
         # Commit de merge não é avaliado (o diff contra o pai é o merge).
         pais = git("rev-list", "--parents", "-n", "1", sha).split()[1:]
         if len(pais) > 1:
@@ -73,11 +79,12 @@ def main() -> int:
             "parent": pais[0][:7] if pais else "",
             "assunto": assunto,
             "testes": testes,
+            "producao": producao,
         })
         if not testes:
             erros.append(
-                f"FIX SEM TESTE: {sha[:7]} '{assunto}' não toca app/src/test nem app/src/androidTest "
-                "(HARNESS.md §3: reproduzir antes de corrigir)"
+                f"FIX SEM TESTE: {sha[:7]} '{assunto}' não toca app/src/test, app/src/androidTest "
+                "nem app/src/testShared (HARNESS.md §3: reproduzir antes de corrigir)"
             )
 
     os.makedirs(os.path.join(RAIZ, "gates"), exist_ok=True)
@@ -88,7 +95,8 @@ def main() -> int:
     if not fix_commits:
         print("nenhum commit fix/corrige no intervalo")
     for c in fix_commits:
-        print(f"{c['sha']}: {len(c['testes'])} arquivo(s) de teste — {c['assunto'][:70]}")
+        print(f"{c['sha']}: {len(c['testes'])} arquivo(s) de teste, "
+              f"{len(c['producao'])} de produção — {c['assunto'][:70]}")
     if erros:
         for e in erros:
             print("ERRO: " + e)

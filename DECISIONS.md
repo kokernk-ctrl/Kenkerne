@@ -248,3 +248,28 @@ só existe quando o runner não tem KVM, e o modo usado vai no CI-RESUMO.md.
    material/textura de modelo (KimgConversor), onde há contexto de perfis ETC2.
    Alternativa descartada: converter na importação (perde o original e impede
    reexportar).
+
+## Prova de reprodução no Portão 1 (v0.1.31 — execuções 6-9 do CI)
+
+1. **`app/src/testShared/` É código de teste no detector fix/corrige** — o
+   fonte do Portão 2 (`FluxoReal.kt`) é COMPARTILHADO pelos dois runners
+   (ligado por `android.sourceSets` no `app/build.gradle.kts:247-248`): um
+   commit fix que só ajusta navegação de teste TOCA arquivo de teste. A
+   execução 9 reprovou `c1d8997` como "FIX SEM TESTE" porque o detector só
+   contava `app/src/test/` e `app/src/androidTest/` — falso positivo
+   corrigido em `scripts/check_fix_rule.py` (PREFIXOS_TESTE).
+2. **A prova do pai (parte 2) só se aplica a commit fix que muda
+   `app/src/main`** — se a produção não muda, o MESMO teste contra o MESMO
+   código não pode passar no pai e falhar no filho: a exigência é
+   matematicamente impossível de cumprir e viraria falso "teste não
+   reproduz o bug". Esse é o limite previsto no HARNESS.md §5 ("se inviável
+   tecnicamente, versão parcial documentada"): nesses commits o
+   `check_fix_repro.sh` imprime "PULO (sem produção)" e a reprodução é a
+   execução VERMELHA no histórico do CI (execuções 6/7/8 do Portão 2 para
+   o commit de navegação). Commits fix com mudança em `src/main`
+   continuam com a prova completa no pai.
+3. **Só classe com `@Test` entra no filtro `--tests` da prova** — copiar um
+   helper compartilhado sem `@Test` para o filtro devolveria "no tests
+   found", o gradle sairia com erro e a prova passaria POR ACASO; agora o
+   filtro só inclui arquivo que contém `@Test` e o commit sem classe
+   executável é pulado com marca.
