@@ -4,12 +4,15 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -174,8 +177,14 @@ object FluxoReal {
         return atual
     }
 
-    /** c) o Nick criado aparece na Hierarquia (painel montado da cena). */
+    /** c) o Nick criado aparece na Hierarquia (painel montado da cena) —
+     * ROLA a lista até o nó: com 17+ Nicks o último pode estar FORA DA VISTA
+     * da LazyColumn (nós fora da viewport não existem na semântica). */
     fun conferirNaHierarquia(rule: AndroidComposeTestRule<ActivityScenarioRule<MainActivity>, MainActivity>, nome: String) {
+        rule.waitUntil(30_000) {
+            rule.onAllNodesWithText(nome, substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onRoot().performScrollToNode(hasText(nome, substring = true))
         rule.waitUntil(10_000) {
             rule.onAllNodesWithText(nome, substring = true).fetchSemanticsNodes().isNotEmpty()
         }
@@ -211,12 +220,12 @@ object FluxoReal {
     }
 
     /** g) roda TODAS as checagens do Diagnóstico e devolve o status final de cada uma. */
-    fun rodarDiagnostico(ctx: Context): Map<String, Diagnostico.Status> {
-        val saida = LinkedHashMap<String, Diagnostico.Status>()
+    fun rodarDiagnostico(ctx: Context): Map<String, Pair<Diagnostico.Status, String>> {
+        val saida = LinkedHashMap<String, Pair<Diagnostico.Status, String>>()
         runBlocking {
             Diagnostico(ctx).executar { c ->
                 if (c.status != Diagnostico.Status.PENDENTE && c.status != Diagnostico.Status.RODANDO) {
-                    saida[c.id] = c.status
+                    saida[c.id] = c.status to c.detalhe
                 }
             }
         }

@@ -302,6 +302,8 @@ jobs:
           path: |
             logs/
             screenshots/
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
           if-no-files-found: ignore
 
   # =====================================================================

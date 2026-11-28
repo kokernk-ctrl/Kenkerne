@@ -2318,8 +2318,11 @@ class Diagnostico(private val appContext: Context) {
 
                 val cena = com.kenkern.engine.core.Scene()
                 val nick = cena.createRootNick("Cubo", kind = "nick.mesh")
+                // createRootNick NÃO aplica classesPadrao (isso é do
+                // CreateNickCommand): a classe Malha é anexada AQUI.
                 val malha = nick.findClassInstance("Malha")
-                malha?.fields?.put("path", com.kenkern.engine.core.NickValue.StringValue("assets/models/heroi.kern"))
+                    ?: com.kenkern.engine.core.NickClassInstance("Malha").also { nick.addClassInstance(it) }
+                malha.fields["path"] = com.kenkern.engine.core.NickValue.StringValue("assets/models/heroi.kern")
 
                 // mover + repontar: referência SEGUE o arquivo
                 val ref = com.kenkern.engine.projects.ReferenciasAssets

@@ -59,9 +59,15 @@ class FluxoRealInstrumentadoTest {
     fun g_diagnosticoCompleto() {
         val status = FluxoReal.rodarDiagnostico(ctx)
         assertTrue("menos de 30 checagens rodaram: ${status.size}", status.size >= 30)
-        val falhas = status.filterValues { it == Diagnostico.Status.FALHOU }.keys
-        val inesperadas = falhas - FluxoReal.SOMENTE_APARELHO
-        assertTrue("checagens FALHARAM: $inesperadas (todas: $falhas)", inesperadas.isEmpty())
+        val falhas = status.filterValues { it.first == Diagnostico.Status.FALHOU }
+        val inesperadas = falhas.keys - FluxoReal.SOMENTE_APARELHO
+        // os DETALHES das falhas vão NO ERRO — o log do CI mostra a causa sem
+        // precisar do logcat do aparelho.
+        assertTrue(
+            "checagens FALHARAM: $inesperadas (todas: ${falhas.keys}) · detalhes: " +
+                falhas.entries.joinToString(" || ") { "${it.key}: ${it.value.second}" },
+            inesperadas.isEmpty()
+        )
     }
 
     @Test
