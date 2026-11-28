@@ -256,7 +256,10 @@ jobs:
           script: |
             set -o pipefail
             mkdir -p logs screenshots
-            echo "modo=emulador" >> "$GITHUB_OUTPUT"
+            # Causa raiz da falha de 27/11/2026: "echo >> $GITHUB_OUTPUT"
+            # dentro deste script morre com exit 2 (a variável não existe no
+            # shell do script da action) ANTES do gradle. O modo vem do
+            # resultado dos passos, no passo "Modo do Portão 2".
             ./gradlew connectedDebugAndroidTest --stacktrace 2>&1 | tee logs/gate2.log
             adb shell am start -n com.kenkern.engine.debug/com.kenkern.engine.MainActivity >/dev/null 2>&1 || true
             sleep 6
@@ -278,8 +281,15 @@ jobs:
         id: modo2
         if: always()
         run: |
-          if [ -n "${{ steps.modo.outputs.modo }}" ]; then MODO="${{ steps.modo.outputs.modo }}"; else MODO="${{ steps.robo.outputs.modo }}"; fi
-          [ -n "$MODO" ] || MODO="nao-rodou"
+          # O modo é derivado do RESULTADO dos passos (o script do
+          # android-emulator-runner não pode escrever em GITHUB_OUTPUT).
+          if [ "${{ steps.kvm.outputs.disponivel }}" = "1" ] && [ "${{ steps.modo.outcome }}" = "success" ]; then
+            MODO="emulador"
+          elif [ "${{ steps.robo.outcome }}" = "success" ]; then
+            MODO="robolectric"
+          else
+            MODO="nao-rodou"
+          fi
           echo "modo=$MODO" >> "$GITHUB_OUTPUT"
 
       - name: Artifact — log e capturas do Portão 2
