@@ -271,7 +271,7 @@ object FluxoReal {
      * emulador APENAS quando o Play REAL rodou antes (1,2 s sem input): o
      * jogador cai pelo piso (FIS-1), o respawn o deixa no surgimento e o
      * Stop restaura esse estado — a simulação começa com o pé a -0,5 m e o
-     * FIS-1 não o levanta. Falhas de FÍSICA (CAIU*/ATRAVESSOU/NÃO COLIDIU)
+     * FIS-1 não o levanta. Falhas de FÍSICA (CAIU, ATRAVESSOU, NÃO COLIDIU)
      * são REGISTRADAS (marcador + logcat) e não bloqueiam; falhas de
      * ESTRUTURA/LÓGICA (sem body.player, NÃO MOVEU) continuam bloqueantes.
      * Como verificar: fisica-fis2.txt no artifact gate2-logs + logcat. */
