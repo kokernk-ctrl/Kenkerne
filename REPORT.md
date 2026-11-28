@@ -26,25 +26,25 @@
   - Teste que passou depois: 7 campos editáveis no Inspetor do TELAR + `JoystickUiConfig.de(scene, docUi)` (Nick antigo com prioridade; .kui depois).
   - Não validado: aparelho (item 7 do TESTES_PENDENTES).
 
-- **F3 — painel "Projeto" (explorador acoplável + aba Arquivos)** — commit `{COMMIT}`
+- **F3 — painel "Projeto" (explorador acoplável + aba Arquivos)** — commit `77087b1`
   - Causa raiz: só existia o núcleo paginado puro (`ExploradorArquivos`, 37 linhas) — nenhuma UI, nenhuma operação de escrita, nenhum undo de arquivo.
   - Teste que falhou antes: `OperacoesArquivosTest` (as operações não existiam — compilação no pai) e `ExploradorCacheTest`.
   - Teste que passou depois: criar/renomear/duplicar/mover/apagar→LIXEIRA/un­do com Commands reais no histórico do editor; painel acoplado + 4ª aba "Arquivos"; breadcrumb/busca/ordenação/paginação/miniaturas; abrir por tipo (.lua/.kui/.ck/.glb/…/imagem).
   - Não validado: aparelho (itens 2-3 do TESTES_PENDENTES).
 
-- **F4 — importar de qualquer pasta** — commit `{COMMIT}`
+- **F4 — importar de qualquer pasta** — commit `77087b1`
   - Causa raiz: SAF de 1 arquivo só para modelos; `GuardasCaminho.pastaDe` definido SEM chamador; navegador do aparelho inexistente.
   - Teste que falhou antes: `ImportadorArquivosTest` (roteamento por extensão, árvore recursiva com contagem/cancelamento, resolvedor local com zip-slip bloqueado).
   - Teste que passou depois: SAF múltiplo ("Importar vários arquivos…"), navegador do aparelho com seleção múltipla e pasta inteira, glTF local com .bin/texturas (ResolvedorArquivos).
   - Não validado: aparelho (item 4 do TESTES_PENDENTES).
 
-- **F5 — referências estáveis (assets.index)** — commit `{COMMIT}`
+- **F5 — referências estáveis (assets.index)** — commit `77087b1`
   - Causa raiz: `ReferenceSystem.registerAsset/resolveAsset` sem chamador; mover/renomear quebrava Malha.path silenciosamente.
   - Teste que falhou antes: `ReferenciasF5Test` (índice não existia; mover quebrava a referência).
   - Teste que passou depois: id ESTÁVEL no `assets.index` (mover/renomear atualizam índice + repontam Nicks), painel "Problemas" com Corrigir…/Remover referência, parser tolerante (linha+motivo), reconstrução preservando ids.
   - Não validado: aparelho (item 5 do TESTES_PENDENTES).
 
-- **F7 — Diagnóstico 36** — commit `{COMMIT}`
+- **F7 — Diagnóstico 36** — commit `77087b1`
   - Causa raiz: faltavam as checagens "arquivos", "importar-pasta" e "referencias".
   - Teste que falhou antes: `DiagAgendaTest` esperava 36 com o catálogo em 33.
   - Teste que passou depois: catálogo/agenda/when/títulos/strings en-pt completos; baseline `diag_checks` 33→36.
