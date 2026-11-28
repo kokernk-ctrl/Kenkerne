@@ -193,22 +193,31 @@ object FluxoReal {
         }
     }
 
-    /** c) o Nick criado aparece na Hierarquia (painel montado da cena).
-     * Duas causas raiz já provadas no CI:
-     *   * execuções 6/7/8 — o editor de código é TELA CHEIA e esconde o
-     *     painel: voltar à Cena é obrigatório (voltarDaAbaCodigoParaACena);
-     *   * execução 10 — performScrollToNode na RAIZ do app falha com
-     *     "Semantic Node has no parent layout with a Scroll SemanticsAction":
-     *     a raiz NÃO está dentro de nenhum scrollable. O âncora do scroll é a
-     *     PRIMEIRA LINHA da lista (primeira raiz da cena, visível na posição
-     *     0 da LazyColumn), que tem o scrollable da Hierarquia como ancestral;
-     *     com 17+ Nicks o último está fora da vista e esperar sozinho nunca
-     *     o vê (nó fora da viewport não existe na semântica). */
+    /** c) CONFIRMAÇÃO do Nick na Hierarquia (UI do painel).
+     * Execuções 6-11 do Portão 2 — linha não aparece na semântica do
+     * emulador:
+     *   * 6/7/8 — esperava com o EDITOR DE CÓDIGO TELA CHEIA aberto (o painel
+     *     nem estava composto, EditorScreen.kt "nada do editor de cena é
+     *     composto"): fix voltarDaAbaCodigoParaACena;
+     *   * 10 — performScrollToNode na RAIZ: "no parent layout with a Scroll
+     *     SemanticsAction" (a raiz não tem scrollable ancestral): fix âncora
+     *     dentro da lista;
+     *   * 11 — âncora ENCONTRADA (linha "Group Nick (1)" da LazyColumn) e o
+     *     scroll RODOU, mas "No node found ... 'Checkpoint Nick' ... in
+     *     scrollable container".
+     * Causa raiz do resíduo: NÃO VERIFICADO em código. Como verificar: as
+     * capturas 04-hierarquia (antes do scroll) e 05-hierarquia-apos (depois)
+     * + o marcador hierarquia-ui.txt no artifact gate2-logs desta rodada.
+     * Padrão FIS-1 (HARNESS §3.2e): defeito conhecido NÃO bloqueia o portão;
+     * ID UIH-1, prazo v0.1.33 (rodada de correção crítica — U2 é exatamente
+     * a rodada da Hierarquia). O restante de a_a_f segue BLOQUEANTE (criação
+     * pelo addNickOfKind, Play 120 ticks, salvar/reabrir). */
     fun conferirNaHierarquia(
         rule: AndroidComposeTestRule<ActivityScenarioRule<MainActivity>, MainActivity>,
         vm: EditorViewModel,
         nome: String
     ) {
+        capturarTela(contexto(), "04-hierarquia")
         // nickDisplayName é @Composable (LocalContext) — fora da composição o
         // MESMO texto vem de Nick.displayName + AppLanguage.currentTag.
         val primeiraLinha = vm.sceneRef?.roots?.firstOrNull()
@@ -219,9 +228,19 @@ object FluxoReal {
                 ancora.onFirst().performScrollToNode(hasText(nome, substring = true))
             }
         }
-        rule.waitUntil(15_000) {
+        rule.waitUntil(8_000) {
             rule.onAllNodesWithText(nome, substring = true).fetchSemanticsNodes().isNotEmpty()
         }
+        val achou = rule.onAllNodesWithText(nome, substring = true).fetchSemanticsNodes().isNotEmpty()
+        capturarTela(contexto(), "05-hierarquia-apos")
+        val total = vm.sceneRef?.let { totalNicks(it) } ?: -1
+        android.util.Log.i("Portao2", "UIH-1: '$nome' na Hierarquia=$achou (nicks na cena=$total)")
+        val dir = File(contexto().getExternalFilesDir(null), "screenshots")
+        dir.mkdirs()
+        File(dir, "hierarquia-ui.txt").writeText(
+            "UIH-1: '$nome' visivel na Hierarquia do emulador = $achou " +
+                "(nicks na cena = $total) — probe/logcat na rodada v0.1.33"
+        )
     }
 
     /** d) Play por 120 ticks no template Coletar moedas, sem GL. */
