@@ -30,6 +30,7 @@ add_library(kenkern SHARED
     kenkern_etc2.cpp
     kenkern_malha.cpp
     ${ETCPAK_DIR}/ProcessRGB.cpp
+    ${ETCPAK_DIR}/Dither.cpp
     ${ETCPAK_DIR}/Tables.cpp
     ${MESHOPT_DIR}/indexgenerator.cpp
     ${MESHOPT_DIR}/vcacheoptimizer.cpp

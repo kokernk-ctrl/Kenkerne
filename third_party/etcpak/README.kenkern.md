@@ -11,6 +11,10 @@ distribuição Maven/Gradle existe — vendorizar é a forma padrão.
 
 ## Arquivos incluídos (subconjunto mínimo para ETC2 RGB/RGBA)
 - ProcessRGB.cpp/.hpp — CompressEtc2Rgb / CompressEtc2Rgba (o encoder)
+- Dither.cpp — definição de Dither()/DitherAvx2() que ProcessRGB.cpp chama no
+  caminho SSE4.1 (x86_64); A OMISSÃO DESTE ARQUIVO quebrou o LINK da
+  libkenkern.so x86_64 do emulador do Portão 2 (undefined symbol: Dither) —
+  incluído na v0.1.31, intacto, do MESMO commit vendorizado
 - ProcessCommon.hpp, Tables.cpp/.hpp, Vector.hpp, Math.hpp, ForceInline.hpp,
   Dither.hpp (dependências diretas do ProcessRGB.cpp)
 - LICENSE.txt, AUTHORS.txt — OBRIGATÓRIOS pela licença (BSD-3-Clause)
