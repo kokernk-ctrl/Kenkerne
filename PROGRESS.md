@@ -8,6 +8,19 @@ de tarefas do BACKLOG sem refazer o que está pronto.
 
 ## Estado agora
 
+- **v0.1.31 — FECHAR ARQUIVOS (F3/F4/F5/F7 + F8/X1/X2/X3)**: painel "Projeto"
+  acoplável + 4ª aba "Arquivos" (breadcrumb, busca, ordenação, paginação com
+  cache de varredura única, miniaturas, lixeira `.kenkern/lixeira` com undo
+  por Commands, abrir por tipo); importar de QUALQUER pasta (SAF múltiplo,
+  navegador do aparelho, pasta inteira recursiva, glTF local com .bin);
+  `assets.index` com id ESTÁVEL + painel "Problemas" (Corrigir…/Remover);
+  Diagnóstico 36 (arquivos/importar-pasta/referencias); identidade da build
+  (BUILD_HASH/BUILD_DATE) no Hub/Diagnóstico/relatório; ui.* NUNCA na
+  Hierarquia 3D (vão para o TELAR); Inspetor do joystick com efeito ao vivo;
+  editor de código legível (cores de token ≥ 4,5:1 + mesma função no cursor).
+  Portão 2 corrigido em 3 causas raiz (GITHUB_OUTPUT no script da action,
+  dash sem pipefail, Dither.cpp omitido na vendorização do etcpak).
+  90 classes / 528 testes JVM / 36 checagens.
 - **v0.1.28 — LUZ DO LUME + 30/30 + ONDA 0 COMPILADO**: L1 causa raiz da luz
   (fragment shader usava `vTangent` sem declaração → não compilava →
   fallback de cor sólida → pixel (154,154,154) desde a v0.1.20; corrigido +
