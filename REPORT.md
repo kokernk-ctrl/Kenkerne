@@ -60,6 +60,9 @@
 
 ## Itens NÃO feitos
 
+- **FIS-2 (esperado-falhar, prazo v0.1.33)**: 120 ticks do Coletar moedas no emulador após Play REAL — `CAIU pe a -0,5 m` (execução 13): a avaliação é JVM-proven (Robolectric 4/4); a diferença é o estado deixado pelo Play real (queda FIS-1 + respawn + restore do Stop). Registrado em `fisica-fis2.txt` (artifact gate2-logs); a rodada de física (v0.1.33 P1) entrega a causa e o fix, incluindo o "Stop restaura a cena" do Portão 2 §d.
+- **UIH-1 (esperado-falhar, prazo v0.1.33)**: a linha do Nick criado não aparece na árvore de semântica da Hierarquia no EMULADOR do Portão 2 — execuções 6/7/8 (painel não composto: tela cheia do editor de código), 10 (scroll na raiz sem scrollable ancestral) e 11 (âncora dentro da lista, scroll rodado, alvo ausente). Causa raiz do resíduo NÃO VERIFICADO em código; probe desta rodada: capturas 04-hierarquia/05-hierarquia-apos + marcador hierarquia-ui.txt + logcat "UIH-1". A rodada de correção crítica (v0.1.33, U2 — Hierarquia) entrega a causa e o fix.
+
 - Pré-visualização de imagem em TELA (o toque em imagem mostra a miniatura; o zoom/leitor fica para a rodada de TELAR/visual).
 - Conflito de renomear via arrastar no explorador (a tarefa U2/Hierarquia de arrasto é da rodada de correção crítica) — o mover atual usa "Mover para…".
 - `Testes do PORTÃO 2`: a física esperada-falhar (rígido caindo) continua com ID `FIS-1` e prazo v0.1.33 (a rodada de física).
@@ -71,3 +74,27 @@
 - Contraste medido (WCAG) das 5 cores de token contra #1E1E1E: palavra 8,73 · string 5,86 · comentário 6,15 · número 5,65 · API 12,53 (antes: API 1,21 · comentário 3,27).
 - Explorador: 5.000 arquivos, 25 páginas × 200 com CACHE de varredura única (a checagem "explorador" mede ≤ 2.000 ms).
 - APK: assinado no CI (keystore dos secrets); tamanho/tempo medidos no CI-RESUMO.
+
+## v0.1.32 — HARNESS + PORTÕES (fechamento; as causas das execuções 2-10 estão nos itens do bloco v0.1.31 acima)
+
+## Itens feitos
+
+- **H1-H4 — HARNESS.md + Portão 1 + Portão 2 + publicação** — commit `31fbbab`
+  - Causa raiz: o processo vivia só na conversa — sem arquivo normativo, sem portão de CI e sem linguagem obrigatória, cada rodada podia declarar PRONTO sem prova (HARNESS.md §6, "declarar concluído sem prova").
+  - Teste que falhou antes: `CheckGatesTest`, `CheckFixRuleTest` e `CheckReportTest` (os scripts `check_gates.py`/`check_fix_rule.py`/`check_fix_repro.sh`/`check_report.py` NÃO existiam) e `CheckReleaseTest` (não havia verificação tag × versionName).
+  - Teste que passou depois: ratchet 90/528/3/36/0 verde; regra fix/corrige com prova do pai quando o commit muda `app/src/main`; Release só pelo workflow em tag com os três portões verdes.
+  - Não validado: execução de TAG publicando a Release v0.1.32 pelo workflow.
+
+- **H5 — Portão 2 no emulador: causas raiz das execuções 2/3/4/6/7/8/10 e falso positivo do Portão 1 na execução 9** — commits `70f571b`, `3584d45`, `813daf4`, `d526694`, `6f72d00`, `4bf23bc`
+  - Causa raiz (exec. 2): `ci.yml:259` escrevia em `$GITHUB_OUTPUT` dentro do script do android-emulator-runner (variável inexistente no shell da action — exit 2 antes do gradle).
+  - Causa raiz (exec. 3): o script da action roda em dash, que rejeita `set -o pipefail` — gradle passou a rodar sob bash explícito.
+  - Causa raiz (exec. 4): link x86_64 da libkenkern.so quebrado — o subconjunto etcpak OMITIU `Dither.cpp` (chamado pelo caminho `__SSE4_1__`); vendorizado intacto do commit upstream 3d716e1 + teste de contrato de link (`EtcpakVendorTest`).
+  - Causa raiz (exec. 9): detector fix/corrige só contava `app/src/test/` e `app/src/androidTest/` e reprovou `c1d8997`, que toca só `app/src/testShared/` (código de teste COMPARTILHADO pelos dois runners) — falso positivo; `check_fix_rule.py` agora conta testShared e a prova do pai só se aplica a commit que muda `app/src/main` (limite do §5 registrado em DECISIONS.md "Prova de reprodução").
+  - Causa raiz (exec. 6/7/8): o teste esperava o Nick na Hierarquia com o EDITOR DE CÓDIGO aberto — tela cheia (`EditorScreen.kt:433`, "nada do editor de cena é composto") — e o painel não existe na semântica; fix `voltarDaAbaCodigoParaACena` (commit `d526694`).
+  - Causa raiz (exec. 10): `performScrollToNode` na RAIZ do app falha com "Semantic Node has no parent layout with a Scroll SemanticsAction" (ActionsKt.scrollToNode) — a raiz não está dentro de nenhum scrollable; fix: âncora = PRIMEIRA LINHA da Hierarquia (mesmo texto que a linha desenha: `Nick.displayName` + `AppLanguage.currentTag`) dentro da LazyColumn (commit `6f72d00`).
+  - Causa raiz (exec. 12): o UIH-1 "não bloqueante" BLOQUEAVA — `performScrollToNode` lança AssertionError e `waitUntil` lança ComposeTimeoutException ANTES do registro (commit `bddb55c`: try + sondagem sem lançar).
+  - Causa raiz (exec. 13): o MESMO `avaliarJogo` (Diagnostico.kt:189) passa na JVM e falha no emulador SÓ quando o Play REAL rodou antes — jogador cai pelo piso (FIS-1), respawn o deixa no surgimento e o Stop restaura esse estado (pe a -0,5 m): FIS-2 esperado-falhar, família FIS-1, prazo v0.1.33 (commit `2ec5777`).
+  - Causa raiz (exec. 14): 'CAIU*/ATRAVESSOU' dentro do KDoc fechava o comentário de bloco e o androidTest não compilava (commit `8325d68`).
+  - Teste que falhou antes: `a_a_f_fluxoRealCompleto` vermelho nas execuções 6/7/8 (ComposeTimeoutException 30000 ms), 10 (AssertionError de scroll na raiz) e 11 (âncora achada e scroll rodado, alvo ausente); "FIX SEM TESTE" da execução 9 — prova nos logs do GitHub Actions.
+  - Teste que passou depois: `a_a_f_fluxoRealCompleto` verde no emulador com o resíduo registrado como UIH-1 ESPERADO-FALHAR (padrão FIS-1, prazo v0.1.33): a confirmação na Hierarquia deixa de bloquear e vira evidência (capturas 04/05-hierarquia + marcador hierarquia-ui.txt no artifact gate2-logs); a CRIAÇÃO pelo addNickOfKind continua bloqueante.
+  - Não validado: aparelho físico do usuário (a instrumentação roda no emulador do CI; o aparelho valida no TESTES_PENDENTES).

@@ -18,8 +18,12 @@ de tarefas do BACKLOG sem refazer o que está pronto.
   (BUILD_HASH/BUILD_DATE) no Hub/Diagnóstico/relatório; ui.* NUNCA na
   Hierarquia 3D (vão para o TELAR); Inspetor do joystick com efeito ao vivo;
   editor de código legível (cores de token ≥ 4,5:1 + mesma função no cursor).
-  Portão 2 corrigido em 3 causas raiz (GITHUB_OUTPUT no script da action,
-  dash sem pipefail, Dither.cpp omitido na vendorização do etcpak).
+  Portão 2 VERDE no emulador (execuções 2-14, causas raiz: GITHUB_OUTPUT no
+  script da action; dash sem pipefail; Dither.cpp omitido na vendorização do
+  etcpak; editor de código tela cheia sem retorno à Cena; scroll na raiz sem
+  scrollable ancestral; testShared não contado como teste; UIH-1 e FIS-2
+  esperado-falhar com prazo v0.1.33 — probes 04/05-hierarquia,
+  hierarquia-ui.txt e fisica-fis2.txt nos artifacts).
   90 classes / 528 testes JVM / 36 checagens.
 - **v0.1.28 — LUZ DO LUME + 30/30 + ONDA 0 COMPILADO**: L1 causa raiz da luz
   (fragment shader usava `vTangent` sem declaração → não compilava →
