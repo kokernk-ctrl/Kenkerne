@@ -254,13 +254,15 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
           script: |
-            set -o pipefail
             mkdir -p logs screenshots
-            # Causa raiz da falha de 27/11/2026: "echo >> $GITHUB_OUTPUT"
-            # dentro deste script morre com exit 2 (a variável não existe no
-            # shell do script da action) ANTES do gradle. O modo vem do
-            # resultado dos passos, no passo "Modo do Portão 2".
-            ./gradlew connectedDebugAndroidTest --stacktrace 2>&1 | tee logs/gate2.log
+            # Causa raiz da execução 2 (27/11/2026): "echo >> $GITHUB_OUTPUT"
+            # morre com exit 2 (a variável não existe no shell do script da
+            # action). Causa raiz da execução 3 (28/11/2026): o
+            # android-emulator-runner executa ESTE script com /usr/bin/sh
+            # (dash), que não aceita "set -o pipefail" — o script morria ANTES
+            # do gradle. O gradle roda sob bash explícito para o pipefail
+            # propagar a falha dos testes.
+            bash -c 'set -o pipefail; ./gradlew connectedDebugAndroidTest --stacktrace 2>&1 | tee logs/gate2.log'
             adb shell am start -n com.kenkern.engine.debug/com.kenkern.engine.MainActivity >/dev/null 2>&1 || true
             sleep 6
             adb exec-out screencap -p > screenshots/01-hub.png || true
