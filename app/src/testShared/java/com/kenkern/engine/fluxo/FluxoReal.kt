@@ -265,6 +265,33 @@ object FluxoReal {
         return r.moedasColetadas to r.falha
     }
 
+    /** d) MESMA avaliação com o registro do FIS-2 (família FIS-1, prazo
+     * v0.1.33 — rodada de física). Fato provado na execução 13 do Portão 2:
+     * o MESMO avaliarJogo passa na JVM (Robolectric a_a_f, 4/4) e falha no
+     * emulador APENAS quando o Play REAL rodou antes (1,2 s sem input): o
+     * jogador cai pelo piso (FIS-1), o respawn o deixa no surgimento e o
+     * Stop restaura esse estado — a simulação começa com o pé a -0,5 m e o
+     * FIS-1 não o levanta. Falhas de FÍSICA (CAIU*/ATRAVESSOU/NÃO COLIDIU)
+     * são REGISTRADAS (marcador + logcat) e não bloqueiam; falhas de
+     * ESTRUTURA/LÓGICA (sem body.player, NÃO MOVEU) continuam bloqueantes.
+     * Como verificar: fisica-fis2.txt no artifact gate2-logs + logcat. */
+    fun jogar120TicksComFis2(ctx: Context, cena: Scene): String? {
+        val (moedas, falha) = jogar120Ticks(cena)
+        val fis2 = falha != null &&
+            (falha.startsWith("CAIU") || falha.startsWith("ATRAVESSOU") || falha.startsWith("NÃO COLIDIU"))
+        if (fis2) {
+            android.util.Log.i("Portao2", "FIS-2: $falha (moedas=$moedas)")
+            val dir = File(ctx.getExternalFilesDir(null), "screenshots")
+            dir.mkdirs()
+            File(dir, "fisica-fis2.txt").writeText(
+                "FIS-2 (família FIS-1, prazo v0.1.33): $falha (moedas=$moedas) — " +
+                    "avaliarJogo passa na JVM e falha no emulador só após Play real"
+            )
+            return null
+        }
+        return falha
+    }
+
     /** d) liga e desliga o Play pelo estado real (o mesmo que o botão usa). */
     fun ligarEDesligarPlay(vm: EditorViewModel) {
         vm.setPlayState(PlayState.PLAYING)

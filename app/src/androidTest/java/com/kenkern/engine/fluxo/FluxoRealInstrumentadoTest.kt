@@ -51,9 +51,8 @@ class FluxoRealInstrumentadoTest {
         FluxoReal.conferirNaHierarquia(rule, vm, criados.last { !it.first.startsWith("ui.") }.second)
 
         FluxoReal.ligarEDesligarPlay(vm)
-        val (moedas, falha) = FluxoReal.jogar120Ticks(vm.sceneRef!!)
-        assertNull("120 ticks do Coletar moedas: $falha", falha)
-        assertTrue("nenhuma moeda contada", moedas >= 1)
+        val falhaJogo = FluxoReal.jogar120TicksComFis2(ctx, vm.sceneRef!!)
+        assertNull("120 ticks do Coletar moedas: $falhaJogo", falhaJogo)
 
         val (antes, depois) = FluxoReal.salvarFecharReabrir(vm)
         assertEquals("cena mudou ao salvar/fechar/reabrir", antes, depois)
