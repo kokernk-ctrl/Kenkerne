@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "jvm_test_classes": 86,
-  "jvm_test_methods": 508,
+  "jvm_test_classes": 90,
+  "jvm_test_methods": 528,
   "android_test_methods": 3,
-  "diag_checks": 33,
+  "diag_checks": 36,
   "ignored": 0,
   "lint_errors": 2
 }

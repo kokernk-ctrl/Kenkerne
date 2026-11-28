@@ -64,6 +64,20 @@ object GuardasCaminho {
         return t.all { it.isLetterOrDigit() || it == ' ' || it == '-' || it == '_' }
     }
 
+    /**
+     * F3: nome de ARQUIVO — segmentos de letra/dígito/espaço/-/_ separados por
+     * PONTO (extensão): "novo.lua", "renomeado 2.lua", "m.v2.kern" são válidos;
+     * ".lua" (sem base), "..", "a/b" e caracteres especiais são recusados.
+     */
+    fun nomeArquivoValido(nome: String): Boolean {
+        val t = nome.trim()
+        if (t.isEmpty() || t.length > 100) return false
+        if (t.contains('/') || t.contains('\\')) return false
+        return t.split('.').all { seg ->
+            seg.isNotEmpty() && seg.all { it.isLetterOrDigit() || it == ' ' || it == '-' || it == '_' }
+        }
+    }
+
     /** Espaço livre suficiente no [volume] para [bytesNecessarios]? */
     fun espacoLivre(volume: File, bytesNecessarios: Long): Boolean =
         volume.usableSpace >= bytesNecessarios

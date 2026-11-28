@@ -1,47 +1,73 @@
-# REPORT — v0.1.32
+# REPORT — v0.1.31
 
 ## Itens feitos
 
-- **H1 — HARNESS.md (papéis, linguagem, PRONTO, relatório e prompt)** — commit `31fbbab`
-  - Causa raiz: não existia arquivo de regras; criado em `HARNESS.md:1` e linkado de `README.md`, `ROADMAP.md` e `PROGRESS.md`.
-  - Teste que falhou antes: não observado (arquivo novo); `check_gates.py` exige a existência dele em `ARQUIVOS_OBRIGATORIOS`.
-  - Teste que passou depois: `python3 scripts/check_gates.py` → `OK — portão 1 verde`.
-  - Não validado: leitura e uso por outra IA.
+- **X3 — editor de código invisível/mudando com o cursor** — commit `d03545c`
+  - Causa raiz: `EditorLuaScreen.kt:128` mapeava cor de API para `KenkernSurfaceHigh` (#2D2D30 — 1,21:1, cor de SUPERFÍCIE como cor de TEXTO) e comentário para `KenkernTextLow` (3,27:1); a linha com o cursor era um BasicTextField PLANO sem spans (`EditorLuaScreen.kt:735`) — os tokens mudavam de cor ao mover o cursor.
+  - Teste que falhou antes: `X3ContrasteEditorLuaTest` (1,21:1 e 3,27:1 < 4,5) e `X3RealceLinhaTest` (a linha do cursor não tinha spans).
+  - Teste que passou depois: os mesmos, com as 5 cores de token em `Theme.kt` (8,73/5,86/6,15/5,65/12,53:1) e a MESMA função pura `realceLinhaLua` no Text e no VisualTransformation.
+  - Não validado: leitura real no aparelho (item 8 do TESTES_PENDENTES).
 
-- **H2 — Portão 1 (ratchet, palavras proibidas, arquivos obrigatórios, regra fix/corrige)** — commit `31fbbab`
-  - Causa raiz: o workflow anterior só compilava e rodava testes (`.github/workflows/build.yml:37-49`); não havia ratchet, detector de palavras, arquivos obrigatórios nem regra de fix.
-  - Teste que falhou antes: `check_gates.py` com o baseline antigo falhou com `RATCHET DESATUALIZADO: jvm_test_methods=496 > baseline=493`.
-  - Teste que passou depois: baseline 495/82/3/33/0 → `OK — portão 1 verde`; lint com 2 erros pré-existentes (NewApi, RememberReturnType) e nenhum novo.
-  - Não validado: os caminhos de falha no CI real (só a execução do GitHub prova).
+- **F8 — identidade da build** — commit `8488a63`
+  - Causa raiz: não existia registro de hash/data — build sem identidade não podia ser distribuída.
+  - Teste que falhou antes: `F8IdentidadeBuildTest` (BuildConfig sem BUILD_HASH/BUILD_DATE).
+  - Teste que passou depois: hash injetado no `build.gradle.kts` (git rev-parse, exigido); Hub (`HomeScreen.kt`), cabeçalho do Diagnóstico e "Copiar relatório" (`DiagRelatorioTexto.montar`) mostram versão · vc · hash · data.
+  - Não validado: aparelho (item 8 do TESTES_PENDENTES).
 
-- **H3 — Portão 2 (emulador API 34 + alternativa Robolectric)** — commit `31fbbab`
-  - Causa raiz: não havia androidTest (0 arquivos) nem job de emulador; o app só era testado em JVM.
-  - Teste que falhou antes: `FluxoRealRobolectricTest` com Compose falhou com `AppNotIdleException` (o Hub anima em loop); reescrito para o MESMO caminho de produção sem Compose.
-  - Teste que passou depois: 2 testes Robolectric verdes (projeto, scripts, Nicks, Play 120 ticks, salvar/reabrir) e 3 androidTest no emulador.
-  - Não validado: o emulador do CI (o modo e o resultado vão no CI-RESUMO).
-  - Limite registrado: a checagem "nativo" do Diagnóstico não roda no Robolectric (o handler de SIGSEGV mata a JVM de teste, exit 139).
+- **X1 — ui.* nunca filhos de Nicks 3D** — commit `7059ae7`
+  - Causa raiz: `EditorViewModel.addNickOfKind` (`EditorViewModel.kt:642-646`) aceitava QUALQUER pai, inclusive para `ui.*` — o joystick ia para a cena 3D.
+  - Teste que falhou antes: `x1_uiJoystickComLuzSelecionada_nuncaAlteraHierarquia3D` (o joystick ALTERAVA a Hierarquia).
+  - Teste que passou depois: rota própria `adicionarElementoUi` (elemento de UI no .kui); helper `criarUmNickDeCadaKind` do Portão 2 ajustado para PROVAR o X1 (cena intacta + elemento no .kui).
+  - Não validado: aparelho (item 6 do TESTES_PENDENTES).
 
-- **H4 — Release só pelo workflow, CI-RESUMO e REPORT validado** — commit `31fbbab`
-  - Causa raiz: a Release era publicada à mão e o workflow antigo parava no artifact, sem resumo.
-  - Teste que falhou antes: não se aplica (fluxo novo).
-  - Teste que passou depois: `check_release.py` confere tag × `versionName`; `ci_resumo.py` gera no máximo 40 linhas; `check_report.py` rejeita seção ausente e item sem commit.
-  - Não validado: a primeira Release v0.1.32 criada pelo workflow.
+- **X2 — Inspetor do joystick (TELAR) com efeito ao vivo** — commit `7059ae7`
+  - Causa raiz: o Inspetor do TELAR (`TelarScreen.kt:393-498`) não expunha os campos joystick (o `ComandoPropriedade` já os aceitava desde a U1.4 — `TelarModelo.kt:243-249`), e o Play só lia o Nick antigo (`JoystickUiConfig.de(scene)`).
+  - Teste que falhou antes: `x2_inspetorJoystick_editaOs7CamposComEfeitoAoVivo` (JoystickUiConfig não lia o .kui).
+  - Teste que passou depois: 7 campos editáveis no Inspetor do TELAR + `JoystickUiConfig.de(scene, docUi)` (Nick antigo com prioridade; .kui depois).
+  - Não validado: aparelho (item 7 do TESTES_PENDENTES).
 
-- **H5 — Portão 2 travava antes do gradle (correção do workflow)** — commit `70f571b`
-  - Causa raiz: `.github/workflows/ci.yml:259` — o script do `android-emulator-runner` executava `echo "modo=emulador" >> "$GITHUB_OUTPUT"`; dentro do shell do script dessa action a variável `GITHUB_OUTPUT` não existe, o redirect falha e o script morre com exit 2 ANTES de rodar `connectedDebugAndroidTest` (execução 2, 27/11/2026 21:56:47Z).
-  - Teste que falhou antes: execução 2 do CI — job "Portão 2 (emulador)" failure com `The process '/usr/bin/sh' failed with exit code 2` e nenhum log do gradle.
-  - Teste que passou depois: execução seguinte do CI — `connectedDebugAndroidTest` roda no emulador (KVM disponível no runner ubuntu-22.04) e o job fica verde; o modo agora é derivado do resultado dos passos (`steps.modo.outcome`), não de output inexistente.
-  - Não validado: não se aplica (o CI real é a validação).
+- **F3 — painel "Projeto" (explorador acoplável + aba Arquivos)** — commit `{COMMIT}`
+  - Causa raiz: só existia o núcleo paginado puro (`ExploradorArquivos`, 37 linhas) — nenhuma UI, nenhuma operação de escrita, nenhum undo de arquivo.
+  - Teste que falhou antes: `OperacoesArquivosTest` (as operações não existiam — compilação no pai) e `ExploradorCacheTest`.
+  - Teste que passou depois: criar/renomear/duplicar/mover/apagar→LIXEIRA/un­do com Commands reais no histórico do editor; painel acoplado + 4ª aba "Arquivos"; breadcrumb/busca/ordenação/paginação/miniaturas; abrir por tipo (.lua/.kui/.ck/.glb/…/imagem).
+  - Não validado: aparelho (itens 2-3 do TESTES_PENDENTES).
+
+- **F4 — importar de qualquer pasta** — commit `{COMMIT}`
+  - Causa raiz: SAF de 1 arquivo só para modelos; `GuardasCaminho.pastaDe` definido SEM chamador; navegador do aparelho inexistente.
+  - Teste que falhou antes: `ImportadorArquivosTest` (roteamento por extensão, árvore recursiva com contagem/cancelamento, resolvedor local com zip-slip bloqueado).
+  - Teste que passou depois: SAF múltiplo ("Importar vários arquivos…"), navegador do aparelho com seleção múltipla e pasta inteira, glTF local com .bin/texturas (ResolvedorArquivos).
+  - Não validado: aparelho (item 4 do TESTES_PENDENTES).
+
+- **F5 — referências estáveis (assets.index)** — commit `{COMMIT}`
+  - Causa raiz: `ReferenceSystem.registerAsset/resolveAsset` sem chamador; mover/renomear quebrava Malha.path silenciosamente.
+  - Teste que falhou antes: `ReferenciasF5Test` (índice não existia; mover quebrava a referência).
+  - Teste que passou depois: id ESTÁVEL no `assets.index` (mover/renomear atualizam índice + repontam Nicks), painel "Problemas" com Corrigir…/Remover referência, parser tolerante (linha+motivo), reconstrução preservando ids.
+  - Não validado: aparelho (item 5 do TESTES_PENDENTES).
+
+- **F7 — Diagnóstico 36** — commit `{COMMIT}`
+  - Causa raiz: faltavam as checagens "arquivos", "importar-pasta" e "referencias".
+  - Teste que falhou antes: `DiagAgendaTest` esperava 36 com o catálogo em 33.
+  - Teste que passou depois: catálogo/agenda/when/títulos/strings en-pt completos; baseline `diag_checks` 33→36.
+  - Não validado: aparelho (item 1 do TESTES_PENDENTES).
+
+- **Portão 2 do CI — 3 causas raiz (execuções 2/3/4)** — commits `70f571b`, `3584d45`, `813daf4`
+  - Causa raiz 1 (execução 2): `ci.yml:259` escrevia em `$GITHUB_OUTPUT` dentro do script do android-emulator-runner (a variável não existe no shell da action — exit 2 antes do gradle).
+  - Causa raiz 2 (execução 3): o script da action roda em dash, que rejeita `set -o pipefail` — o gradle passou a rodar sob bash explícito.
+  - Causa raiz 3 (execução 4): link x86_64 da libkenkern.so quebrado — o subconjunto etcpak OMITIU `Dither.cpp` (ProcessRGB.cpp chama `Dither()` no caminho `__SSE4_1__`, só compilado para x86_64); vendorizado intacto do commit upstream 3d716e1, com teste de contrato de LINK SSE4.1 real (`EtcpakVendorTest`).
+  - Teste que falhou antes: os jobs de emulador das execuções 2/3/4 do GitHub Actions (prova nos logs).
+  - Teste que passou depois: `connectedDebugAndroidTest` roda no emulador (KVM disponível no ubuntu-22.04) e o contrato etcpak linka com SSE4.1.
+  - Não validado: a execução 5 do CI (em andamento quando este relatório foi escrito).
 
 ## Itens NÃO feitos
 
-- Nenhum item de funcionalidade do app foi tocado (escopo do prompt: só CI, testes e documentos).
-- `AUDITORIA.md` ficou como esqueleto, conforme o pedido (preenchimento na rodada seguinte).
+- Pré-visualização de imagem em TELA (o toque em imagem mostra a miniatura; o zoom/leitor fica para a rodada de TELAR/visual).
+- Conflito de renomear via arrastar no explorador (a tarefa U2/Hierarquia de arrasto é da rodada de correção crítica) — o mover atual usa "Mover para…".
+- `Testes do PORTÃO 2`: a física esperada-falhar (rígido caindo) continua com ID `FIS-1` e prazo v0.1.33 (a rodada de física).
 
 ## Números reais
 
-- Testes JVM: 495 (antes 493) · classes de teste: 82 (antes 81) · androidTest: 3 (antes 0) · checagens do Diagnóstico: 33 · `@Ignore`: 0.
+- Testes JVM: 528 (antes 495) · classes de teste: 90 (antes 82) · androidTest: 3 · checagens do Diagnóstico: 36 (antes 33) · `@Ignore`: 0.
 - Lint: 2 erros pré-existentes (NewApi, RememberReturnType) — baseline 2, nenhum novo.
-- APK: assinado no CI (keystore dos secrets); tamanho e tempo medidos no CI-RESUMO.
-- Portão 1 antes: ~4 min 48 s (job único, execução de 27/11 17:55–18:00 UTC); depois: medido no CI-RESUMO.
-- Portão 2: emulador API 34 x86_64 (o modo real, emulador ou Robolectric, vai no CI-RESUMO).
+- Contraste medido (WCAG) das 5 cores de token contra #1E1E1E: palavra 8,73 · string 5,86 · comentário 6,15 · número 5,65 · API 12,53 (antes: API 1,21 · comentário 3,27).
+- Explorador: 5.000 arquivos, 25 páginas × 200 com CACHE de varredura única (a checagem "explorador" mede ≤ 2.000 ms).
+- APK: assinado no CI (keystore dos secrets); tamanho/tempo medidos no CI-RESUMO.

@@ -224,3 +224,27 @@ SIGSEGV do C++ e o HotSpot usa SIGSEGV para checagem implícita de nulo — a JV
 de teste morre com exit 139 (o mesmo mecanismo do E1). No emulador (caminho
 principal) o Diagnóstico roda inteiro. Esse limite é aceito porque o fallback
 só existe quando o runner não tem KVM, e o modo usado vai no CI-RESUMO.md.
+
+## Arquivos e referências (v0.1.31 — F3/F4/F5)
+
+1. **`assets.index` único na raiz em vez de `.kmeta` ao lado de cada asset
+   (F5)** — UM arquivo de texto (`id<TAB>caminhoRelativo`, 1 propriedade por
+   linha, ordem alfabética determinística, comentários com `#`) é legível por
+   IA, reconstruído varrendo o projeto e não suja a árvore de assets com
+   centenas de metadados. O id é ESTÁVEL: mover/renomear atualiza a LINHA (e
+   reponta os Nicks via `ReferenciasAssets.repontar`), o id não muda.
+   Alternativa descartada: `.kmeta` por arquivo (500 arquivos = 500 arquivos
+   extra para sincronizar) e referenciar por id DENTRO do `.ck` (mudaria o
+   formato de cena e quebraria projetos existentes sem ganho imediato).
+2. **Exclusão vai SEMPRE para `.kenkern/lixeira` (F3)** — mover para
+   `.kenkern/lixeira/<id>/<nome>` com undo (restaurar) e "esvaziar lixeira";
+   nenhum apagar imediato no explorador. Alternativa descartada: apagar direto
+   (perda irrecuperável por um toque errado).
+3. **Nomes de ARQUIVO validam por segmentos separados por ponto
+   (`nomeArquivoValido`)** — "novo.lua" e "renomeado 2.lua" são válidos; a
+   regra de nome de PROJETO (F1, sem ponto) continua para pastas e projetos.
+4. **Importação (F4) copia o ORIGINAL preservado** — .png/.jpg vão para
+   assets/textures SEM conversão; a conversão para .KIMG acontece no fluxo de
+   material/textura de modelo (KimgConversor), onde há contexto de perfis ETC2.
+   Alternativa descartada: converter na importação (perde o original e impede
+   reexportar).

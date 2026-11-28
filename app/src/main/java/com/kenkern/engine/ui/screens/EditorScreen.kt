@@ -46,6 +46,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Folder
 import android.os.SystemClock
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Check
@@ -301,6 +302,15 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
             opcoesImportacaoVisiveis = true
         }
     }
+    // F4.1 (v0.1.31): SAF MÚLTIPLO — vários arquivos de qualquer pasta,
+    // roteados por extensão (cópia preservada + registro no índice).
+    val importarMultiLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            vm.importarMultiplaSaf(uris, onOk = { }, onErro = { })
+        }
+    }
     val onImportClick: (Boolean) -> Unit = { pasta ->
         if (pasta) {
             importarPastaLauncher.launch(null)
@@ -321,8 +331,15 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     val inspector = remember(orientacao) {
         vm.panelStore.get("inspector", orientacao, "Inspetor", 240f, 180f, 360f, 300f, 400f)
     }
+    // F3 (v0.1.31): painel "Projeto" — o explorador de arquivos acoplável
+    // (mesma mecânica da Hierarquia/Inspetor; a ABA "Arquivos" abre a tela
+    // cheia com o MESMO conteúdo).
+    val projeto = remember(orientacao) {
+        vm.panelStore.get("projeto", orientacao, "Projeto", 220f, 160f, 360f, 240f, 320f)
+    }
     val persistHierarchy = remember { { vm.panelStore.persist(hierarchy) } }
     val persistInspector = remember { { vm.panelStore.persist(inspector) } }
+    val persistProjeto = remember { { vm.panelStore.persist(projeto) } }
 
     // E4: quem está na frente — tocar em um painel flutuante o traz para o
     // primeiro plano (zIndex); Resetar layout devolve o padrão profissional.
@@ -330,6 +347,7 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
     val resetarLayout = {
         vm.panelStore.resetar(hierarchy)
         vm.panelStore.resetar(inspector)
+        vm.panelStore.resetar(projeto)
         painelFoco = null
     }
 
@@ -396,6 +414,19 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
         return
     }
 
+    // F3 (v0.1.31): ABA "Arquivos" — explorador em tela cheia (a 4ª aba do
+    // seletor Cena | UI | Código | Arquivos).
+    var telaArquivos by remember { mutableStateOf(false) }
+    if (telaArquivos) {
+        com.kenkern.engine.ui.explorador.ArquivosScreen(
+            vm = vm,
+            onVoltarEditor = { telaArquivos = false },
+            onAbrirLua = { nome -> abrirEditorLua(AlvoEditorLua.Arquivo(nome)) },
+            onAbrirTelar = { telaTelar = true }
+        )
+        return
+    }
+
     // C1 (v0.1.26): quando o EDITOR DE CÓDIGO LUA está aberto, a tela inteira
     // é dele (retrato) — nada do editor de cena é composto.
     if (alvoEditorLua != null) {
@@ -431,6 +462,8 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                 inspector = inspector,
                 persistHierarchy = persistHierarchy,
                 persistInspector = persistInspector,
+                projeto = projeto,
+                persistProjeto = persistProjeto,
                 onResetarLayout = resetarLayout,
                 mostrarAuxiliares = mostrarAuxiliares,
                 onMostrarAuxiliaresChange = alternarAuxiliares,
@@ -465,6 +498,16 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                             "aba Código: projeto sem scripts e sem raiz para criar — nada aberto"
                         )
                     }
+                },
+                onAbaArquivos = { telaArquivos = true },
+                onImportMultiplo = {
+                    importarMultiLauncher.launch(
+                        arrayOf(
+                            "application/octet-stream", "model/gltf-binary", "model/gltf+json",
+                            "application/zip", "image/*", "audio/*", "video/*", "font/ttf", "font/otf",
+                            "text/*"
+                        )
+                    )
                 }
             )
             }
@@ -479,8 +522,10 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                     // S6: na janela de jogo NENHUM painel do editor é composto.
                     val hShown = hierarchy.visible.value && !janelaDeJogo
                     val iShown = inspector.visible.value && !janelaDeJogo
+                    val pShown = projeto.visible.value && !janelaDeJogo
                     val hDockedSide = wide && hShown && hierarchy.docked.value
                     val iDockedSide = wide && iShown && inspector.docked.value
+                    val pDockedSide = wide && pShown && projeto.docked.value
 
                     if (hDockedSide) {
                         DockedPanel(
@@ -1020,6 +1065,49 @@ fun EditorScreen(vm: EditorViewModel, onExit: () -> Unit) {
                         }
                     }
 
+                    if (pDockedSide) {
+                        PanelResizeDivider(
+                            onDrag = { dxPx ->
+                                projeto.dockWidthDp.value = (projeto.dockWidthDp.value -
+                                    dxPx / density.density)
+                                    .coerceIn(projeto.minDockWidthDp, projeto.maxDockWidthDp)
+                            },
+                            onDragEnd = persistProjeto
+                        )
+                        DockedPanel(
+                            title = projeto.title,
+                            modifier = Modifier
+                                .width(projeto.dockWidthDp.value.dp)
+                                .fillMaxHeight(),
+                            onFloat = {
+                                projeto.docked.value = false
+                                persistProjeto()
+                            },
+                            onHide = {
+                                projeto.visible.value = false
+                                persistProjeto()
+                            }
+                        ) {
+                            com.kenkern.engine.ui.explorador.ExploradorConteudo(
+                                vm = vm,
+                                compacto = true,
+                                onAbrirLua = { nome -> abrirEditorLua(AlvoEditorLua.Arquivo(nome)) },
+                                onAbrirKui = { nome ->
+                                    vm.definirUiDocAlvo(nome)
+                                    telaTelar = true
+                                },
+                                onCarregarCena = { rel ->
+                                    vm.carregarCenaDoArquivo(rel, onOk = {}, onErro = {})
+                                },
+                                onImportarModelo = { rel ->
+                                    vm.importarModeloLocal(rel, onOk = {}, onErro = {})
+                                },
+                                onAbrirImagem = { /* pré-visualização no toque (aba Arquivos tela cheia) */ },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+
                     if (iDockedSide) {
                         PanelResizeDivider(
                             onDrag = { dxPx ->
@@ -1339,6 +1427,8 @@ private fun EditorTopBar(
     inspector: PanelUiState,
     persistHierarchy: () -> Unit,
     persistInspector: () -> Unit,
+    projeto: PanelUiState,
+    persistProjeto: () -> Unit,
     onResetarLayout: () -> Unit,
     mostrarAuxiliares: Boolean,
     onMostrarAuxiliaresChange: (Boolean) -> Unit,
@@ -1362,7 +1452,12 @@ private fun EditorTopBar(
     // Onda 0 P3: abas Cena | UI | Código (a aba CENA é a base; UI/Código
     // abrem suas telas inteiras e voltam aqui).
     onAbaUi: () -> Unit,
-    onAbaCodigo: () -> Unit
+    onAbaCodigo: () -> Unit,
+    // F3 (v0.1.31): 4ª aba Arquivos (explorador em tela cheia) e o toggle do
+    // painel "Projeto" acoplado.
+    onAbaArquivos: () -> Unit,
+    // F4.1 (v0.1.31): SAF MÚLTIPLO (o launcher mora no EditorScreen).
+    onImportMultiplo: () -> Unit
 ) {
     Surface(
         color = KenkernSurface,
@@ -1398,6 +1493,11 @@ private fun EditorTopBar(
                 com.kenkern.engine.ui.components.KChip(
                     texto = stringResource(R.string.editor_aba_codigo),
                     onClick = onAbaCodigo,
+                    selecionado = false
+                )
+                com.kenkern.engine.ui.components.KChip(
+                    texto = stringResource(R.string.explorador_aba_arquivos),
+                    onClick = onAbaArquivos,
                     selecionado = false
                 )
             }
@@ -1465,6 +1565,16 @@ private fun EditorTopBar(
                 inspector.visible.value = !inspector.visible.value
                 persistInspector()
             }
+            // F3 (v0.1.31): toggle do painel "Projeto" (explorador acoplável).
+            TopBarIcon(
+                Icons.Filled.Folder,
+                if (projeto.visible.value) stringResource(R.string.explorador_aba_arquivos)
+                else stringResource(R.string.explorador_aba_arquivos),
+                active = projeto.visible.value
+            ) {
+                projeto.visible.value = !projeto.visible.value
+                persistProjeto()
+            }
 
             // MENU "MAIS" — todo o resto da TopBar antiga, num só lugar.
             var maisMenu by remember { mutableStateOf(false) }
@@ -1487,6 +1597,14 @@ private fun EditorTopBar(
                         texto = stringResource(R.string.editor_import_folder),
                         ativo = false
                     ) { maisMenu = false; onImportClick(true) }
+                    // --- F4.1: MÚLTIPLOS arquivos (roteamento por extensão) ---
+                    ItemMenuMais(
+                        texto = stringResource(R.string.editor_import_multiple),
+                        ativo = false
+                    ) {
+                        maisMenu = false
+                        onImportMultiplo()
+                    }
 
                     // --- Gizmo: Mover/Girar/Escalar + Local/Global + Snap ---
                     ItemMenuMais(

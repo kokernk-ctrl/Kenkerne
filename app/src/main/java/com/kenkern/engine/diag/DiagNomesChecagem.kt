@@ -53,7 +53,10 @@ object DiagNomesChecagem {
         "ui" to R.string.diag_check_ui,
         "armazenamento" to R.string.diag_check_armazenamento,
         "pastas" to R.string.diag_check_pastas,
-        "explorador" to R.string.diag_check_explorador
+        "explorador" to R.string.diag_check_explorador,
+        "arquivos" to R.string.diag_check_arquivos,
+        "importar-pasta" to R.string.diag_check_importar_pasta,
+        "referencias" to R.string.diag_check_referencias
     )
 
     /**

@@ -42,8 +42,8 @@ android {
         applicationId = "com.kenkern.engine"
         minSdk = 26
         targetSdk = 35
-        versionCode = 33
-        versionName = "0.1.32"
+        versionCode = 34
+        versionName = "0.1.31"
 
         // F8 (v0.1.31): identidade da build no Hub, no Diagnóstico e no
         // cabeçalho do relatório copiado.

@@ -59,8 +59,14 @@ object FluxoReal {
     /** a) cria o projeto PELO CAMINHO DA INTERFACE e devolve o handle. */
     fun criarProjetoPelaUi(rule: AndroidComposeTestRule<ActivityScenarioRule<MainActivity>, MainActivity>, vm: EditorViewModel, comTemplate: Boolean): ProjectHandle {
         val ctx = contexto()
+        // Cold start do app no emulador (swiftshader, Hub com buraco negro
+        // animado) pode passar de 10 s na primeira composição — espera LONGA
+        // aqui é espera pelo COMEÇO do app, não por funcionalidade.
+        rule.waitUntil(60_000) {
+            rule.onAllNodesWithText(ctx.getString(R.string.hub_new_project)).fetchSemanticsNodes().isNotEmpty()
+        }
         rule.onAllNodesWithText(ctx.getString(R.string.hub_new_project)).onFirst().performClick()
-        rule.waitUntil(10_000) {
+        rule.waitUntil(60_000) {
             rule.onAllNodesWithText(ctx.getString(R.string.hub_new_title)).fetchSemanticsNodes().isNotEmpty()
         }
         if (comTemplate) {

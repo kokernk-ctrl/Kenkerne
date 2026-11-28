@@ -1,5 +1,97 @@
 # KENKERN — CHANGELOG
 
+## v0.1.31 — FECHAR ARQUIVOS: painel Projeto (F3), importar de qualquer pasta (F4), referências estáveis (F5) + checagens (F7), identidade da build (F8) e os extras X1/X2/X3
+
+> Rodada de ARQUIVOS da Fase 2. 90 classes de teste, 528 testes JVM, Diagnóstico
+> 33 → 36 checagens, Portão 2 (emulador API 34) corrigido em 3 causas raiz.
+
+### F3 — painel "Projeto" (explorador de arquivos)
+- Painel ACOPLÁVEL (mesma mecânica de Hierarquia/Inspetor; toggle de ícone
+  pasta na TopBar) e a 4ª ABA "Arquivos" no seletor Cena | UI | Código |
+  Arquivos (tela cheia com o MESMO componente).
+- Breadcrumb clicável, busca, ordenação (nome/data/tamanho/tipo), lista
+  VIRTUALIZADA e paginada (5.000 arquivos não trava; cache de UMA varredura
+  por estado do diretório — P3 antecipado), ícone por tipo, MINIATURA
+  assíncrona de imagem (LRU de 60, amostragem ≤ 96 px).
+- Ações com desfazer (Commands NO histórico do editor): nova pasta, novo
+  arquivo (.lua/.ck/.kui/.kmat/.kdlg com conteúdo inicial), renomear,
+  duplicar, mover ("Mover para…" com a árvore de pastas), apagar para a
+  LIXEIRA `.kenkern/lixeira` e "Esvaziar lixeira". Seleção múltipla por
+  toque longo. Guardas de caminho do F1 em TODO passo (sem "..", dentro da
+  raiz; nome de arquivo valida por segmentos com ponto).
+- Abrir por tipo: .lua → editor de código; .kui → TELAR (o arquivo clicado
+  vira o alvo do TELAR); .ck → carrega como CENA ATUAL (limite 15 s);
+  .glb/.gltf/.fbx → pipeline completa de importação com resolvedor LOCAL de
+  .bin/texturas; imagem → miniatura.
+- Erros de operação são CLAROS (painel do explorador + Console) — nada
+  silencioso; operações grandes em background (OperacaoComLimite 15 s).
+
+### F4 — importar de QUALQUER pasta
+- SAF MÚLTIPLO ("Importar vários arquivos…" no menu ⋮): roteamento por
+  extensão para a árvore F2 (modelos→assets/models, png→assets/textures,
+  ogg→assets/audio, ttf→assets/fonts, mp4→assets/video, lua→scripts),
+  ORIGINAL preservado, duplicado ganha sufixo " 2", asset registrado no
+  índice.
+- "Navegador do aparelho" no explorador (com a permissão do F1): navega
+  qualquer pasta do aparelho, seleção múltipla e "Importar pasta inteira"
+  (recursiva, contagem e cancelamento).
+- glTF com .bin/texturas externas: resolvedor de ARQUIVOS LOCAIS
+  (zip-slip bloqueado pela guarda de caminho).
+
+### F5 — referências estáveis
+- `assets.index` na raiz do projeto (texto, `id<TAB>caminho`, ordem
+  alfabética, comentários #; DECISIONS #1 da rodada): o id é ESTÁVEL —
+  mover/renomear atualiza a linha e REPOENTA os Nicks (Malha.path).
+- Painel "Problemas" (aba do explorador): referências quebradas com
+  "Corrigir…" (escolher entre os assets do projeto) e "Remover referência".
+- Parser tolerante: linha inválida vira PROBLEMA com linha e motivo; índice
+  corrompido é reconstruído varrendo o projeto (ids legíveis preservados,
+  órfãos descartados).
+
+### F7 — Diagnóstico 36
+- "arquivos": ciclo completo (criar/renomear/duplicar/mover/apagar para a
+  lixeira + UNDO de cada passo) com Commands reais.
+- "importar-pasta": árvore sintética de 50 arquivos roteada por extensão
+  (recursiva, contagem, cancelamento) em ≤ 2 s.
+- "referencias": id estável no mover, quebra no apagar, undo restaura,
+  parser tolerante com linha e motivo.
+
+### F8 — identidade da build
+- `BUILD_HASH` (git rev-parse --short, OBRIGATÓRIO no build) e `BUILD_DATE`
+  (UTC) injetados no BuildConfig; F8IdentidadeBuildTest REPROVA build sem
+  hash. Hub, cabeçalho do Diagnóstico e o "Copiar relatório" mostram
+  versão · versionCode · hash · data.
+
+### X1 — Nicks ui.* NUNCA entram na Hierarquia 3D
+- addNickOfKind roteia ui.* para o TELAR (elemento de UI no .kui);
+  "Como filho do selecionado" é IGNORADO para eles. Teste Robolectric +
+  helper do Portão 2 ajustado (ui.* provado pelo .kui, sem enfraquecer).
+
+### X2 — Inspetor do joystick (TELAR)
+- Os 7 campos (tipo, tamanho, opacidade, zona morta, 8 direções, Controla,
+  Seguir Nick) editáveis por ComandoPropriedade com EFEITO AO VIVO em Play
+  (JoystickUiConfig lê o .kui; o Nick antigo continua com prioridade).
+
+### X3 — editor de código legível (causa raiz)
+- `corApi` era KenkernSurfaceHigh (#2D2D30 — CONTRASTE 1,21:1: cor de
+  SUPERFÍCIE como cor de TEXTO) e comentário KenkernTextLow (3,27:1); a
+  linha do CURSOR era um BasicTextField PLANO sem spans (o realce mudava ao
+  mover o cursor). Agora: 5 cores de token em Theme.kt (≥ 4,5:1, prova no
+  X3ContrasteEditorLuaTest) e a MESMA função pura `realceLinhaLua` nos dois
+  caminhos (Text + VisualTransformation).
+
+### Portão 2 do CI — 3 causas raiz corrigidas (prova nas execuções 2/3/4)
+1. execução 2: `echo >> $GITHUB_OUTPUT` dentro do script do
+   android-emulator-runner morre (variável não existe no shell da action).
+2. execução 3: o script da action roda em dash — `set -o pipefail` é
+   inválido; o gradle passa a rodar sob bash explícito.
+3. execução 4: link x86_64 da libkenkern.so QUEBRADO — o subconjunto etcpak
+   vendorizado OMITIU `Dither.cpp` (o ProcessRGB.cpp chama Dither() no
+   caminho __SSE4_1__, compilado só para x86_64); vendorizado intacto do
+   commit 3d716e1 + teste de contrato com LINK SSE4.1 real.
+- KVM disponível no runner ubuntu-22.04 (sonda OK); emulador API 34 x86_64.
+- Timeout do cold start do Hub no emulador: 10 s → 60 s (swiftshader).
+
 ## v0.1.32 — HARNESS + PORTÕES DE QUALIDADE NO CI
 
 > Sem funcionalidade nova no app: esta versão só trata de CI, testes e

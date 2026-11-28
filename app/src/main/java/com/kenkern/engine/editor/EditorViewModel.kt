@@ -601,6 +601,122 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         revision.intValue++
     }
 
+    // ---------- F3/F5 (v0.1.31): explorador de arquivos + referências ----------
+
+    /**
+     * F5: atualiza as referências ao caminho antigo APÓS mover/renomear:
+     * 1. a entrada do índice `assets.index` muda de caminho (o ID é estável);
+     * 2. os Nicks da cena com Malha.path apontando o caminho antigo são
+     *    repontados (ReferenciasAssets.repontar). Devolve quantos mudaram —
+     *    o Command loga (nada silencioso).
+     */
+    fun atualizarReferencias(caminhoAntigo: String, caminhoNovo: String): Int {
+        val raiz = project.value?.root ?: return 0
+        val idx = com.kenkern.engine.projects.IndiceAssets.carregar(raiz)
+        if (idx.idDe(caminhoAntigo) != null) {
+            idx.mover(caminhoAntigo, caminhoNovo)
+            idx.salvar(raiz)
+        }
+        val n = com.kenkern.engine.projects.ReferenciasAssets.repontar(sceneRef ?: return 0, caminhoAntigo, caminhoNovo)
+        if (n > 0) KenkernLog.i(TAG, "F5: $n referência(s) repontada(s) '$caminhoAntigo' → '$caminhoNovo'")
+        bump()
+        return n
+    }
+
+    /** F5: registra um asset novo no índice (importação/criação de malha). */
+    fun registrarAsset(caminhoRelativo: String) {
+        val raiz = project.value?.root ?: return
+        val idx = com.kenkern.engine.projects.IndiceAssets.carregar(raiz)
+        idx.registrar(caminhoRelativo)
+        idx.salvar(raiz)
+    }
+
+    /** F5: referências quebradas da cena atual (painel Problemas). */
+    fun problemasReferencias(): List<com.kenkern.engine.projects.ReferenciasAssets.Problema> {
+        val raiz = project.value?.root ?: return emptyList()
+        val s = sceneRef ?: return emptyList()
+        return com.kenkern.engine.projects.ReferenciasAssets.problemas(raiz, s)
+    }
+
+    /** F5: "Corrigir…" — reponta a referência do Nick para o arquivo escolhido. */
+    fun corrigirReferencia(nickId: String, novoCaminho: String): Boolean {
+        val s = sceneRef ?: return false
+        val ok = com.kenkern.engine.projects.ReferenciasAssets.corrigir(s, nickId, novoCaminho)
+        if (ok) bump()
+        return ok
+    }
+
+    /** F5: "Remover referência" — limpa o campo path do Nick. */
+    fun removerReferencia(nickId: String): Boolean {
+        val s = sceneRef ?: return false
+        val ok = com.kenkern.engine.projects.ReferenciasAssets.removerReferencia(s, nickId)
+        if (ok) bump()
+        return ok
+    }
+
+    /** F5: assets EXISTENTES no projeto para o "Corrigir…" do Problemas. */
+    fun candidatosReferencia(): List<String> {
+        val raiz = project.value?.root ?: return emptyList()
+        val idx = com.kenkern.engine.projects.IndiceAssets.carregar(raiz)
+        return idx.entradas.keys.filter { java.io.File(raiz, it).isFile }.sorted()
+    }
+
+    /**
+     * F3.3: abre um .ck clicado no explorador como CENA ATUAL (mesmo caminho
+     * de carga do openProject, limite de 15 s, loga falha — nada silencioso).
+     */
+    fun carregarCenaDoArquivo(caminhoRelativo: String, onOk: () -> Unit, onErro: (String) -> Unit) {
+        val handle = project.value ?: return
+        val texto = java.io.File(handle.root, caminhoRelativo)
+        if (!texto.isFile) {
+            onErro("não existe: $caminhoRelativo")
+            return
+        }
+        isLoading.value = true
+        viewModelScope.launch {
+            val r = OperacaoComLimite.executar("carregar cena '${texto.name}'") {
+                withContext(Dispatchers.IO) {
+                    val conteudo = texto.readText()
+                    val cena = com.kenkern.engine.core.serialization.CkFormat.parseToNewScene(conteudo, handle.name)
+                        ?: error("cena .ck não parseou: ${texto.name}")
+                    detachEngineState()
+                    project.value = handle
+                    activeHandleAtEnter = handle
+                    sceneRef = cena
+                    scene.value = cena
+                    com.kenkern.engine.render.AssetMeshLibrary.limpar()
+                    com.kenkern.engine.render.AssetMeshLibrary.baseDir = handle.root
+                    com.kenkern.engine.render.TextureLibrary.limpar()
+                    com.kenkern.engine.render.TextureLibrary.baseDir = handle.root
+                    history.clear()
+                    selection.value = null
+                    selectionRef = null
+                    playState.value = PlayState.STOPPED
+                    autosave.start({ sceneRef }, { project.value })
+                    bump()
+                    true
+                }
+            }
+            isLoading.value = false
+            when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> onOk()
+                is OperacaoComLimite.Resultado.Erro -> {
+                    KenkernLog.e(TAG, "carregar cena do explorador falhou", r.causa)
+                    onErro(r.causa.message ?: "erro")
+                }
+                is OperacaoComLimite.Resultado.TempoEsgotado -> onErro("tempo esgotado (15 s)")
+            }
+        }
+    }
+
+    /** F3.3: alvo do TELAR — o .kui clicado no explorador (null = padrão do projeto). */
+    var uiDocArquivoAlvo: String? = null
+        private set
+
+    fun definirUiDocAlvo(nomeArquivo: String) {
+        uiDocArquivoAlvo = nomeArquivo
+    }
+
     // ---------- Ações de alto nível ----------
 
     /**
@@ -887,6 +1003,156 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * F3.3 (v0.1.31): importa um MODELO que já está DENTRO do projeto
+     * (.glb/.gltf/.fbx clicado no explorador) — a MESMA pipeline do
+     * ModelImporter (triangulação + LODs + .KERN + integridade), gravando em
+     * assets/models e REGISTRANDO o asset no índice (F5). Limite de 15 s.
+     */
+    fun importarModeloLocal(caminhoRelativo: String, onOk: (String) -> Unit, onErro: (String) -> Unit) {
+        val handle = project.value ?: return
+        viewModelScope.launch {
+            isLoading.value = true
+            val r = OperacaoComLimite.executar("importar modelo local '$caminhoRelativo'") {
+                withContext(Dispatchers.IO) {
+                    val arquivo = File(handle.root, caminhoRelativo)
+                    val bytes = arquivo.readBytes()
+                    // F4.3: .gltf com .bin/texturas externas no MESMO diretório.
+                    val resolver: com.kenkern.engine.assets.import.ResolvedorExterno? =
+                        if (arquivo.name.lowercase().endsWith(".gltf")) {
+                            com.kenkern.engine.projects.ImportadorArquivos.ResolvedorArquivos(arquivo.parentFile ?: handle.root)
+                        } else null
+                    val resumo = com.kenkern.engine.assets.import.ModelImporter.importarModelo(
+                        arquivo.name, bytes, resolutorExterno = resolver
+                    )
+                    val base = arquivo.name.substringBeforeLast('.')
+                    val nomeKern = com.kenkern.engine.assets.import.AssetLayout.nomeUnico(
+                        File(handle.root, com.kenkern.engine.assets.import.AssetLayout.DIR_MODELOS), base, "KERN"
+                    )
+                    File(File(handle.root, com.kenkern.engine.assets.import.AssetLayout.DIR_MODELOS), nomeKern)
+                        .writeBytes(resumo.bytesKernData)
+                    val relativo = "${com.kenkern.engine.assets.import.AssetLayout.DIR_MODELOS}/$nomeKern"
+                    resumo.caminhoKernRelativo = relativo
+                    relativo
+                }
+            }
+            isLoading.value = false
+            when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> {
+                    registrarAsset(r.valor)
+                    KenkernLog.i(TAG, "F3: modelo local importado → ${r.valor}")
+                    onOk(r.valor)
+                }
+                is OperacaoComLimite.Resultado.Erro -> {
+                    KenkernLog.e(TAG, "importar modelo local ($caminhoRelativo) falhou", r.causa)
+                    onErro(r.causa.message ?: "erro")
+                }
+                is OperacaoComLimite.Resultado.TempoEsgotado -> onErro("tempo esgotado (15 s)")
+            }
+        }
+    }
+
+    /**
+     * F4 (v0.1.31): importa VÁRIOS arquivos LOCAIS (navegador do aparelho ou
+     * SAF múltiplo) — cópia PRESERVADA roteada por extensão, asset registrado
+     * no índice. NÃO é a pipeline de modelo (o .glb copiado é importado por
+     * clique no explorador).
+     */
+    fun importarArquivosLocais(origens: List<File>, onOk: (String) -> Unit, onErro: (String) -> Unit) {
+        val handle = project.value ?: return
+        viewModelScope.launch {
+            isLoading.value = true
+            val r = OperacaoComLimite.executar("importar ${origens.size} arquivo(s)") {
+                withContext(Dispatchers.IO) {
+                    val destinos = ArrayList<String>(origens.size)
+                    val falhas = ArrayList<String>(1)
+                    for (o in origens) {
+                        when (val copia = com.kenkern.engine.projects.ImportadorArquivos.copiarPreservado(handle.root, o)) {
+                            is com.kenkern.engine.projects.ImportadorArquivos.CopiaResult.Ok -> {
+                                destinos.add(copia.relativo)
+                                registrarAsset(copia.relativo)
+                            }
+                            is com.kenkern.engine.projects.ImportadorArquivos.CopiaResult.Falhou -> falhas.add(copia.motivo)
+                        }
+                    }
+                    check(falhas.size < origens.size || origens.isEmpty()) {
+                        "todas as cópias falharam: ${falhas.take(2).joinToString("; ")}"
+                    }
+                    "${destinos.size} arquivo(s) importado(s)" + (if (falhas.isEmpty()) "" else " · ${falhas.size} falharam")
+                }
+            }
+            isLoading.value = false
+            when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> onOk(r.valor)
+                is OperacaoComLimite.Resultado.Erro -> onErro(r.causa.message ?: "erro")
+                is OperacaoComLimite.Resultado.TempoEsgotado -> onErro("tempo esgotado (15 s)")
+            }
+        }
+    }
+
+    /** F4.2: importa a PASTA INTEIRA (recursiva, contagem no resumo). */
+    fun importarPastaLocal(origem: File, onOk: (String) -> Unit, onErro: (String) -> Unit) {
+        val handle = project.value ?: return
+        viewModelScope.launch {
+            isLoading.value = true
+            val r = OperacaoComLimite.executar("importar pasta '${origem.name}'") {
+                withContext(Dispatchers.IO) {
+                    val resumo = com.kenkern.engine.projects.ImportadorArquivos.importarArvore(handle.root, origem)
+                    resumo.destinos.forEach { registrarAsset(it) }
+                    resumo.texto()
+                }
+            }
+            isLoading.value = false
+            when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> onOk(r.valor)
+                is OperacaoComLimite.Resultado.Erro -> onErro(r.causa.message ?: "erro")
+                is OperacaoComLimite.Resultado.TempoEsgotado -> onErro("tempo esgotado (15 s)")
+            }
+        }
+    }
+
+    /**
+     * F4.1 (v0.1.31): SAF MÚLTIPLO — o usuário escolhe VÁRIOS arquivos de
+     * qualquer pasta no seletor do sistema; a cópia é roteada por extensão
+     * (GuardasCaminho.pastaDe), PRESERVADA e registrada no índice (F5).
+     */
+    fun importarMultiplaSaf(uris: List<android.net.Uri>, onOk: (String) -> Unit, onErro: (String) -> Unit) {
+        val handle = project.value ?: return
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            isLoading.value = true
+            val r = OperacaoComLimite.executar("importar ${uris.size} arquivo(s) do SAF") {
+                withContext(Dispatchers.IO) {
+                    val destinos = ArrayList<String>(uris.size)
+                    val falhas = ArrayList<String>(1)
+                    for (uri in uris) {
+                        val nome = com.kenkern.engine.projects.SafFolderResolver.nomeETamanho(getApplication(), uri)?.first
+                            ?: "arquivo"
+                        val (relativo, destino) = com.kenkern.engine.projects.ImportadorArquivos.destinoDe(handle.root, nome)
+                        try {
+                            val entrada = getApplication<Application>().contentResolver.openInputStream(uri)
+                                ?: error("stream nulo de '$nome'")
+                            entrada.use { e -> destino.outputStream().use { saida -> e.copyTo(saida) } }
+                            destinos.add(relativo)
+                            registrarAsset(relativo)
+                        } catch (e: Exception) {
+                            falhas.add("$nome: ${e.message ?: e.javaClass.simpleName}")
+                        }
+                    }
+                    check(destinos.isNotEmpty()) { "nenhuma cópia funcionou: ${falhas.take(2).joinToString("; ")}" }
+                    "${destinos.size} arquivo(s) importado(s)" +
+                        (if (falhas.isEmpty()) "" else " · ${falhas.size} falharam")
+                }
+            }
+            isLoading.value = false
+            when (r) {
+                is OperacaoComLimite.Resultado.Sucesso -> onOk(r.valor)
+                is OperacaoComLimite.Resultado.Erro -> onErro(r.causa.message ?: "erro")
+                is OperacaoComLimite.Resultado.TempoEsgotado -> onErro("tempo esgotado (15 s)")
+            }
+        }
+    }
+
+    /**
      * FLUXO COMPLETO (A.2/A.3): lendo (cópia em streaming para origem/) →
      * triangulando/gravando/validando (ModelImporter em Dispatchers.Default) →
      * gravação do .KERN → UM Command (Nick + assets no undo/redo) → seleção +
@@ -1039,6 +1305,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 if (importCancelado.get()) throw ImportException("importação cancelada pelo usuário")
+
+                // F5 (v0.1.31): o asset NOVO ganha id ESTÁVEL no assets.index.
+                registrarAsset(kernRel)
 
                 // ---------------- UM Command: Nick + assets (undo remove os dois)
                 val classe = ModelImporter.criarClasseMalha(
@@ -1205,6 +1474,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     /** U1: carrega o .kui do projeto (ui/coletar-moedas.kui ou ui/ui.kui). */
     fun carregarUiDoc(): com.kenkern.engine.ui.telar.DocumentoUi? {
         val raiz = project.value?.root ?: return null
+        // F3.3 (v0.1.31): o .kui CLICADO no explorador tem prioridade.
+        uiDocArquivoAlvo?.let { alvo ->
+            val f = java.io.File(raiz, "ui/$alvo")
+            if (f.isFile) {
+                try {
+                    return com.kenkern.engine.ui.telar.KuiFormat.carregar(f.readText())
+                } catch (e: Exception) {
+                    com.kenkern.engine.diag.KenkernLog.e(TAG, "carregarUiDoc falhou ($alvo)", e)
+                }
+            }
+        }
         for (nome in listOf("coletar-moedas.kui", "ui.kui")) {
             val f = java.io.File(raiz, "ui/$nome")
             if (f.exists()) {

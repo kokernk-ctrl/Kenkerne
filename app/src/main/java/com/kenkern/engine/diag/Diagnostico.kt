@@ -114,7 +114,8 @@ class Diagnostico(private val appContext: Context) {
             "gltf", "fbx", "importar", "kimg", "picking", "toque", "release",
             "layout", "joystick", "lua-api", "jogo",
             "play-sair", "area", "editor", "ui",
-            "armazenamento", "pastas", "explorador"
+            "armazenamento", "pastas", "explorador",
+            "arquivos", "importar-pasta", "referencias"
         )
         val AGENDA_GL = listOf("shaders", "buffers", "glcaps", "etc2", "tex-cena", "cena", "luz", "astc")
         const val AGENDA_MEMORIA = "memoria"
@@ -160,7 +161,10 @@ class Diagnostico(private val appContext: Context) {
             Checagem("armazenamento", "Armazenamento — locais App × Aparelho (permissão, escrever/ler, auto-save)"),
             Checagem("pastas", "Pastas do projeto — árvore F2 + migração de projetos antigos"),
             Checagem("explorador", "Explorador — listagem paginada de 5.000 arquivos sintéticos no tempo limite"),
-            Checagem("ui", "UI do TELAR — âncoras nas 3 proporções, ida e volta .kui, migração do joystick, commands e tela do template")
+            Checagem("ui", "UI do TELAR — âncoras nas 3 proporções, ida e volta .kui, migração do joystick, commands e tela do template"),
+            Checagem("arquivos", "Explorador (F3) — criar pasta/arquivo, renomear, duplicar, mover, apagar para a LIXEIRA e desfazer com Commands"),
+            Checagem("importar-pasta", "Importar-pasta (F4) — árvore sintética com 50 arquivos roteada por extensão (recursiva, contagem, cancelamento)"),
+            Checagem("referencias", "Referências (F5) — assets.index id estável, mover/renomear NÃO quebram, apagar quebra no painel Problemas e o desfazer restaura")
         )
 
         /**
@@ -630,6 +634,9 @@ class Diagnostico(private val appContext: Context) {
                             "armazenamento" -> checarArmazenamento(c)
                             "pastas" -> checarPastas(c)
                             "explorador" -> checarExplorador(c)
+                            "arquivos" -> checarArquivosF7(c)
+                            "importar-pasta" -> checarImportarPasta(c)
+                            "referencias" -> checarReferenciasF7(c)
                         }
                     }.onFailure {
                         c.falhou("exceção: ${it.message ?: it.javaClass.simpleName}")
@@ -2178,6 +2185,194 @@ class Diagnostico(private val appContext: Context) {
         } else {
             c.falhou(problemas.joinToString("; ") + " · criação ${criacaoMs} ms · listagem $listagemMs ms")
         }
+    }
+
+    /**
+     * F7 (v0.1.31) — checagem "arquivos": o ciclo COMPLETO do explorador em
+     * pasta temporária: criar pasta, criar arquivo, renomear, duplicar,
+     * mover, APAGAR para a LIXEIRA e o UNDO de cada passo (Commands reais).
+     */
+    private fun checarArquivosF7(c: Checagem) {
+        val problemas = ArrayList<String>(4)
+        var passos = 0
+        try {
+            val raiz = File(appContext.cacheDir, "diag-arquivos-" + System.nanoTime())
+            raiz.mkdirs()
+            try {
+                val ops = com.kenkern.engine.projects.OperacoesArquivos
+
+                // criar pasta + arquivo
+                val rp = ops.criarPasta(raiz, raiz, "scripts")
+                if (!rp.ok) problemas.add("criar pasta: ${rp.erro}") else passos++
+                val ra = ops.criarArquivo(raiz, File(raiz, "scripts"), "novo.lua", "-- f7")
+                if (!ra.ok) problemas.add("criar arquivo: ${ra.erro}") else passos++
+
+                // renomear (Command) + undo + redo
+                val ren = com.kenkern.engine.commands.ComandoRenomearArquivo(raiz, ra.caminho ?: "scripts/novo.lua", "renomeado.lua")
+                ren.execute(); passos++
+                if (File(raiz, "scripts/renomeado.lua").isFile) passos++ else problemas.add("renomear não moveu o arquivo")
+                ren.undo()
+                if (File(raiz, "scripts/novo.lua").isFile) passos++ else problemas.add("undo do renomear não restaurou")
+                ren.execute()
+
+                // duplicar
+                val rd = ops.duplicar(raiz, File(raiz, "scripts/renomeado.lua"))
+                if (rd.ok) passos++ else problemas.add("duplicar: ${rd.erro}")
+
+                // mover para subpasta
+                File(raiz, "scripts/sub").mkdirs()
+                val rm = com.kenkern.engine.commands.ComandoMoverArquivo(raiz, "scripts/renomeado.lua", "scripts/sub")
+                rm.execute()
+                if (File(raiz, "scripts/sub/renomeado.lua").isFile) passos++ else problemas.add("mover falhou")
+                rm.undo()
+                if (File(raiz, "scripts/renomeado.lua").isFile) passos++ else problemas.add("undo do mover não voltou")
+
+                // apagar → LIXEIRA + undo restaura o CONTEÚDO
+                val apagar = com.kenkern.engine.commands.ComandoApagarArquivo(raiz, "scripts/renomeado.lua", com.kenkern.engine.commands.novoIdOperacao())
+                apagar.execute()
+                if (File(raiz, "scripts/renomeado.lua").exists()) problemas.add("apagar não moveu para a lixeira") else passos++
+                apagar.undo()
+                val conteudo = File(raiz, "scripts/renomeado.lua")
+                if (conteudo.isFile && conteudo.readText() == "-- f7") passos++ else problemas.add("undo do apagar não restaurou o conteúdo")
+            } finally {
+                raiz.deleteRecursively()
+            }
+        } catch (t: Throwable) {
+            problemas.add("exceção: ${t.message ?: t.javaClass.simpleName}")
+        }
+        if (problemas.isEmpty()) {
+            c.aprovado("F3: $passos passos (criar/renomear+duplicar/mover+apagar para a lixeira, UNDO de cada passo) — todos OK")
+        } else {
+            c.falhou(problemas.joinToString("; "))
+        }
+    }
+
+    /**
+     * F7 (v0.1.31) — checagem "importar-pasta": árvore sintética com 50
+     * arquivos (extensões variadas, subpastas) importada pelo núcleo do F4
+     * (recursivo, roteamento por extensão, contagem, cancelamento).
+     */
+    private fun checarImportarPasta(c: Checagem) {
+        val problemas = ArrayList<String>(3)
+        var resumo = ""
+        try {
+            val raiz = File(appContext.cacheDir, "diag-importar-" + System.nanoTime())
+            val origem = File(appContext.cacheDir, "diag-importar-origem-" + System.nanoTime())
+            raiz.mkdirs()
+            origem.mkdirs()
+            try {
+                com.kenkern.engine.projects.GuardasCaminho.garantirArvore(raiz)
+                for (i in 0 until 50) {
+                    val dir = if (i % 2 == 0) origem else File(origem, "sub$i").apply { mkdirs() }
+                    when (i % 5) {
+                        0 -> File(dir, "m$i.glb").writeBytes(byteArrayOf(1, i.toByte()))
+                        1 -> File(dir, "t$i.png").writeBytes(byteArrayOf(2, i.toByte()))
+                        2 -> File(dir, "a$i.ogg").writeBytes(byteArrayOf(3, i.toByte()))
+                        3 -> File(dir, "f$i.ttf").writeBytes(byteArrayOf(4, i.toByte()))
+                        else -> File(dir, "s$i.lua").writeText("-- $i")
+                    }
+                }
+                val t0 = System.currentTimeMillis()
+                val r = com.kenkern.engine.projects.ImportadorArquivos.importarArvore(raiz, origem)
+                val ms = System.currentTimeMillis() - t0
+                resumo = r.texto()
+                if (r.copiados != 50) problemas.add("copiou ${r.copiados} de 50")
+                if (r.pulados != 0) problemas.add("pulou ${r.pulados}: ${r.motivos.take(2)}")
+                if (ms > 2000) problemas.add("importação levou $ms ms (limite 2000 ms)")
+                val modelos = File(raiz, "assets/models").listFiles()?.size ?: 0
+                val texturas = File(raiz, "assets/textures").listFiles()?.size ?: 0
+                if (modelos < 10 || texturas < 10) problemas.add("roteamento errado: $modelos modelos, $texturas texturas")
+            } finally {
+                raiz.deleteRecursively()
+                origem.deleteRecursively()
+            }
+        } catch (t: Throwable) {
+            problemas.add("exceção: ${t.message ?: t.javaClass.simpleName}")
+        }
+        if (problemas.isEmpty()) {
+            c.aprovado("F4: 50 arquivos sintéticos importados recursivamente por extensão — $resumo")
+        } else {
+            c.falhou(problemas.joinToString("; "))
+        }
+    }
+
+    /**
+     * F7 (v0.1.31) — checagem "referencias": o fluxo F5 COMPLETO em cena
+     * sintética: índice id estável, mover/renomear NÃO quebram (índice + Nicks
+     * repontados), apagar quebra (painel Problemas), desfazer restaura e o
+     * parser tolerante devolve linha/motivo do índice corrompido.
+     */
+    private fun checarReferenciasF7(c: Checagem) {
+        val problemas = ArrayList<String>(3)
+        var passou = 0
+        try {
+            val raiz = File(appContext.cacheDir, "diag-referencias-" + System.nanoTime())
+            raiz.mkdirs()
+            try {
+                File(raiz, "assets/models").mkdirs()
+                File(raiz, "assets/textures").mkdirs()
+                File(raiz, "assets/models/heroi.kern").writeBytes(byteArrayOf(1))
+                val idx = com.kenkern.engine.projects.IndiceAssets.carregar(raiz)
+                val id = idx.registrar("assets/models/heroi.kern")
+                idx.salvar(raiz)
+
+                val cena = com.kenkern.engine.core.Scene()
+                val nick = cena.createRootNick("Cubo", kind = "nick.mesh")
+                val malha = nick.findClassInstance("Malha")
+                malha?.fields?.put("path", com.kenkern.engine.core.NickValue.StringValue("assets/models/heroi.kern"))
+
+                // mover + repontar: referência SEGUE o arquivo
+                val ref = com.kenkern.engine.projects.ReferenciasAssets
+                val movido = cmdsMover(raiz, "assets/models/heroi.kern", "assets/textures") { a, n ->
+                    idx.mover(a, n); ref.repontar(cena, a, n)
+                }
+                if (movido) passou++ else problemas.add("mover falhou")
+                if (idx.idDe("assets/textures/heroi.kern") == id) passou++ else problemas.add("id não sobreviveu ao mover")
+                val quebradas = ref.problemas(raiz, cena)
+                if (quebradas.isEmpty()) passou++ else problemas.add("referência quebrou no mover")
+
+                // apagar → quebra → desfazer restaura
+                val apagar = com.kenkern.engine.commands.ComandoApagarArquivo(
+                    raiz, "assets/textures/heroi.kern",
+                    com.kenkern.engine.commands.novoIdOperacao()
+                )
+                apagar.execute()
+                if (ref.problemas(raiz, cena).size == 1) passou++ else problemas.add("apagar não marcou a quebra")
+                apagar.undo()
+                if (ref.problemas(raiz, cena).isEmpty()) passou++ else problemas.add("undo não restaurou a referência")
+
+                // índice corrompido: parser tolerante com linha e motivo
+                File(raiz, com.kenkern.engine.projects.IndiceAssets.ARQUIVO).writeText(
+                    "$id\tassets/textures/heroi.kern\nLINHA CORROMPIDA\n"
+                )
+                val recon = com.kenkern.engine.projects.IndiceAssets.reconstruir(raiz)
+                if (recon.idDe("assets/textures/heroi.kern") == id) passou++ else problemas.add("reconstrução perdeu o id")
+                if (recon.problemas.isNotEmpty()) passou++ else problemas.add("parser não reportou a linha corrompida")
+            } finally {
+                raiz.deleteRecursively()
+            }
+        } catch (t: Throwable) {
+            problemas.add("exceção: ${t.message ?: t.javaClass.simpleName}")
+        }
+        if (problemas.isEmpty()) {
+            c.aprovado("F5: $passou passos — id estável no mover/renomear, quebra no painel Problemas, undo restaura, parser tolerante com linha e motivo")
+        } else {
+            c.falhou(problemas.joinToString("; "))
+        }
+    }
+
+    /** helper F7: move via Command e devolve sucesso (sem exceção derrubar a checagem). */
+    private fun cmdsMover(
+        raiz: File,
+        de: String,
+        pastaDestino: String,
+        atualizar: (String, String) -> Int
+    ): Boolean = try {
+        com.kenkern.engine.commands.ComandoMoverArquivo(raiz, de, pastaDestino, atualizar).execute()
+        true
+    } catch (t: Throwable) {
+        KenkernLog.e(TAG, "F7: mover $de falhou", t)
+        false
     }
 
     /** Checagem "ui" (U1, v0.1.27) — TELAR sem GL: — TELAR sem GL: âncoras nas 3 proporções (16:9, 18:9, 20:9), área segura, .kui ida e volta, migração do joystick sem perder dados, undo/redo por COMMAND e a tela do template. Onda 0 (v0.1.28, P5): também as FONTES OFL — carrega CADA uma do APK (assets/fonts, sem rede) e conta as que abriram. */
