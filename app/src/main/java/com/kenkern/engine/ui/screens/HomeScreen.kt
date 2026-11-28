@@ -82,6 +82,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kenkern.engine.R
 import com.kenkern.engine.projects.Kernpack
 import com.kenkern.engine.projects.ProjectHandle
+import com.kenkern.engine.IdentidadeBuild
 import com.kenkern.engine.projects.ProjectManager
 import com.kenkern.engine.diag.KenkernLog
 import com.kenkern.engine.ui.AppLanguage
@@ -234,7 +235,9 @@ fun HomeScreen(
                         color = KenkernTextHigh
                     )
                     Text(
-                        "v${ProjectManager.ENGINE_VERSION}",
+                        // F8 (v0.1.31): identidade completa da build — versão,
+                        // versionCode, hash curto do commit e data da build.
+                        IdentidadeBuild.linha(),
                         fontSize = 12.sp,
                         color = KenkernTextLow
                     )

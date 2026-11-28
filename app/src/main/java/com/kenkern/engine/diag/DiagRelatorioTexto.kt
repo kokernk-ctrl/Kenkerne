@@ -30,14 +30,21 @@ object DiagRelatorioTexto {
     /**
      * Monta o relatório completo. [tituloPorId] devolve o título localizado
      * do id (a tela resolve com o recurso do idioma corrente).
+     * [identidade] é a linha F8 (v0.1.31): versão, versionCode, hash curto do
+     * commit e data da build — vai no cabeçalho do texto copiado, para o
+     * usuário dizer QUAL build gerou o relatório.
      */
     fun montar(
         resultados: List<Diagnostico.Checagem>,
+        identidade: String = "",
         tituloPorId: (String) -> String
     ): String {
         val aprovadas = resultados.count { it.status == Diagnostico.Status.APROVADO }
         val falhas = resultados.count { it.status == Diagnostico.Status.FALHOU }
         val sb = StringBuilder()
+        if (identidade.isNotBlank()) {
+            sb.append(identidade).append('\n')
+        }
         sb.append("Diagnóstico Kenkern — ").append(aprovadas).append(" aprovadas · ")
             .append(falhas).append(" falhas (de ").append(resultados.size).append(")\n")
         for (r in ordenar(resultados)) {

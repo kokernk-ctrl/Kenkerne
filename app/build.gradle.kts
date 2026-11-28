@@ -1,3 +1,6 @@
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 plugins {
@@ -5,6 +8,26 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
+
+// F8 (v0.1.31): identidade da build — hash curto do commit (git) e data UTC.
+// Injetado em BuildConfig (BUILD_HASH/BUILD_DATE); o Diagnóstico e o teste
+// F8IdentidadeBuildTest REPROVAM uma build sem hash.
+val identidadeHash: String = ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+    .directory(rootDir)
+    .start()
+    .let { p ->
+        val saida = p.inputStream.readBytes().toString(Charsets.UTF_8).trim()
+        p.waitFor()
+        saida
+    }
+    .also { saida: String ->
+        require(Regex("[0-9a-f]{7,40}").matches(saida)) {
+            "F8: BUILD_HASH invalido ('$saida') — build sem hash e reprovada pelo Diagnostico"
+        }
+    }
+val identidadeData: String = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'")
+    .withZone(ZoneOffset.UTC)
+    .format(Instant.now())
 
 android {
     namespace = "com.kenkern.engine"
@@ -21,6 +44,11 @@ android {
         targetSdk = 35
         versionCode = 33
         versionName = "0.1.32"
+
+        // F8 (v0.1.31): identidade da build no Hub, no Diagnóstico e no
+        // cabeçalho do relatório copiado.
+        buildConfigField("String", "BUILD_HASH", "\"$identidadeHash\"")
+        buildConfigField("String", "BUILD_DATE", "\"$identidadeData\"")
 
         // B3: compila libkenkern.so só para arm64-v8a.
         ndk {

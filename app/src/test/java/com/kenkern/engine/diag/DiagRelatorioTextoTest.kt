@@ -56,4 +56,25 @@ class DiagRelatorioTextoTest {
         val posOk = texto.indexOf("ok")
         assertTrue("falha no topo do texto copiado", posFalha in 0 until posOk)
     }
+
+    @Test
+    fun `F8 — cabeçalho do relatório copiado abre com a identidade da build`() {
+        val ok = checagem("cena", "Cena", Diagnostico.Status.APROVADO, "ok")
+        val texto = DiagRelatorioTexto.montar(
+            listOf(ok),
+            tituloPorId = { id -> "T[$id]" },
+            identidade = "Kenkern v0.1.31 · vc34 · a1b2c3d · 2026-11-28 08:00 UTC"
+        )
+        val posIdent = texto.indexOf("a1b2c3d")
+        val posResumo = texto.indexOf("Diagnóstico Kenkern —")
+        assertTrue("identidade no cabeçalho: $texto", posIdent >= 0)
+        assertTrue("identidade ANTES do resumo", posIdent in 0 until posResumo)
+    }
+
+    @Test
+    fun `sem identidade o relatório mantém o formato antigo (compatível)`() {
+        val ok = checagem("cena", "Cena", Diagnostico.Status.APROVADO, "ok")
+        val texto = DiagRelatorioTexto.montar(listOf(ok)) { id -> "T[$id]" }
+        assertTrue(texto.startsWith("Diagnóstico Kenkern — "))
+    }
 }

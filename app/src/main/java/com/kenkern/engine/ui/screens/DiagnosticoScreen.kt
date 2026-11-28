@@ -175,6 +175,15 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                // F8 (v0.1.31): identidade da build — versão, versionCode, hash
+                // curto do commit e data da build, visível no cabeçalho da tela.
+                Text(
+                    com.kenkern.engine.IdentidadeBuild.linha(),
+                    fontSize = 11.sp,
+                    color = KenkernTextLow,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             // S1 (v0.1.24): COPIAR RELATÓRIO — o texto COMPLETO das checagens
             // (título + estado + tempo + detalhe inteiro; FALHAS no topo) vai
@@ -182,9 +191,13 @@ fun DiagnosticoScreen(onVoltar: () -> Unit) {
             KButton(
                 texto = stringResource(R.string.diag_copy_report),
                 onClick = {
-                    val relatorio = DiagRelatorioTexto.montar(resultados) { id ->
-                        context.getString(DiagNomesChecagem.resource(id))
-                    }
+                    // F8 (v0.1.31): o cabeçalho do relatório copiado abre com a
+                    // identidade da build (versão, versionCode, hash, data).
+                    val relatorio = DiagRelatorioTexto.montar(
+                        resultados,
+                        tituloPorId = { id -> context.getString(DiagNomesChecagem.resource(id)) },
+                        identidade = com.kenkern.engine.IdentidadeBuild.linha()
+                    )
                     clipboard.setText(AnnotatedString(relatorio))
                     copiadoAte = android.os.SystemClock.elapsedRealtime()
                 },
