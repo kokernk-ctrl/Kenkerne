@@ -178,14 +178,13 @@ object FluxoReal {
     }
 
     /** c) o Nick criado aparece na Hierarquia (painel montado da cena) —
-     * ROLA a lista até o nó: com 17+ Nicks o último pode estar FORA DA VISTA
-     * da LazyColumn (nós fora da viewport não existem na semântica). */
+     * SCROLLA a Hierarquia até o nó PRIMEIRO: com 17+ Nicks o último está
+     * FORA DA VISTA da LazyColumn e nós fora da viewport NÃO existem na
+     * semântica (esperar sozinho nunca os vê — causa raiz das execuções
+     * 6 e 7 do Portão 2). */
     fun conferirNaHierarquia(rule: AndroidComposeTestRule<ActivityScenarioRule<MainActivity>, MainActivity>, nome: String) {
-        rule.waitUntil(30_000) {
-            rule.onAllNodesWithText(nome, substring = true).fetchSemanticsNodes().isNotEmpty()
-        }
         rule.onRoot().performScrollToNode(hasText(nome, substring = true))
-        rule.waitUntil(10_000) {
+        rule.waitUntil(15_000) {
             rule.onAllNodesWithText(nome, substring = true).fetchSemanticsNodes().isNotEmpty()
         }
     }
